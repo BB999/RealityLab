@@ -11,5 +11,8 @@
     "vite": "^5.0.0",
     "vite-plugin-mkcert": "^1.17.0",
     "vite-plugin-pwa": "^0.17.0"
+  },
+  "dependencies": {
+    "three": "^0.181.0"
   }
 }
