@@ -51,14 +51,20 @@ function init() {
     // WebXRサポートチェック
     if ('xr' in navigator) {
         navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+            console.log('WebXR immersive-ar サポート:', supported);
             if (supported) {
                 startButton.addEventListener('click', onStartButtonClick);
             } else {
                 startButton.textContent = 'MRは非対応です';
                 startButton.disabled = true;
             }
+        }).catch((error) => {
+            console.error('WebXRサポートチェックエラー:', error);
+            startButton.textContent = 'WebXRエラー';
+            startButton.disabled = true;
         });
     } else {
+        console.log('navigator.xrが存在しません');
         startButton.textContent = 'WebXRは非対応です';
         startButton.disabled = true;
     }
@@ -78,7 +84,12 @@ function onStartButtonClick() {
         domOverlay: { root: document.body }
     };
 
-    navigator.xr.requestSession('immersive-ar', sessionInit).then(onSessionStarted);
+    navigator.xr.requestSession('immersive-ar', sessionInit)
+        .then(onSessionStarted)
+        .catch((error) => {
+            console.error('MRセッション開始エラー:', error);
+            alert('MRセッションを開始できませんでした: ' + error.message);
+        });
 }
 
 function onSessionStarted(session) {
