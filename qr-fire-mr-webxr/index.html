@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebXR MR Fire - Quest 3 マーカーベース炎AR</title>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 1000;
+            font-size: 14px;
+            max-width: 300px;
+        }
+        #info h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 999;
+            text-align: center;
+        }
+        #enterMR {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 30px;
+            font-size: 18px;
+            background: linear-gradient(135deg, #FF4500, #FF6347);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            z-index: 9999;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(255, 69, 0, 0.4);
+            display: block;
+        }
+        #enterMR:hover {
+            background: linear-gradient(135deg, #FF6347, #FF4500);
+        }
+        #enterMR:disabled {
+            background: gray;
+            cursor: not-allowed;
+        }
+        #enterMR:active {
+            transform: translateX(-50%) scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h3>🔥 WebXR MR Fire</h3>
+        <p id="status">Quest 3でMRモードを開始してください</p>
+        <p id="debug">待機中...</p>
+    </div>
+
+    <div class="loading" id="loading">
+        <p>MindARを読み込み中...</p>
+        <p style="font-size: 12px;">Quest 3のブラウザで開いてください</p>
+    </div>
+
+    <button id="enterMR">MRモードに入る 🔥</button>
+
+    <a-scene
+        mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: no; uiError: no; uiScanning: no;"
+        color-space="sRGB"
+        renderer="colorManagement: true, physicallyCorrectLights"
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false"
+        xr-mode-ui="enabled: false"
+    >
+        <!-- 環境光 -->
+        <a-light type="ambient" color="#fff" intensity="0.8"></a-light>
+
+        <!-- カメラ -->
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+        <!-- マーカーターゲット -->
+        <a-entity mindar-image-target="targetIndex: 0">
+            <!-- 炎のエフェクト（発光） -->
+            <a-sphere
+                position="0 0.2 0"
+                radius="0.3"
+                material="color: #FF4500; shader: flat; emissive: #FF4500; emissiveIntensity: 1"
+                animation="property: scale; to: 1.2 1.5 1.2; loop: true; dir: alternate; dur: 500; easing: easeInOutQuad"
+            ></a-sphere>
+
+            <a-sphere
+                position="0 0.5 0"
+                radius="0.25"
+                material="color: #FFD700; shader: flat; emissive: #FFD700; emissiveIntensity: 1"
+                animation="property: scale; to: 1.3 1.6 1.3; loop: true; dir: alternate; dur: 400; easing: easeInOutQuad"
+            ></a-sphere>
+
+            <a-sphere
+                position="0 0.8 0"
+                radius="0.2"
+                material="color: #FF6600; shader: flat; emissive: #FF6600; emissiveIntensity: 1"
+                animation="property: scale; to: 1.4 1.7 1.4; loop: true; dir: alternate; dur: 350; easing: easeInOutQuad"
+            ></a-sphere>
+
+            <a-sphere
+                position="0 1.0 0"
+                radius="0.15"
+                material="color: #FFFF00; shader: flat; emissive: #FFFF00; emissiveIntensity: 1"
+                animation="property: scale; to: 1.5 1.8 1.5; loop: true; dir: alternate; dur: 300; easing: easeInOutQuad"
+            ></a-sphere>
+
+            <!-- 揺らぎエフェクト -->
+            <a-sphere
+                position="0 0.3 0"
+                radius="0.15"
+                material="color: #FF0000; shader: flat; emissive: #FF0000; emissiveIntensity: 1; opacity: 0.7"
+                animation__pos="property: position; to: -0.1 0.6 0; loop: true; dir: alternate; dur: 600; easing: easeInOutSine"
+                animation__scale="property: scale; to: 0.8 1.2 0.8; loop: true; dir: alternate; dur: 400"
+            ></a-sphere>
+
+            <a-sphere
+                position="0 0.3 0"
+                radius="0.15"
+                material="color: #FF0000; shader: flat; emissive: #FF0000; emissiveIntensity: 1; opacity: 0.7"
+                animation__pos="property: position; to: 0.1 0.7 0; loop: true; dir: alternate; dur: 700; easing: easeInOutSine"
+                animation__scale="property: scale; to: 0.9 1.3 0.9; loop: true; dir: alternate; dur: 450"
+            ></a-sphere>
+
+            <!-- 光源 -->
+            <a-light type="point" intensity="2" color="#FF4500" distance="5" position="0 0.5 0"></a-light>
+        </a-entity>
+    </a-scene>
+
+    <script>
+        const sceneEl = document.querySelector('a-scene');
+        const statusEl = document.getElementById('status');
+        const debugEl = document.getElementById('debug');
+        const loadingEl = document.getElementById('loading');
+        const enterMRBtn = document.getElementById('enterMR');
+
+        // ページ読み込み完了
+        window.addEventListener('load', () => {
+            debugEl.textContent = 'MindAR読み込み完了';
+
+            // A-Frameのシーン読み込み完了を待つ
+            sceneEl.addEventListener('loaded', () => {
+                loadingEl.style.display = 'none';
+                debugEl.textContent = 'シーン準備完了';
+            });
+        });
+
+        // MRモードボタン
+        enterMRBtn.addEventListener('click', async () => {
+            debugEl.textContent = 'カメラ権限を要求中...';
+
+            try {
+                // まずカメラ権限を明示的に要求
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                });
+
+                debugEl.textContent = 'カメラ権限取得成功';
+                console.log('カメラストリーム取得:', stream);
+
+                // ストリームを一旦停止（MindARが再度取得するため）
+                stream.getTracks().forEach(track => track.stop());
+
+                debugEl.textContent = 'MindARを起動中...';
+
+                // MindARを開始
+                const arSystem = sceneEl.systems['mindar-image-system'];
+                await arSystem.start();
+
+                statusEl.textContent = 'マーカーをカメラに向けてください';
+                debugEl.textContent = 'マーカー検出中...';
+                enterMRBtn.style.display = 'none';
+
+            } catch (error) {
+                console.error('MRモード起動エラー:', error);
+                debugEl.textContent = 'エラー: ' + error.message;
+                statusEl.textContent = 'カメラアクセスが拒否されました';
+
+                if (error.name === 'NotAllowedError') {
+                    statusEl.textContent = 'カメラ権限を許可してください';
+                } else if (error.name === 'NotFoundError') {
+                    statusEl.textContent = 'カメラが見つかりません';
+                } else if (error.name === 'NotReadableError') {
+                    statusEl.textContent = 'カメラが他のアプリで使用中です';
+                }
+            }
+        });
+
+        // マーカー検出イベント
+        sceneEl.addEventListener('targetFound', (event) => {
+            console.log('🔥 マーカーを検出しました！');
+            statusEl.textContent = '✅ マーカー検出！炎が表示されています';
+            statusEl.style.color = '#00ff00';
+            debugEl.textContent = '炎エフェクト表示中';
+        });
+
+        sceneEl.addEventListener('targetLost', (event) => {
+            console.log('❌ マーカーを見失いました');
+            statusEl.textContent = 'マーカーをカメラに向けてください';
+            statusEl.style.color = '#ffffff';
+            debugEl.textContent = 'マーカーを探しています...';
+        });
+
+        // エラーハンドリング
+        window.addEventListener('error', (event) => {
+            console.error('エラー:', event.error);
+            debugEl.textContent = 'エラー発生: ' + event.error.message;
+        });
+    </script>
+</body>
+</html>

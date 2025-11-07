@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Fire AR - 炎のAR体験</title>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 1000;
+            font-size: 14px;
+            max-width: 300px;
+        }
+        #info h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h3>🔥 QR Fire AR</h3>
+        <p id="status">Hiroマーカーをカメラに向けてください</p>
+        <p id="debug">待機中...</p>
+    </div>
+
+    <div class="loading" id="loading">
+        <p>カメラを初期化中...</p>
+    </div>
+
+    <a-scene
+        embedded
+        arjs="sourceType: webcam; debugUIEnabled: true;"
+        vr-mode-ui="enabled: false"
+    >
+        <!-- 環境光を追加 -->
+        <a-light type="ambient" color="#fff" intensity="1"></a-light>
+
+        <!-- カメラ -->
+        <a-entity camera></a-entity>
+
+        <!-- QRマーカー（Hiro マーカーを使用） -->
+        <a-marker preset="hiro" marker-handler>
+            <!-- 炎のエフェクト（発光するシェーダーを使用） -->
+            <a-sphere
+                id="fire-base"
+                position="0 0.2 0"
+                radius="0.3"
+                material="color: #FF4500; shader: flat; emissive: #FF4500; emissiveIntensity: 1"
+                animation="property: scale; to: 1.2 1.5 1.2; loop: true; dir: alternate; dur: 500; easing: easeInOutQuad"
+            ></a-sphere>
+
+            <a-sphere
+                position="0 0.5 0"
+                radius="0.25"
+                material="color: #FFD700; shader: flat; emissive: #FFD700; emissiveIntensity: 1"
+                animation="property: scale; to: 1.3 1.6 1.3; loop: true; dir: alternate; dur: 400; easing: easeInOutQuad"
+            ></a-sphere>
+
+            <a-sphere
+                position="0 0.8 0"
+                radius="0.2"
+                material="color: #FF6600; shader: flat; emissive: #FF6600; emissiveIntensity: 1"
+                animation="property: scale; to: 1.4 1.7 1.4; loop: true; dir: alternate; dur: 350; easing: easeInOutQuad"
+            ></a-sphere>
+
+            <a-sphere
+                position="0 1.0 0"
+                radius="0.15"
+                material="color: #FFFF00; shader: flat; emissive: #FFFF00; emissiveIntensity: 1"
+                animation="property: scale; to: 1.5 1.8 1.5; loop: true; dir: alternate; dur: 300; easing: easeInOutQuad"
+            ></a-sphere>
+
+            <!-- 揺らぎアニメーション -->
+            <a-sphere
+                position="0 0.3 0"
+                radius="0.15"
+                material="color: #FF0000; shader: flat; emissive: #FF0000; emissiveIntensity: 1; opacity: 0.7"
+                animation__pos="property: position; to: -0.1 0.6 0; loop: true; dir: alternate; dur: 600; easing: easeInOutSine"
+                animation__scale="property: scale; to: 0.8 1.2 0.8; loop: true; dir: alternate; dur: 400"
+            ></a-sphere>
+
+            <a-sphere
+                position="0 0.3 0"
+                radius="0.15"
+                material="color: #FF0000; shader: flat; emissive: #FF0000; emissiveIntensity: 1; opacity: 0.7"
+                animation__pos="property: position; to: 0.1 0.7 0; loop: true; dir: alternate; dur: 700; easing: easeInOutSine"
+                animation__scale="property: scale; to: 0.9 1.3 0.9; loop: true; dir: alternate; dur: 450"
+            ></a-sphere>
+
+            <!-- 光源 -->
+            <a-light type="point" intensity="2" color="#FF4500" distance="5" position="0 0.5 0"></a-light>
+        </a-marker>
+    </a-scene>
+
+    <script>
+        // デバッグ用の状態表示
+        const statusEl = document.getElementById('status');
+        const debugEl = document.getElementById('debug');
+
+        // ローディング表示の制御
+        window.addEventListener('load', () => {
+            debugEl.textContent = 'カメラ初期化中...';
+            setTimeout(() => {
+                const loading = document.getElementById('loading');
+                if (loading) {
+                    loading.style.display = 'none';
+                }
+                debugEl.textContent = 'カメラ起動完了 - マーカーを探しています';
+            }, 3000);
+        });
+
+        // マーカー検出時のイベント
+        AFRAME.registerComponent('marker-handler', {
+            init: function() {
+                console.log('marker-handler initialized');
+                debugEl.textContent = 'マーカーハンドラー準備完了';
+
+                this.el.addEventListener('markerFound', () => {
+                    console.log('🔥 マーカーを検出しました！');
+                    statusEl.textContent = '✅ マーカー検出！炎が表示されます';
+                    statusEl.style.color = '#00ff00';
+                    debugEl.textContent = '炎エフェクト表示中';
+                });
+
+                this.el.addEventListener('markerLost', () => {
+                    console.log('❌ マーカーを見失いました');
+                    statusEl.textContent = 'Hiroマーカーをカメラに向けてください';
+                    statusEl.style.color = '#ffffff';
+                    debugEl.textContent = 'マーカーを探しています...';
+                });
+            }
+        });
+
+        // AR.jsの読み込み状態を確認
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOMContentLoaded');
+            debugEl.textContent = 'AR.jsを読み込んでいます...';
+        });
+
+        // A-Frameの読み込み完了
+        window.addEventListener('arjs-nft-loaded', () => {
+            console.log('AR.js loaded');
+            debugEl.textContent = 'AR.js読み込み完了';
+        });
+    </script>
+</body>
+</html>

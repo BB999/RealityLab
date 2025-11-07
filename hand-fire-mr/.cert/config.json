@@ -1,0 +1,15 @@
+{
+  "record": {
+    "hosts": [
+      "localhost",
+      "127.0.0.1",
+      "192.168.0.137",
+      "0.0.0.0"
+    ],
+    "hash": {
+      "key": "f469f415ed07ebd5036802526fc6eaa619a0da58b3d881f3b280983ee6b65a86",
+      "cert": "9b0bfe99cf320e7c433da6dfdf640fb4614b2b7904610dd48c2e1b57d065c481"
+    }
+  },
+  "configFilePath": "/Users/noranekob/cursor/RealityLab/hand-fire-mr/.cert/config.json"
+}
