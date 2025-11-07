@@ -130,28 +130,47 @@ function init() {
         }
     );
 
-    // MR開始ボタンのイベントリスナー
-    const startButton = document.getElementById('startButton');
+    // MR/VR開始ボタンのイベントリスナー
+    const startMRButton = document.getElementById('startMRButton');
+    const startVRButton = document.getElementById('startVRButton');
 
     // WebXRサポートチェック
     if ('xr' in navigator) {
+        // MRサポートチェック
         navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
             console.log('WebXR immersive-ar サポート:', supported);
             if (supported) {
-                startButton.addEventListener('click', onStartButtonClick);
+                startMRButton.addEventListener('click', () => onStartButtonClick('immersive-ar'));
             } else {
-                startButton.textContent = 'MRは非対応です';
-                startButton.disabled = true;
+                startMRButton.textContent = 'MRは非対応です';
+                startMRButton.disabled = true;
             }
         }).catch((error) => {
-            console.error('WebXRサポートチェックエラー:', error);
-            startButton.textContent = 'WebXRエラー';
-            startButton.disabled = true;
+            console.error('WebXR MRサポートチェックエラー:', error);
+            startMRButton.textContent = 'MRエラー';
+            startMRButton.disabled = true;
+        });
+
+        // VRサポートチェック
+        navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+            console.log('WebXR immersive-vr サポート:', supported);
+            if (supported) {
+                startVRButton.addEventListener('click', () => onStartButtonClick('immersive-vr'));
+            } else {
+                startVRButton.textContent = 'VRは非対応です';
+                startVRButton.disabled = true;
+            }
+        }).catch((error) => {
+            console.error('WebXR VRサポートチェックエラー:', error);
+            startVRButton.textContent = 'VRエラー';
+            startVRButton.disabled = true;
         });
     } else {
         console.log('navigator.xrが存在しません');
-        startButton.textContent = 'WebXRは非対応です';
-        startButton.disabled = true;
+        startMRButton.textContent = 'WebXRは非対応です';
+        startMRButton.disabled = true;
+        startVRButton.textContent = 'WebXRは非対応です';
+        startVRButton.disabled = true;
     }
 
     // ウィンドウリサイズ対応
@@ -161,19 +180,21 @@ function init() {
     renderer.setAnimationLoop(render);
 }
 
-function onStartButtonClick() {
-    // MRセッションの開始
+function onStartButtonClick(sessionMode) {
+    // MR/VRセッションの開始
     const sessionInit = {
         requiredFeatures: ['local-floor'],
         optionalFeatures: ['hand-tracking', 'dom-overlay'],
         domOverlay: { root: document.body }
     };
 
-    navigator.xr.requestSession('immersive-ar', sessionInit)
+    const sessionName = sessionMode === 'immersive-ar' ? 'MR' : 'VR';
+
+    navigator.xr.requestSession(sessionMode, sessionInit)
         .then(onSessionStarted)
         .catch((error) => {
-            console.error('MRセッション開始エラー:', error);
-            alert('MRセッションを開始できませんでした: ' + error.message);
+            console.error(`${sessionName}セッション開始エラー:`, error);
+            alert(`${sessionName}セッションを開始できませんでした: ${error.message}`);
         });
 }
 
@@ -240,6 +261,8 @@ let currentScale = 1;
 const scaleSpeed = 0.5; // スケール変更速度（1秒あたり）
 const minScale = 0.1;
 const maxScale = 5.0;
+let currentVelocity = new THREE.Vector3(); // 現在の速度
+let currentAngularVelocity = 0; // 現在の角速度
 
 function onRightSelectStart(event) {
     // 右トリガーで拡大開始
@@ -433,48 +456,53 @@ function render() {
 
                     // 左コントローラー: スティック左右で方向転換
                     if (source.handedness === 'left') {
-                        // axes[2]が左右（左: -1, 右: +1）
-                        steerInput = Math.abs(axes[2]) > threshold ? axes[2] : 0;
+                        // axes[2]が左右（左: -1, 右: +1）→ 反転させる
+                        steerInput = Math.abs(axes[2]) > threshold ? -axes[2] : 0;
                     }
                 }
             }
 
-            // 車の移動と回転を適用
-            if (forwardInput !== 0 || steerInput !== 0) {
-                const moveSpeed = 2.0; // 移動速度
-                const turnSpeed = 2.0; // 回転速度
+            // 車の移動と回転を適用（滑らかな加速・減速）
+            const maxSpeed = 2.0; // 最大移動速度
+            const maxTurnSpeed = 2.0; // 最大回転速度
+            const acceleration = 5.0; // 加速度
+            const turnAcceleration = 5.0; // 回転加速度
+            const deceleration = 3.0; // 減速度
 
-                // 物理ボディの向きを基準に前進・後退
-                const euler = new THREE.Euler();
-                euler.setFromQuaternion(new THREE.Quaternion(
-                    carBody.quaternion.x,
-                    carBody.quaternion.y,
-                    carBody.quaternion.z,
-                    carBody.quaternion.w
-                ), 'YXZ');
+            // 物理ボディの向きを基準に目標速度を計算
+            const euler = new THREE.Euler();
+            euler.setFromQuaternion(new THREE.Quaternion(
+                carBody.quaternion.x,
+                carBody.quaternion.y,
+                carBody.quaternion.z,
+                carBody.quaternion.w
+            ), 'YXZ');
 
-                const carRotation = euler.y;
-                const direction = new THREE.Vector3(
-                    Math.sin(carRotation) * forwardInput,
-                    0,
-                    Math.cos(carRotation) * forwardInput
-                );
+            const carRotation = euler.y;
+            const targetDirection = new THREE.Vector3(
+                Math.sin(carRotation) * forwardInput,
+                0,
+                Math.cos(carRotation) * forwardInput
+            );
+            const targetVelocity = targetDirection.multiplyScalar(maxSpeed);
 
-                carBody.velocity.x = direction.x * moveSpeed;
-                carBody.velocity.z = direction.z * moveSpeed;
+            // 現在の速度を目標速度に向けて滑らかに変化
+            const velocityDiff = new THREE.Vector3().subVectors(targetVelocity, currentVelocity);
+            const accel = forwardInput !== 0 ? acceleration : deceleration;
+            const velocityChange = velocityDiff.clampLength(0, accel * deltaTime);
+            currentVelocity.add(velocityChange);
 
-                // 方向転換（Y軸回転）
-                if (steerInput !== 0) {
-                    carBody.angularVelocity.y = steerInput * turnSpeed;
-                } else {
-                    carBody.angularVelocity.y = 0;
-                }
-            } else {
-                // スティックを離したら停止
-                carBody.velocity.x *= 0.9;
-                carBody.velocity.z *= 0.9;
-                carBody.angularVelocity.y = 0;
-            }
+            carBody.velocity.x = currentVelocity.x;
+            carBody.velocity.z = currentVelocity.z;
+
+            // 方向転換も滑らかに
+            const targetAngularVelocity = steerInput * maxTurnSpeed;
+            const angularDiff = targetAngularVelocity - currentAngularVelocity;
+            const turnAccel = steerInput !== 0 ? turnAcceleration : deceleration;
+            const angularChange = Math.sign(angularDiff) * Math.min(Math.abs(angularDiff), turnAccel * deltaTime);
+            currentAngularVelocity += angularChange;
+
+            carBody.angularVelocity.y = currentAngularVelocity;
         }
 
         carModel.position.set(
