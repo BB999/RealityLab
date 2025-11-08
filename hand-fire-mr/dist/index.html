@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Fire MR</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #info {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            margin-top: 0;
+            font-size: 2em;
+        }
+
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin: 15px 0;
+        }
+
+        #startButton {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
+        }
+
+        #startButton:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(245, 87, 108, 0.6);
+        }
+
+        #startButton:active {
+            transform: translateY(0);
+        }
+
+        #startButton:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .feature {
+            background: #f8f9fa;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 10px;
+            border-left: 4px solid #f5576c;
+        }
+
+        #canvas {
+            display: none;
+        }
+    </style>
+  <script type="module" crossorigin src="/assets/index-DdN3nlh_.js"></script>
+</head>
+<body>
+    <div id="info">
+        <h1>🔥 Hand Fire MR</h1>
+        <p>手のひらから炎を出すMRアプリです</p>
+
+        <div class="feature">
+            <strong>✋ パー:</strong> 手のひらから炎が出ます
+        </div>
+        <div class="feature">
+            <strong>✊ グー:</strong> 炎が消えます
+        </div>
+
+        <p>Quest 3でWebXR対応ブラウザから開いてください</p>
+
+        <button id="startButton">MRを開始</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+</body>
+</html>
