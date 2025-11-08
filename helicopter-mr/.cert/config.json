@@ -1,0 +1,15 @@
+{
+  "record": {
+    "hosts": [
+      "localhost",
+      "127.0.0.1",
+      "192.168.0.137",
+      "0.0.0.0"
+    ],
+    "hash": {
+      "key": "ba3c592f2712af1783bd7973629e8c8ebf40ca34df01fa4d7f49493abae83ad0",
+      "cert": "0e9e3b082be461dad50f62ffd2bcba767e1052596a08954b74da1787ec44624c"
+    }
+  },
+  "configFilePath": "/Users/noranekob/cursor/RealityLab/helicopter-mr/.cert/config.json"
+}
