@@ -28,12 +28,18 @@ h1 {
     margin-bottom: 1rem;
 }
 
-#status {
+h2 {
+    font-size: 1.5rem;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+}
+
+#status, #depthStatus {
     margin: 1rem 0;
     font-size: 1.1rem;
 }
 
-#startButton {
+#startButton, #depthStartButton {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     border: none;
@@ -43,18 +49,23 @@ h1 {
     cursor: pointer;
     transition: transform 0.2s, box-shadow 0.2s;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    margin: 0.5rem;
 }
 
-#startButton:hover:not(:disabled) {
+#depthStartButton {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+#startButton:hover:not(:disabled), #depthStartButton:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
 }
 
-#startButton:active:not(:disabled) {
+#startButton:active:not(:disabled), #depthStartButton:active:not(:disabled) {
     transform: translateY(0);
 }
 
-#startButton:disabled {
+#startButton:disabled, #depthStartButton:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
