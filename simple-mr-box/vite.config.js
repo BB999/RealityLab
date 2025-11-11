@@ -3,6 +3,7 @@ import mkcert from 'vite-plugin-mkcert';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  base: './',
   plugins: [
     mkcert(),
     VitePWA({
