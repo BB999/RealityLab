@@ -7,9 +7,13 @@ node_modules/
 .env.*.local
 
 # Build outputs
-# dist/ # GitHub Pagesで公開するためコメントアウト
+dist/
 build/
 *.log
+
+# SSL Certificates
+*.pem
+.cert/
 
 # OS files
 .DS_Store
