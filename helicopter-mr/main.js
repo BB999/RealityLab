@@ -134,7 +134,7 @@ function init() {
     // GLTFローダーでヘリコプターモデルを読み込み
     const loader = new GLTFLoader();
     loader.load(
-        '/ヘリ.glb',
+        './ヘリ.glb',
         function (gltf) {
             helicopter = gltf.scene;
             helicopter.position.set(0, 1.5, -2);
