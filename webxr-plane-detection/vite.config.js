@@ -5,6 +5,7 @@ import path from 'path';
 const certPath = path.join(process.env.HOME, '.vite-plugin-mkcert');
 
 export default defineConfig({
+  base: './',
   plugins: [],
   server: {
     https: {
