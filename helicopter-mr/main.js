@@ -10,6 +10,8 @@ let rotor1;
 let rotor2;
 let controller1, controller2;
 let controls;
+let controller1Connected = false;
+let controller2Connected = false;
 
 // ヘリコプターの移動速度と回転
 let helicopterVelocity = new THREE.Vector3();
@@ -115,11 +117,23 @@ function init() {
 
     // コントローラーの入力イベント
     controller1.addEventListener('connected', function(event) {
-        console.log('左コントローラー接続');
+        console.log('左コントローラー接続:', event.data.handedness);
+        controller1Connected = true;
+    });
+
+    controller1.addEventListener('disconnected', function(event) {
+        console.warn('左コントローラー切断');
+        controller1Connected = false;
     });
 
     controller2.addEventListener('connected', function(event) {
-        console.log('右コントローラー接続');
+        console.log('右コントローラー接続:', event.data.handedness);
+        controller2Connected = true;
+    });
+
+    controller2.addEventListener('disconnected', function(event) {
+        console.warn('右コントローラー切断');
+        controller2Connected = false;
     });
 
     // OrbitControlsの追加（非VRモード用）
@@ -215,33 +229,47 @@ function render() {
 
         const session = renderer.xr.getSession();
         if (session) {
-            const inputSources = session.inputSources;
+            try {
+                const inputSources = session.inputSources;
 
-            for (let i = 0; i < inputSources.length; i++) {
-                const inputSource = inputSources[i];
-                const gamepad = inputSource.gamepad;
+                if (inputSources && inputSources.length > 0) {
+                    for (let i = 0; i < inputSources.length; i++) {
+                        const inputSource = inputSources[i];
 
-                if (gamepad && gamepad.axes && gamepad.axes.length >= 4) {
-                    if (inputSource.handedness === 'left') {
-                        // 左コントローラー: 上下で上昇/下降、左右で旋回
-                        const leftVertical = -gamepad.axes[3] || 0; // スティック上下（上が正）
-                        const leftHorizontal = -gamepad.axes[2] || 0; // スティック左右（符号を反転）
-
-                        if (!isNaN(leftVertical)) {
-                            verticalSpeed = leftVertical * 0.01;
+                        // inputSourceの有効性を確認
+                        if (!inputSource || !inputSource.gamepad) {
+                            continue;
                         }
-                        if (!isNaN(leftHorizontal)) {
-                            // 直接回転を変更するのではなく、目標回転速度を設定
-                            targetRotationSpeed = leftHorizontal * 0.02;
-                        }
-                    } else if (inputSource.handedness === 'right') {
-                        // 右コントローラー: 上下で前進/後退
-                        const rightVertical = gamepad.axes[3] || 0; // スティック上下（符号を反転）
-                        if (!isNaN(rightVertical)) {
-                            forwardSpeed = rightVertical * 0.01;
+
+                        const gamepad = inputSource.gamepad;
+
+                        // gamepadの有効性とaxesの存在を確認
+                        if (gamepad && gamepad.axes && gamepad.axes.length >= 4) {
+                            if (inputSource.handedness === 'left' && controller1Connected) {
+                                // 左コントローラー: 上下で上昇/下降、左右で旋回
+                                const leftVertical = -gamepad.axes[3] || 0; // スティック上下（上が正）
+                                const leftHorizontal = -gamepad.axes[2] || 0; // スティック左右（符号を反転）
+
+                                if (!isNaN(leftVertical)) {
+                                    verticalSpeed = leftVertical * 0.01;
+                                }
+                                if (!isNaN(leftHorizontal)) {
+                                    // 直接回転を変更するのではなく、目標回転速度を設定
+                                    targetRotationSpeed = leftHorizontal * 0.02;
+                                }
+                            } else if (inputSource.handedness === 'right' && controller2Connected) {
+                                // 右コントローラー: 上下で前進/後退
+                                const rightVertical = gamepad.axes[3] || 0; // スティック上下（符号を反転）
+                                if (!isNaN(rightVertical)) {
+                                    forwardSpeed = rightVertical * 0.01;
+                                }
+                            }
                         }
                     }
                 }
+            } catch (error) {
+                console.error('コントローラー入力の処理中にエラーが発生:', error);
+                // エラーが発生しても動作を継続（速度は既にリセット済み）
             }
         }
 
