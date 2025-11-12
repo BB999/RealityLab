@@ -117,34 +117,84 @@
             opacity: 0.8;
         }
 
-        /* ガラスモーフィズムの情報パネル */
+        /* ガラスモーフィズムの情報パネル（左下に配置） */
         #info {
             position: absolute;
-            top: 160px;
-            left: 50%;
-            transform: translateX(-50%);
+            bottom: 160px;
+            left: 30px;
             color: white;
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
-            padding: 20px 40px;
+            padding: 20px;
             border-radius: 15px;
             z-index: 100;
-            font-size: 1.1em;
+            font-size: 0.9em;
             font-weight: 300;
             box-shadow: 0 8px 32px 0 rgba(0, 212, 255, 0.2);
-            animation: fadeIn 1.5s ease-out;
+            animation: fadeInLeft 1.5s ease-out;
+            text-align: left;
+            max-width: 380px;
         }
 
-        @keyframes fadeIn {
+        #info .device-notice {
+            font-size: 1em;
+            margin-bottom: 15px;
+            color: #00d4ff;
+            font-weight: 400;
+            text-align: center;
+        }
+
+        /* 操作説明コンテナ */
+        .controls-guide {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .control-item {
+            text-align: left;
+            padding: 10px 12px;
+            background: rgba(0, 212, 255, 0.05);
+            border-radius: 8px;
+            border: 1px solid rgba(0, 212, 255, 0.2);
+        }
+
+        .control-item .icon {
+            display: inline-block;
+            font-size: 1.3em;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        .control-item .title {
+            font-weight: 600;
+            color: #00d4ff;
+            margin-bottom: 3px;
+            font-size: 0.95em;
+        }
+
+        .control-item .desc-ja {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.9em;
+            margin-bottom: 2px;
+        }
+
+        .control-item .desc-en {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.8em;
+            font-style: italic;
+        }
+
+        @keyframes fadeInLeft {
             from {
                 opacity: 0;
-                transform: translateX(-50%) scale(0.9);
+                transform: translateX(-50px);
             }
             to {
                 opacity: 1;
-                transform: translateX(-50%) scale(1);
+                transform: translateX(0);
             }
         }
 
@@ -234,8 +284,17 @@
                 font-size: 0.9em;
             }
             #info {
-                font-size: 0.9em;
-                padding: 15px 25px;
+                font-size: 0.8em;
+                padding: 15px;
+                bottom: 100px;
+                left: 15px;
+                max-width: calc(100% - 30px);
+            }
+            .controls-guide {
+                gap: 8px;
+            }
+            .control-item {
+                padding: 8px 10px;
             }
             #startButton {
                 font-size: 1em;
@@ -261,7 +320,39 @@
     </div>
 
     <!-- 情報パネル -->
-    <div id="info">Quest 3でMRモードを起動してください</div>
+    <div id="info">
+        <div class="device-notice">Quest 3でMRモードを起動してください<br>Please start MR mode with Quest 3</div>
+
+        <div class="controls-guide">
+            <div class="control-item">
+                <div class="icon">🎮</div>
+                <div class="title">左スティック 上下 / Left Stick Vertical</div>
+                <div class="desc-ja">上昇 / 下降</div>
+                <div class="desc-en">Ascend / Descend</div>
+            </div>
+
+            <div class="control-item">
+                <div class="icon">🔄</div>
+                <div class="title">左スティック 左右 / Left Stick Horizontal</div>
+                <div class="desc-ja">左右旋回</div>
+                <div class="desc-en">Turn Left / Right</div>
+            </div>
+
+            <div class="control-item">
+                <div class="icon">➡️</div>
+                <div class="title">右スティック 上下 / Right Stick Vertical</div>
+                <div class="desc-ja">前進 / 後退</div>
+                <div class="desc-en">Forward / Backward</div>
+            </div>
+
+            <div class="control-item">
+                <div class="icon">🚁</div>
+                <div class="title">機体の傾き / Aircraft Tilt</div>
+                <div class="desc-ja">移動方向に自動で傾斜</div>
+                <div class="desc-en">Auto tilt based on movement</div>
+            </div>
+        </div>
+    </div>
 
     <!-- スタートボタン -->
     <button id="startButton">MRモードを開始</button>
