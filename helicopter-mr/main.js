@@ -10,8 +10,6 @@ let rotor1;
 let rotor2;
 let controller1, controller2;
 let controls;
-let controller1Connected = false;
-let controller2Connected = false;
 
 // ヘリコプターの移動速度と回転
 let helicopterVelocity = new THREE.Vector3();
@@ -28,6 +26,13 @@ let currentForwardSpeed = 0;
 let currentVerticalSpeed = 0;
 let currentRotationSpeed = 0;
 let targetRotationSpeed = 0; // 目標回転速度
+
+// フレームレート管理
+let clock = new THREE.Clock();
+
+// 再利用可能なVector3オブジェクト（GC対策）
+const _tempVector3 = new THREE.Vector3();
+const _tempVector3_2 = new THREE.Vector3();
 
 init();
 animate();
@@ -92,7 +97,7 @@ function init() {
         if (navigator.xr) {
             navigator.xr.requestSession('immersive-ar', {
                 requiredFeatures: ['local-floor'],
-                optionalFeatures: ['hand-tracking', 'layers', 'bounded-floor', 'depth-sensing', 'hit-test']
+                optionalFeatures: ['hand-tracking', 'layers', 'bounded-floor', 'hit-test']
             }).then(function(session) {
                 session.addEventListener('end', onSessionEnded);
                 renderer.xr.setSession(session);
@@ -115,25 +120,21 @@ function init() {
     controller2 = renderer.xr.getController(1); // 右手
     scene.add(controller2);
 
-    // コントローラーの入力イベント
+    // コントローラーの入力イベント（デバッグ用のみ）
     controller1.addEventListener('connected', function(event) {
-        console.log('左コントローラー接続:', event.data.handedness);
-        controller1Connected = true;
+        console.log('コントローラー1接続:', event.data.handedness);
     });
 
     controller1.addEventListener('disconnected', function(event) {
-        console.warn('左コントローラー切断');
-        controller1Connected = false;
+        console.log('コントローラー1切断');
     });
 
     controller2.addEventListener('connected', function(event) {
-        console.log('右コントローラー接続:', event.data.handedness);
-        controller2Connected = true;
+        console.log('コントローラー2接続:', event.data.handedness);
     });
 
     controller2.addEventListener('disconnected', function(event) {
-        console.warn('右コントローラー切断');
-        controller2Connected = false;
+        console.log('コントローラー2切断');
     });
 
     // OrbitControlsの追加（非VRモード用）
@@ -208,6 +209,9 @@ function animate() {
 }
 
 function render() {
+    const deltaTime = clock.getDelta();
+    const cappedDeltaTime = Math.min(deltaTime, 0.1); // 最大0.1秒に制限（フレーム落ち対策）
+
     // OrbitControlsの更新（非VRモード時のみ）
     if (!renderer.xr.isPresenting && controls) {
         controls.update();
@@ -215,67 +219,51 @@ function render() {
 
     // MRモード時のコントローラー入力処理
     if (renderer.xr.isPresenting && helicopter) {
-        // NaNチェックと修正
-        if (isNaN(helicopter.position.x) || isNaN(helicopter.position.y) || isNaN(helicopter.position.z)) {
-            console.error('ヘリコプターの座標がNaNになりました。リセットします。');
-            helicopter.position.set(0, 1.5, -2);
-            helicopterRotation = 0;
-        }
-
         // 速度をリセット（スティック入力がない時は停止）
         forwardSpeed = 0;
         verticalSpeed = 0;
         targetRotationSpeed = 0; // 回転速度もリセット
 
         const session = renderer.xr.getSession();
-        if (session) {
-            try {
-                const inputSources = session.inputSources;
+        if (session && session.inputSources) {
+            const inputSources = session.inputSources;
 
-                if (inputSources && inputSources.length > 0) {
-                    for (let i = 0; i < inputSources.length; i++) {
-                        const inputSource = inputSources[i];
+            for (let i = 0; i < inputSources.length; i++) {
+                const inputSource = inputSources[i];
 
-                        // inputSourceの有効性を確認
-                        if (!inputSource || !inputSource.gamepad) {
-                            continue;
-                        }
+                // inputSourceが存在するか確認
+                if (!inputSource) continue;
 
-                        const gamepad = inputSource.gamepad;
+                const gamepad = inputSource.gamepad;
 
-                        // gamepadの有効性とaxesの存在を確認
-                        if (gamepad && gamepad.axes && gamepad.axes.length >= 4) {
-                            if (inputSource.handedness === 'left' && controller1Connected) {
-                                // 左コントローラー: 上下で上昇/下降、左右で旋回
-                                const leftVertical = -gamepad.axes[3] || 0; // スティック上下（上が正）
-                                const leftHorizontal = -gamepad.axes[2] || 0; // スティック左右（符号を反転）
+                // gamepadの有効性を確認
+                if (!gamepad || !gamepad.axes) continue;
 
-                                if (!isNaN(leftVertical)) {
-                                    verticalSpeed = leftVertical * 0.01;
-                                }
-                                if (!isNaN(leftHorizontal)) {
-                                    // 直接回転を変更するのではなく、目標回転速度を設定
-                                    targetRotationSpeed = leftHorizontal * 0.02;
-                                }
-                            } else if (inputSource.handedness === 'right' && controller2Connected) {
-                                // 右コントローラー: 上下で前進/後退
-                                const rightVertical = gamepad.axes[3] || 0; // スティック上下（符号を反転）
-                                if (!isNaN(rightVertical)) {
-                                    forwardSpeed = rightVertical * 0.01;
-                                }
-                            }
-                        }
-                    }
+                // axesが0の場合はトラッキングロスト中なのでスキップ
+                // （トラッキングロスト時はaxesが空配列になる）
+                if (gamepad.axes.length < 4) {
+                    // デバッグログ削除（もう原因は分かった）
+                    continue;
                 }
-            } catch (error) {
-                console.error('コントローラー入力の処理中にエラーが発生:', error);
-                // エラーが発生しても動作を継続（速度は既にリセット済み）
+
+                if (inputSource.handedness === 'left') {
+                    // 左コントローラー: 上下で上昇/下降、左右で旋回
+                    const leftVertical = -gamepad.axes[3] || 0;
+                    const leftHorizontal = -gamepad.axes[2] || 0;
+
+                    verticalSpeed = leftVertical * 0.01;
+                    targetRotationSpeed = leftHorizontal * 0.02;
+                } else if (inputSource.handedness === 'right') {
+                    // 右コントローラー: 上下で前進/後退
+                    const rightVertical = gamepad.axes[3] || 0;
+                    forwardSpeed = rightVertical * 0.01;
+                }
             }
         }
 
         // 慣性を適用（滑らかな加速・減速）
-        const lerpFactor = 0.01; // 補間係数（小さいほど滑らか）
-        const decelerationFactor = 0.98; // 減速時の減衰率
+        const lerpFactor = 0.15; // 補間係数（大きいほど応答性が良い）
+        const decelerationFactor = 0.95; // 減速時の減衰率
 
         // 前進速度の慣性（イージングを使用）
         if (forwardSpeed !== 0) {
@@ -309,8 +297,8 @@ function render() {
         // ヘリコプターの回転を適用
         helicopter.rotation.y = helicopterRotation;
 
-        // 前進方向を計算（ヘリコプターの向きに基づく）
-        const forward = new THREE.Vector3(
+        // 前進方向を計算（ヘリコプターの向きに基づく）（再利用可能なVector3を使用）
+        _tempVector3.set(
             -Math.cos(helicopterRotation),
             0,
             Math.sin(helicopterRotation)
@@ -318,11 +306,11 @@ function render() {
 
         // 位置を更新（慣性を適用した速度を使用）
         hoverBaseY += currentVerticalSpeed;
-        helicopter.position.x += forward.x * currentForwardSpeed;
-        helicopter.position.z += forward.z * currentForwardSpeed;
+        helicopter.position.x += _tempVector3.x * currentForwardSpeed;
+        helicopter.position.z += _tempVector3.z * currentForwardSpeed;
 
         // 浮遊感の演出（上下に揺れる）
-        hoverTime += 0.05;
+        hoverTime += cappedDeltaTime * 3; // deltaTimeベースで一定速度
         const hoverOffset = Math.sin(hoverTime) * 0.01; // 1cmの揺れ
         const hoverTiltX = Math.sin(hoverTime * 0.7) * 0.04; // 左右の微細な揺れ
         const hoverTiltZ = Math.cos(hoverTime * 0.5) * 0.02; // 前後の微細な揺れ
@@ -334,49 +322,30 @@ function render() {
         helicopter.rotation.x = speedTilt + hoverTiltX; // 前後の傾き + 浮遊感の揺れ
         helicopter.rotation.z = hoverTiltZ;
 
-        // デバッグ: NaNチェック
-        if (isNaN(forward.x) || isNaN(forward.z) || isNaN(forwardSpeed)) {
-            console.error('移動計算でNaN発生!',
-                'forward.x:', forward.x, 'forward.z:', forward.z,
-                'forwardSpeed:', forwardSpeed, 'helicopterRotation:', helicopterRotation);
-        }
-
         // 位置の制限（カメラから離れすぎないように）
         const maxDistance = 10; // カメラから最大10mまで
         const distanceFromCamera = helicopter.position.distanceTo(camera.position);
-        if (!isNaN(distanceFromCamera) && distanceFromCamera > maxDistance && distanceFromCamera > 0) {
-            // カメラ方向に戻す
-            const direction = new THREE.Vector3().subVectors(camera.position, helicopter.position);
-            if (direction.length() > 0) {
-                direction.normalize();
-                helicopter.position.addScaledVector(direction, distanceFromCamera - maxDistance);
+        if (distanceFromCamera > maxDistance && distanceFromCamera > 0) {
+            // カメラ方向に戻す（再利用可能なVector3を使用）
+            _tempVector3_2.subVectors(camera.position, helicopter.position);
+            const dirLength = _tempVector3_2.length();
+            if (dirLength > 0) {
+                _tempVector3_2.normalize();
+                helicopter.position.addScaledVector(_tempVector3_2, distanceFromCamera - maxDistance);
             }
         }
 
         // Y座標も制限（hoverBaseYを制限）
         hoverBaseY = Math.max(0.3, Math.min(5.0, hoverBaseY));
-
-        // 最終的なNaNチェック
-        if (isNaN(helicopter.position.x) || isNaN(helicopter.position.y) || isNaN(helicopter.position.z)) {
-            console.error('計算後もNaN! 強制的に初期位置に戻します');
-            helicopter.position.set(0, 1.5, -2);
-            hoverBaseY = 1.5;
-        }
-
-        // デバッグログ（100フレームに1回程度）
-        if (Math.random() < 0.01) {
-            console.log('ヘリ:',
-                'pos(', helicopter.position.x.toFixed(2), helicopter.position.y.toFixed(2), helicopter.position.z.toFixed(2), ')',
-                'rot:', helicopterRotation.toFixed(2));
-        }
     }
 
-    // プロペラを回転させる
+    // プロペラを回転させる（deltaTimeベースで一定速度を保つ）
+    const rotorSpeed = 18; // ラジアン/秒（約3回転/秒）
     if (rotor1) {
-        rotor1.rotation.y += 0.3;
+        rotor1.rotation.y += rotorSpeed * cappedDeltaTime;
     }
     if (rotor2) {
-        rotor2.rotation.z += 0.3;
+        rotor2.rotation.z += rotorSpeed * cappedDeltaTime;
     }
 
     renderer.render(scene, camera);
