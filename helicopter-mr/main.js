@@ -294,9 +294,6 @@ function render() {
         }
         helicopterRotation += currentRotationSpeed;
 
-        // ヘリコプターの回転を適用
-        helicopter.rotation.y = helicopterRotation;
-
         // 前進方向を計算（ヘリコプターの向きに基づく）（再利用可能なVector3を使用）
         _tempVector3.set(
             -Math.cos(helicopterRotation),
@@ -315,12 +312,20 @@ function render() {
         const hoverTiltX = Math.sin(hoverTime * 0.7) * 0.04; // 左右の微細な揺れ
         const hoverTiltZ = Math.cos(hoverTime * 0.5) * 0.02; // 前後の微細な揺れ
 
-        // 前進・後退による傾き
+        // 前進・後退による傾き（ローカル座標系で前傾・後傾）
         const speedTilt = currentForwardSpeed * 30; // 速度に応じた傾き（前進で前傾、後退で後傾）
 
+        // 左右旋回による傾き（ローカル座標系で左右に傾く）
+        const rotationTilt = -currentRotationSpeed * 30; // 回転速度に応じた傾き（左旋回で左傾き、右旋回で右傾き）
+
         helicopter.position.y = hoverBaseY + hoverOffset;
-        helicopter.rotation.x = speedTilt + hoverTiltX; // 前後の傾き + 浮遊感の揺れ
-        helicopter.rotation.z = hoverTiltZ;
+
+        // 回転の順序を変更：まずローカル座標系で傾きを適用してから、Y軸回転を適用
+        // これにより機体のローカル座標系で正しく傾く
+        helicopter.rotation.order = 'YZX'; // Y軸回転 → Z軸回転 → X軸回転の順序
+        helicopter.rotation.y = helicopterRotation; // ヨー回転（左右旋回）
+        helicopter.rotation.z = speedTilt + hoverTiltZ; // ピッチ回転（前後の傾き）
+        helicopter.rotation.x = rotationTilt + hoverTiltX; // ロール回転（左右の傾き + 旋回時の傾き）
 
         // 位置の制限（カメラから離れすぎないように）
         const maxDistance = 10; // カメラから最大10mまで
