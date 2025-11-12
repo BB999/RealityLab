@@ -7,6 +7,7 @@ import path from 'path';
 export default defineConfig({
   base: './',
   plugins: [
+    mkcert(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png', 'app_icon_192x192.png', 'app_icon_512x512.png'],
@@ -34,10 +35,6 @@ export default defineConfig({
     })
   ],
   server: {
-    https: {
-      key: fs.readFileSync(path.resolve(__dirname, 'key.pem')),
-      cert: fs.readFileSync(path.resolve(__dirname, 'cert.pem'))
-    },
     host: true
   }
 });

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ハンドトラッキングとコントローラーで車を操作できるMRアプリ">
+    <meta name="theme-color" content="#1e293b">
+    <link rel="icon" type="image/png" href="./favicon.png">
+    <link rel="apple-touch-icon" href="./app_icon_192x192.png">
+    <title>MR Car Physics</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            color: #f1f5f9;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+            padding: 0 1rem;
+        }
+
+        #info {
+            text-align: center;
+            padding: 1.5rem;
+            max-width: 600px;
+            width: 100%;
+            margin: 0 auto;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        p {
+            font-size: 1.2rem;
+            color: #cbd5e1;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+
+        #startMRButton, #startVRButton {
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            color: white;
+            border: none;
+            padding: 1rem 2.5rem;
+            font-size: 1.5rem;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
+            margin: 0.5rem;
+        }
+
+        #startVRButton {
+            background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+        }
+
+        #startMRButton:hover:not(:disabled), #startVRButton:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px rgba(59, 130, 246, 0.4);
+        }
+
+        #startMRButton:active:not(:disabled), #startVRButton:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        #startMRButton:disabled, #startVRButton:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #qrContainer {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            display: inline-block;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        #qrCode {
+            max-width: 250px;
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .instructions {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+        }
+
+        .instructions h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #60a5fa;
+        }
+
+        .instructions ul {
+            text-align: left;
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .instructions li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .instructions li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #60a5fa;
+            font-weight: bold;
+        }
+
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            p {
+                font-size: 1rem;
+            }
+            #info {
+                padding: 1rem;
+            }
+        }
+    </style>
+  <script type="module" crossorigin src="./assets/index-K9HRoM5_.js"></script>
+<link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script></head>
+<body>
+    <div id="info">
+        <h1>🚗 MR Car Physics</h1>
+        <p>Quest 3でクラシックカーを操作しよう</p>
+        <button id="startMRButton">MRを開始</button>
+        <button id="startVRButton">VRを開始</button>
+
+        <div id="qrContainer">
+            <img id="qrCode" src="./qr_code.png" alt="QRコード" onerror="this.style.display='none'">
+        </div>
+
+        <div class="instructions">
+            <h2>操作方法</h2>
+            <ul>
+                <li>右手または右コントローラーの位置に車が出現</li>
+                <li>右スティック上下で前進・後退</li>
+                <li>左スティック左右で方向転換</li>
+                <li>コントローラーのグリップで車を掴んで移動</li>
+                <li>右トリガーで車を拡大（押し続けると連続拡大）</li>
+                <li>左トリガーで車を縮小（押し続けると連続縮小）</li>
+                <li>車は重力に従って落下します</li>
+            </ul>
+        </div>
+    </div>
+
+</body>
+</html>

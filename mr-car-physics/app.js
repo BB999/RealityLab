@@ -134,13 +134,19 @@ function init() {
     const startMRButton = document.getElementById('startMRButton');
     const startVRButton = document.getElementById('startVRButton');
 
+    // 動的MRボタンを作成
+    setupDynamicMRButton();
+
     // WebXRサポートチェック
     if ('xr' in navigator) {
         // MRサポートチェック
         navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
             console.log('WebXR immersive-ar サポート:', supported);
             if (supported) {
-                startMRButton.addEventListener('click', () => onStartButtonClick('immersive-ar'));
+                startMRButton.addEventListener('click', () => {
+                    console.log('MRボタンがクリックされました');
+                    onStartButtonClick('immersive-ar');
+                });
             } else {
                 startMRButton.textContent = 'MRは非対応です';
                 startMRButton.disabled = true;
@@ -155,7 +161,10 @@ function init() {
         navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
             console.log('WebXR immersive-vr サポート:', supported);
             if (supported) {
-                startVRButton.addEventListener('click', () => onStartButtonClick('immersive-vr'));
+                startVRButton.addEventListener('click', () => {
+                    console.log('VRボタンがクリックされました');
+                    onStartButtonClick('immersive-vr');
+                });
             } else {
                 startVRButton.textContent = 'VRは非対応です';
                 startVRButton.disabled = true;
@@ -173,6 +182,59 @@ function init() {
         startVRButton.disabled = true;
     }
 
+    function setupDynamicMRButton() {
+        // 動的MRボタンを作成
+        const mrButton = document.createElement('button');
+        mrButton.id = 'DynamicMRButton';
+        mrButton.textContent = 'ENTER MR';
+        mrButton.style.cssText = `
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 1rem 2.5rem;
+            font-size: 1.3em;
+            font-weight: 700;
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 10px 40px rgba(59, 130, 246, 0.4);
+            transition: all 0.3s ease;
+            z-index: 999;
+            display: none;
+        `;
+
+        mrButton.onclick = () => {
+            console.log('動的ENTER MRボタンがクリックされました');
+            onStartButtonClick('immersive-ar');
+        };
+
+        mrButton.onmouseenter = function() {
+            mrButton.style.transform = 'translateX(-50%) translateY(-2px) scale(1.05)';
+            mrButton.style.boxShadow = '0 15px 50px rgba(59, 130, 246, 0.6)';
+        };
+        mrButton.onmouseleave = function() {
+            mrButton.style.transform = 'translateX(-50%) translateY(0) scale(1)';
+            mrButton.style.boxShadow = '0 10px 40px rgba(59, 130, 246, 0.4)';
+        };
+
+        document.body.appendChild(mrButton);
+
+        // MRサポートチェック後に表示
+        if ('xr' in navigator) {
+            navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+                if (supported) {
+                    mrButton.style.display = 'block';
+                    // 既存のボタンを非表示
+                    if (startMRButton) startMRButton.style.display = 'none';
+                    if (startVRButton) startVRButton.style.display = 'none';
+                }
+            });
+        }
+    }
+
     // ウィンドウリサイズ対応
     window.addEventListener('resize', onWindowResize);
 
@@ -181,17 +243,22 @@ function init() {
 }
 
 function onStartButtonClick(sessionMode) {
+    console.log('XRセッションを開始します。モード:', sessionMode);
+
     // MR/VRセッションの開始
     const sessionInit = {
         requiredFeatures: ['local-floor'],
-        optionalFeatures: ['hand-tracking', 'dom-overlay'],
+        optionalFeatures: ['hand-tracking', 'dom-overlay', 'hit-test', 'bounded-floor'],
         domOverlay: { root: document.body }
     };
 
     const sessionName = sessionMode === 'immersive-ar' ? 'MR' : 'VR';
 
     navigator.xr.requestSession(sessionMode, sessionInit)
-        .then(onSessionStarted)
+        .then((session) => {
+            console.log(`${sessionName}セッション開始成功`);
+            onSessionStarted(session);
+        })
         .catch((error) => {
             console.error(`${sessionName}セッション開始エラー:`, error);
             alert(`${sessionName}セッションを開始できませんでした: ${error.message}`);
