@@ -262,13 +262,13 @@ function render() {
         }
 
         // 慣性を適用（滑らかな加速・減速）
-        const lerpFactor = 0.15; // 補間係数（大きいほど応答性が良い）
-        const decelerationFactor = 0.95; // 減速時の減衰率
+        const accelerationFactor = 0.03; // 加速時の補間係数（小さいほど動き始めがゆっくり）
+        const decelerationFactor = 0.95; // 減速時の減衰率（小さいほど止まるのが速い）
 
         // 前進速度の慣性（イージングを使用）
         if (forwardSpeed !== 0) {
             // 加速時：目標速度に向かって滑らかに補間
-            currentForwardSpeed += (forwardSpeed - currentForwardSpeed) * lerpFactor;
+            currentForwardSpeed += (forwardSpeed - currentForwardSpeed) * accelerationFactor;
         } else {
             // 減速時：減衰
             currentForwardSpeed *= decelerationFactor;
@@ -277,7 +277,7 @@ function render() {
 
         // 上昇速度の慣性（イージングを使用）
         if (verticalSpeed !== 0) {
-            currentVerticalSpeed += (verticalSpeed - currentVerticalSpeed) * lerpFactor;
+            currentVerticalSpeed += (verticalSpeed - currentVerticalSpeed) * accelerationFactor;
         } else {
             currentVerticalSpeed *= decelerationFactor;
             if (Math.abs(currentVerticalSpeed) < 0.0001) currentVerticalSpeed = 0;
@@ -286,7 +286,7 @@ function render() {
         // 回転速度の慣性（イージングを使用）
         if (targetRotationSpeed !== 0) {
             // 加速時：目標回転速度に向かって滑らかに補間
-            currentRotationSpeed += (targetRotationSpeed - currentRotationSpeed) * lerpFactor;
+            currentRotationSpeed += (targetRotationSpeed - currentRotationSpeed) * accelerationFactor;
         } else {
             // 減速時：減衰
             currentRotationSpeed *= decelerationFactor;
