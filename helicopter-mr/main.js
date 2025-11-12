@@ -50,7 +50,7 @@ function init() {
         0.1,
         100
     );
-    camera.position.set(0, 1.6, 3);
+    camera.position.set(0, 1.6, 0.5);
 
     // ライトの設定
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -73,24 +73,53 @@ function init() {
     button.textContent = 'ENTER MR';
     button.style.cssText = `
         position: absolute;
-        bottom: 20px;
-        padding: 12px 24px;
-        border: 1px solid white;
-        border-radius: 4px;
-        background: rgba(0, 0, 0, 0.8);
+        bottom: 60px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 20px 50px;
+        font-size: 1.3em;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 700;
+        background: linear-gradient(45deg, #00d4ff, #0099ff);
         color: white;
-        font: normal 13px sans-serif;
-        text-align: center;
+        border: none;
+        border-radius: 50px;
         cursor: pointer;
+        box-shadow: 0 10px 40px rgba(0, 212, 255, 0.4);
+        transition: all 0.3s ease;
+        text-transform: uppercase;
+        letter-spacing: 2px;
         outline: none;
         z-index: 999;
+        animation: pulse 2s infinite;
     `;
 
+    // CSSアニメーションを動的に追加
+    if (!document.getElementById('mrButtonStyles')) {
+        const style = document.createElement('style');
+        style.id = 'mrButtonStyles';
+        style.textContent = `
+            @keyframes pulse {
+                0%, 100% {
+                    box-shadow: 0 10px 40px rgba(0, 212, 255, 0.4);
+                }
+                50% {
+                    box-shadow: 0 10px 60px rgba(0, 212, 255, 0.8);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     button.onmouseenter = function() {
-        button.style.background = 'rgba(0, 0, 0, 1)';
+        button.style.background = 'linear-gradient(45deg, #0099ff, #00d4ff)';
+        button.style.transform = 'translateX(-50%) translateY(-5px) scale(1.05)';
+        button.style.boxShadow = '0 15px 50px rgba(0, 212, 255, 0.6)';
     };
     button.onmouseleave = function() {
-        button.style.background = 'rgba(0, 0, 0, 0.8)';
+        button.style.background = 'linear-gradient(45deg, #00d4ff, #0099ff)';
+        button.style.transform = 'translateX(-50%) translateY(0) scale(1)';
+        button.style.boxShadow = '0 10px 40px rgba(0, 212, 255, 0.4)';
     };
 
     button.onclick = function() {
@@ -143,7 +172,7 @@ function init() {
     controls.dampingFactor = 0.05;
     controls.minDistance = 0;
     controls.maxDistance = Infinity;
-    controls.target.set(0, 1.5, -2);
+    controls.target.set(0, 1.5, -0.8);
     controls.update();
 
     // GLTFローダーでヘリコプターモデルを読み込み
@@ -152,8 +181,8 @@ function init() {
         './ヘリ.glb',
         function (gltf) {
             helicopter = gltf.scene;
-            helicopter.position.set(0, 1.5, -2);
-            helicopter.scale.set(0.5, 0.5, 0.5);
+            helicopter.position.set(0, 1.5, -0.8);
+            helicopter.scale.set(0.8, 0.8, 0.8);
             scene.add(helicopter);
 
             // rotor1とrotor2を探して保持
