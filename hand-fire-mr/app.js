@@ -756,22 +756,67 @@ class HandFireMR {
         }
 
         try {
+            console.log('MRセッションを開始します...');
+
             // MRセッションを開始（hand-trackingを有効化）
             const session = await navigator.xr.requestSession('immersive-ar', {
                 requiredFeatures: ['local-floor', 'hand-tracking'],
-                optionalFeatures: ['unbounded']
+                optionalFeatures: ['unbounded', 'hit-test']
             });
+
+            console.log('MRセッション開始成功');
 
             await this.renderer.xr.setSession(session);
             this.renderer.setAnimationLoop(this.animate);
 
             // UIを非表示
-            document.getElementById('info').style.display = 'none';
+            const infoElement = document.getElementById('info');
+            if (infoElement) {
+                infoElement.style.display = 'none';
+            }
             this.canvas.style.display = 'block';
+
+            console.log('アニメーションループ開始');
 
         } catch (error) {
             console.error('MRセッションの開始に失敗しました:', error);
-            alert('MRセッションの開始に失敗しました。Quest 3のWebXR対応ブラウザから開いてください。');
+            alert('MRセッションの開始に失敗しました。\nエラー: ' + error.message + '\n\nQuest 3のWebXR対応ブラウザから開いてください。');
+        }
+    }
+
+    setupMRButton() {
+        // MRボタンを作成（VR Button風）
+        const button = document.createElement('button');
+        button.id = 'MRButton';
+        button.textContent = 'ENTER MR';
+        button.style.cssText = `
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 40px;
+            font-size: 18px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            z-index: 999;
+        `;
+
+        button.onclick = () => {
+            console.log('ENTER MRボタンがクリックされました');
+            this.start();
+        };
+
+        document.body.appendChild(button);
+
+        // 既存のstartButtonを非表示
+        const startButton = document.getElementById('startButton');
+        if (startButton) {
+            startButton.style.display = 'none';
         }
     }
 }
@@ -779,6 +824,14 @@ class HandFireMR {
 // アプリの初期化
 const app = new HandFireMR();
 
-document.getElementById('startButton').addEventListener('click', () => {
-    app.start();
-});
+// MRボタンをセットアップ
+app.setupMRButton();
+
+// 既存のstartButtonのイベントも維持（念のため）
+const startButton = document.getElementById('startButton');
+if (startButton) {
+    startButton.addEventListener('click', () => {
+        console.log('startButtonがクリックされました');
+        app.start();
+    });
+}
