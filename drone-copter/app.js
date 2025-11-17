@@ -5,6 +5,7 @@ let scene, camera, renderer, drone;
 let xrSession = null;
 let rightController = null;
 let dronePositioned = false;
+let propellers = [];
 
 // シーンの初期化
 function init() {
@@ -47,7 +48,38 @@ function init() {
       drone.scale.set(0.3, 0.3, 0.3);
       drone.position.set(0, 0, -2);
       scene.add(drone);
+
+      // プロペラを検索
+      propellers = [];
+      drone.traverse((child) => {
+        if (child.name === 'pera1' || child.name === 'pera2' ||
+            child.name === 'pera3' || child.name === 'pera4') {
+
+          // ジオメトリの中心を計算
+          if (child.geometry) {
+            child.geometry.computeBoundingBox();
+            const center = new THREE.Vector3();
+            child.geometry.boundingBox.getCenter(center);
+
+            console.log('プロペラ発見:', child.name);
+            console.log('  元の位置:', child.position.clone());
+            console.log('  ジオメトリ中心:', center);
+
+            // ジオメトリを中心に移動
+            child.geometry.translate(-center.x, -center.y, -center.z);
+
+            // オブジェクトの位置をジオメトリの元の中心に設定
+            child.position.copy(center);
+
+            console.log('  新しい位置:', child.position);
+          }
+
+          propellers.push(child);
+        }
+      });
+
       console.log('ドローンモデル読み込み完了');
+      console.log('プロペラ数:', propellers.length);
       updateInfo('ドローンモデル読み込み完了');
     },
     (progress) => {
@@ -83,6 +115,11 @@ function render() {
     dronePositioned = true;
     updateInfo('ドローンを右コントローラーの前に配置');
   }
+
+  // プロペラをy軸回転
+  propellers.forEach((propeller) => {
+    propeller.rotation.y += 0.5;
+  });
 
   renderer.render(scene, camera);
 }
