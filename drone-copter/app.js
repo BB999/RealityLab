@@ -10,8 +10,17 @@ let gamepad = null;
 let audioListener = null;
 let droneSound = null;
 let hoverTime = 0; // 浮遊アニメーション用タイマー
-const moveSpeed = 0.02; // 移動速度
-const rotateSpeed = 0.03; // 回転速度
+
+// 物理演算用パラメータ
+let velocity = new THREE.Vector3(0, 0, 0); // 速度ベクトル
+let angularVelocity = 0; // 角速度（Y軸回転）
+const acceleration = 0.0013; // 加速度
+const maxSpeed = 0.06; // 最大速度
+const friction = 0.92; // 摩擦係数（慣性の減衰）
+const angularAcceleration = 0.0040; // 角加速度
+const maxAngularSpeed = 0.05; // 最大角速度
+const angularFriction = 0.88; // 角速度の減衰
+const tiltAmount = 40.0; // 移動方向への傾き量（速度に対する係数）
 
 // シーンの初期化
 function init() {
@@ -192,9 +201,9 @@ function render() {
     // 少しずつ異なる周期で左右揺れ（振幅0.002m = 2mm）
     const hoverX = Math.sin(hoverTime * 1.3) * 0.002;
 
-    // 微妙な傾き（ロール・ピッチ）
-    const tiltX = Math.sin(hoverTime * 1.2) * 0.01; // 約0.6度
-    const tiltZ = Math.cos(hoverTime * 1.4) * 0.01; // 約0.6度
+    // 微妙な傾き（ロール・ピッチ）- 浮遊感用の小さな揺れ
+    const hoverTiltX = Math.sin(hoverTime * 1.2) * 0.005; // 約0.3度
+    const hoverTiltZ = Math.cos(hoverTime * 1.4) * 0.005; // 約0.3度
 
     // 浮遊アニメーションを基準位置に加算
     const basePos = drone.userData.basePosition;
@@ -202,17 +211,24 @@ function render() {
     drone.position.y = basePos.y + hoverY;
     drone.position.z = basePos.z + hoverZ;
 
-    // 微妙な傾き（元の回転に加算）
+    // 傾きを設定（物理的な傾き + 浮遊感の揺れ）
     if (!drone.userData.baseRotation) {
-      drone.userData.baseRotation = { x: drone.rotation.x, z: drone.rotation.z };
+      drone.userData.baseRotation = { x: 0, z: 0 };
     }
-    drone.rotation.x = drone.userData.baseRotation.x + tiltX;
-    drone.rotation.z = drone.userData.baseRotation.z + tiltZ;
+    if (!drone.userData.physicsTilt) {
+      drone.userData.physicsTilt = { x: 0, z: 0 };
+    }
+
+    // 物理的な傾き + 浮遊感の微妙な揺れ
+    drone.rotation.x = drone.userData.physicsTilt.x + hoverTiltX;
+    drone.rotation.z = drone.userData.physicsTilt.z + hoverTiltZ;
   }
 
-  // ゲームパッド入力でドローンを操作
+  // ゲームパッド入力でドローンを操作（物理演算）
   if (xrSession && drone && dronePositioned) {
     const inputSources = xrSession.inputSources;
+    let inputX = 0, inputY = 0, inputZ = 0; // 入力値
+    let inputRotation = 0;
 
     for (const source of inputSources) {
       if (source.gamepad) {
@@ -223,14 +239,11 @@ function render() {
         // axes[2]: 右スティック左右 → 左右移動
         // axes[3]: 右スティック上下 → 上昇・下降
         if (source.handedness === 'right' && axes.length >= 4) {
-          // 左右移動（ワールド座標のX軸）
           if (Math.abs(axes[2]) > 0.1) {
-            drone.userData.basePosition.x += axes[2] * moveSpeed;
+            inputX = axes[2];
           }
-
-          // 上昇・下降（ワールド座標のY軸）
           if (Math.abs(axes[3]) > 0.1) {
-            drone.userData.basePosition.y -= axes[3] * moveSpeed; // 上下反転
+            inputY = -axes[3]; // 上下反転
           }
         }
 
@@ -238,21 +251,69 @@ function render() {
         // axes[2]: 左スティック左右 → 旋回
         // axes[3]: 左スティック上下 → 前後移動
         if (source.handedness === 'left' && axes.length >= 4) {
-          // 旋回（Y軸回転）
           if (Math.abs(axes[2]) > 0.1) {
-            drone.rotation.y -= axes[2] * rotateSpeed;
+            inputRotation = -axes[2];
           }
-
-          // 前後移動（ドローンのローカルZ軸方向）
           if (Math.abs(axes[3]) > 0.1) {
-            const forward = new THREE.Vector3(0, 0, -1);
-            forward.applyQuaternion(drone.quaternion);
-            forward.multiplyScalar(axes[3] * moveSpeed);
-            drone.userData.basePosition.add(forward);
+            inputZ = axes[3];
           }
         }
       }
     }
+
+    // 上昇・下降（絶対座標）
+    velocity.y += inputY * acceleration;
+
+    // Y軸周りの回転のみを適用（傾きを無視）
+    const yRotationOnly = new THREE.Quaternion();
+    yRotationOnly.setFromAxisAngle(new THREE.Vector3(0, 1, 0), drone.rotation.y);
+
+    // 前後移動はドローンのY軸回転のみに従う（水平方向のみ）
+    const forward = new THREE.Vector3(0, 0, -1);
+    forward.applyQuaternion(yRotationOnly);
+    forward.y = 0; // Y成分を0にして水平移動のみにする
+    forward.normalize();
+    forward.multiplyScalar(inputZ * acceleration);
+    velocity.add(forward);
+
+    // 左右移動も機体の向きに対して相対的に
+    const right = new THREE.Vector3(-1, 0, 0); // 左右を反転
+    right.applyQuaternion(yRotationOnly);
+    right.y = 0; // Y成分を0にして水平移動のみにする
+    right.normalize();
+    right.multiplyScalar(inputX * acceleration);
+    velocity.add(right);
+
+    // 速度制限
+    if (velocity.length() > maxSpeed) {
+      velocity.normalize().multiplyScalar(maxSpeed);
+    }
+
+    // 摩擦による減衰
+    velocity.multiplyScalar(friction);
+
+    // 速度を位置に反映
+    drone.userData.basePosition.add(velocity);
+
+    // 角速度の更新
+    angularVelocity += inputRotation * angularAcceleration;
+    angularVelocity = Math.max(-maxAngularSpeed, Math.min(maxAngularSpeed, angularVelocity));
+    angularVelocity *= angularFriction;
+
+    // 角速度を回転に反映
+    drone.rotation.y += angularVelocity;
+
+    // 移動方向への傾き（ピッチ・ロール）
+    const velocityInLocalSpace = velocity.clone().applyQuaternion(drone.quaternion.clone().invert());
+    const targetTiltX = -velocityInLocalSpace.z * tiltAmount; // 前後移動で前後に傾く（ピッチ）
+    const targetTiltZ = velocity.x * tiltAmount; // 左右移動で左右に傾く（ロール）
+
+    // 傾きを滑らかに補間
+    if (!drone.userData.physicsTilt) {
+      drone.userData.physicsTilt = { x: 0, z: 0 };
+    }
+    drone.userData.physicsTilt.x += (targetTiltX - drone.userData.physicsTilt.x) * 0.15;
+    drone.userData.physicsTilt.z += (targetTiltZ - drone.userData.physicsTilt.z) * 0.15;
   }
 
   renderer.render(scene, camera);
