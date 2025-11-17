@@ -14,13 +14,14 @@ let hoverTime = 0; // 浮遊アニメーション用タイマー
 // 物理演算用パラメータ
 let velocity = new THREE.Vector3(0, 0, 0); // 速度ベクトル
 let angularVelocity = 0; // 角速度（Y軸回転）
-const acceleration = 0.0013; // 加速度
-const maxSpeed = 0.06; // 最大速度
-const friction = 0.92; // 摩擦係数（慣性の減衰）
-const angularAcceleration = 0.0040; // 角加速度
-const maxAngularSpeed = 0.05; // 最大角速度
-const angularFriction = 0.88; // 角速度の減衰
-const tiltAmount = 40.0; // 移動方向への傾き量（速度に対する係数）
+const acceleration = 0.0014; // 加速度
+const maxSpeed = 0.4; // 最大速度
+const friction = 0.9; // 摩擦係数（慣性の減衰）
+const angularAcceleration = 0.0030; // 角加速度
+const maxAngularSpeed = 0.06; // 最大角速度
+const angularFriction = 0.90; // 角速度の減衰
+const tiltAmount = 0.6; // 移動方向への傾き量（速度に対する係数）
+const tiltSmoothing = 0.05; // 傾きの補間速度（0.0-1.0、大きいほど速く傾く/戻る）
 
 // シーンの初期化
 function init() {
@@ -212,14 +213,15 @@ function render() {
     drone.position.z = basePos.z + hoverZ;
 
     // 傾きを設定（物理的な傾き + 浮遊感の揺れ）
-    if (!drone.userData.baseRotation) {
-      drone.userData.baseRotation = { x: 0, z: 0 };
-    }
     if (!drone.userData.physicsTilt) {
       drone.userData.physicsTilt = { x: 0, z: 0 };
     }
 
-    // 物理的な傾き + 浮遊感の微妙な揺れ
+    // オイラー角をYXZの順序で適用（ヨー→ピッチ→ロール）
+    // これにより、ピッチとロールが常に機体のローカル軸に対して適用される
+    drone.rotation.order = 'YXZ';
+    // Y軸回転（ヨー）は別で管理されている
+    // X軸回転（ピッチ）とZ軸回転（ロール）は物理的な傾き + 浮遊感
     drone.rotation.x = drone.userData.physicsTilt.x + hoverTiltX;
     drone.rotation.z = drone.userData.physicsTilt.z + hoverTiltZ;
   }
@@ -229,6 +231,7 @@ function render() {
     const inputSources = xrSession.inputSources;
     let inputX = 0, inputY = 0, inputZ = 0; // 入力値
     let inputRotation = 0;
+    let rawInputX = 0, rawInputZ = 0; // 生の入力値（傾き計算用）
 
     for (const source of inputSources) {
       if (source.gamepad) {
@@ -239,10 +242,11 @@ function render() {
         // axes[2]: 右スティック左右 → 左右移動
         // axes[3]: 右スティック上下 → 上昇・下降
         if (source.handedness === 'right' && axes.length >= 4) {
-          if (Math.abs(axes[2]) > 0.1) {
+          if (Math.abs(axes[2]) > 0.3) {
             inputX = axes[2];
+            rawInputX = axes[2];
           }
-          if (Math.abs(axes[3]) > 0.1) {
+          if (Math.abs(axes[3]) > 0.3) {
             inputY = -axes[3]; // 上下反転
           }
         }
@@ -251,11 +255,12 @@ function render() {
         // axes[2]: 左スティック左右 → 旋回
         // axes[3]: 左スティック上下 → 前後移動
         if (source.handedness === 'left' && axes.length >= 4) {
-          if (Math.abs(axes[2]) > 0.1) {
+          if (Math.abs(axes[2]) > 0.3) {
             inputRotation = -axes[2];
           }
-          if (Math.abs(axes[3]) > 0.1) {
+          if (Math.abs(axes[3]) > 0.3) {
             inputZ = axes[3];
+            rawInputZ = axes[3];
           }
         }
       }
@@ -304,16 +309,16 @@ function render() {
     drone.rotation.y += angularVelocity;
 
     // 移動方向への傾き（ピッチ・ロール）
-    const velocityInLocalSpace = velocity.clone().applyQuaternion(drone.quaternion.clone().invert());
-    const targetTiltX = -velocityInLocalSpace.z * tiltAmount; // 前後移動で前後に傾く（ピッチ）
-    const targetTiltZ = velocity.x * tiltAmount; // 左右移動で左右に傾く（ロール）
+    // 入力値に基づいて傾きを計算（機体の向きに関係なく、操作に対して傾く）
+    const targetTiltX = -rawInputZ * tiltAmount; // 前後移動：前進で前に傾く、後退で後ろに傾く
+    const targetTiltZ = rawInputX * tiltAmount; // 左右移動：右移動で右に傾く、左移動で左に傾く
 
     // 傾きを滑らかに補間
     if (!drone.userData.physicsTilt) {
       drone.userData.physicsTilt = { x: 0, z: 0 };
     }
-    drone.userData.physicsTilt.x += (targetTiltX - drone.userData.physicsTilt.x) * 0.15;
-    drone.userData.physicsTilt.z += (targetTiltZ - drone.userData.physicsTilt.z) * 0.15;
+    drone.userData.physicsTilt.x += (targetTiltX - drone.userData.physicsTilt.x) * tiltSmoothing;
+    drone.userData.physicsTilt.z += (targetTiltZ - drone.userData.physicsTilt.z) * tiltSmoothing;
   }
 
   renderer.render(scene, camera);
