@@ -61,11 +61,35 @@
       font-size: 14px;
       z-index: 100;
     }
+
+    #depth-toggle {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      padding: 10px 20px;
+      font-size: 16px;
+      background: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      transition: all 0.3s;
+      z-index: 100;
+      display: none;
+    }
+
+    #depth-toggle:hover {
+      background: #1976D2;
+      transform: scale(1.05);
+    }
   </style>
 </head>
 <body>
   <div id="app"></div>
   <button id="start-button">MRを開始</button>
+  <button id="depth-toggle">深度表示 OFF</button>
   <div id="info">ドローンを表示するには「MRを開始」をタップしてください</div>
   <script type="module" src="/app.js"></script>
 </body>

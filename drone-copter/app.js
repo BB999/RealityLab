@@ -11,6 +11,11 @@ let audioListener = null;
 let droneSound = null;
 let hoverTime = 0; // 浮遊アニメーション用タイマー
 
+// 深度センサー用変数
+let depthDataTexture = null;
+let depthMesh = null;
+let showDepthVisualization = false;
+
 // 物理演算用パラメータ
 let velocity = new THREE.Vector3(0, 0, 0); // 速度ベクトル
 let angularVelocity = 0; // 角速度（Y軸回転）
@@ -161,7 +166,82 @@ function setupDroneSound() {
   console.log('ドローンに音声を追加');
 }
 
+// 深度データの処理
+function processDepthInformation(frame, referenceSpace) {
+  const pose = frame.getViewerPose(referenceSpace);
+  if (!pose) return;
+
+  // WebGLバインディングを取得（GPU最適化モードの場合）
+  const glBinding = frame.session.renderState.baseLayer;
+
+  for (const view of pose.views) {
+    // GPU最適化モードの場合はWebGLテクスチャとして取得
+    if (glBinding && glBinding.getDepthInformation) {
+      const depthInfo = glBinding.getDepthInformation(view);
+      if (depthInfo) {
+        // WebGLテクスチャとして深度データが利用可能
+        const texture = depthInfo.texture;
+
+        // Three.jsのWebGLTextureとして設定
+        if (!depthDataTexture) {
+          depthDataTexture = new THREE.Texture();
+          // WebGLテクスチャを直接マッピング
+          const properties = renderer.properties.get(depthDataTexture);
+          properties.__webglTexture = texture;
+          properties.__webglInit = true;
+          depthDataTexture.needsUpdate = true;
+        }
+
+        // 深度情報をログ出力（デバッグ用・初回のみ）
+        if (!depthDataTexture.userData.logged) {
+          console.log('深度データ取得 (GPU):', {
+            width: depthInfo.width,
+            height: depthInfo.height,
+            normDepthBufferFromNormView: depthInfo.normDepthBufferFromNormView
+          });
+          depthDataTexture.userData.logged = true;
+        }
+      }
+    }
+  }
+}
+
+// 深度メッシュの視覚化を作成
+function createDepthVisualization() {
+  if (depthMesh) return;
+
+  const geometry = new THREE.PlaneGeometry(2, 2);
+  const material = new THREE.MeshBasicMaterial({
+    map: depthDataTexture,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.5
+  });
+
+  depthMesh = new THREE.Mesh(geometry, material);
+  depthMesh.position.set(0, 1.5, -2);
+  depthMesh.visible = showDepthVisualization;
+  scene.add(depthMesh);
+}
+
 function render() {
+  // 深度情報の処理
+  if (xrSession) {
+    const frame = renderer.xr.getFrame();
+    const referenceSpace = renderer.xr.getReferenceSpace();
+    if (frame && referenceSpace) {
+      processDepthInformation(frame, referenceSpace);
+    }
+
+    // 深度視覚化メッシュの作成と更新
+    if (depthDataTexture && !depthMesh) {
+      createDepthVisualization();
+    }
+    if (depthMesh) {
+      depthMesh.visible = showDepthVisualization;
+    }
+  }
+
   // 右コントローラーの位置を取得してドローンを配置
   if (rightController && drone && !dronePositioned) {
     // コントローラーの位置を取得
@@ -357,10 +437,14 @@ async function startXR() {
       return;
     }
 
-    // XRセッション開始
+    // XRセッション開始（深度センサーを有効化）
     xrSession = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: [],
-      optionalFeatures: ['local-floor', 'bounded-floor']
+      optionalFeatures: ['local-floor', 'bounded-floor', 'depth-sensing'],
+      depthSensing: {
+        usagePreference: ['cpu-optimized', 'gpu-optimized'],
+        dataFormatPreference: ['luminance-alpha', 'float32']
+      }
     });
 
     await renderer.xr.setSession(xrSession);
@@ -384,7 +468,20 @@ async function startXR() {
       button.style.display = 'none';
     }
 
+    // セッション開始イベントを発火
+    window.dispatchEvent(new Event('xr-session-start'));
+
     updateInfo('MRセッション開始');
+
+    // セッション開始後に深度センサーの状態を確認
+    if (xrSession.depthUsage) {
+      console.log('深度センサー有効:', xrSession.depthUsage);
+      console.log('深度データ形式:', xrSession.depthDataFormat);
+      updateInfo('MRセッション開始 (深度センサー有効)');
+    } else {
+      console.log('深度センサー無効');
+      updateInfo('MRセッション開始 (深度センサー無効)');
+    }
 
     xrSession.addEventListener('end', () => {
       xrSession = null;
@@ -394,6 +491,16 @@ async function startXR() {
         droneSound.stop();
         console.log('ドローン音声停止');
       }
+
+      // 深度関連のリソースをクリーンアップ
+      if (depthMesh) {
+        scene.remove(depthMesh);
+        depthMesh = null;
+      }
+      depthDataTexture = null;
+
+      // セッション終了イベントを発火
+      window.dispatchEvent(new Event('xr-session-end'));
 
       updateInfo('MRセッション終了');
       if (button) {
@@ -418,4 +525,26 @@ init();
 const startButton = document.getElementById('start-button');
 if (startButton) {
   startButton.addEventListener('click', startXR);
+}
+
+// 深度表示切り替えボタン
+const depthToggleButton = document.getElementById('depth-toggle');
+if (depthToggleButton) {
+  depthToggleButton.addEventListener('click', () => {
+    showDepthVisualization = !showDepthVisualization;
+    depthToggleButton.textContent = showDepthVisualization ? '深度表示 ON' : '深度表示 OFF';
+    console.log('深度表示:', showDepthVisualization);
+  });
+
+  // MRセッション開始時にボタンを表示
+  window.addEventListener('xr-session-start', () => {
+    depthToggleButton.style.display = 'block';
+  });
+
+  // MRセッション終了時にボタンを非表示
+  window.addEventListener('xr-session-end', () => {
+    depthToggleButton.style.display = 'none';
+    showDepthVisualization = false;
+    depthToggleButton.textContent = '深度表示 OFF';
+  });
 }
