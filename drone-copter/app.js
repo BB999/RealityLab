@@ -9,8 +9,9 @@ let propellers = [];
 let gamepad = null;
 let audioListener = null;
 let droneSound = null;
-const moveSpeed = 0.01; // 移動速度
-const rotateSpeed = 0.02; // 回転速度
+let hoverTime = 0; // 浮遊アニメーション用タイマー
+const moveSpeed = 0.02; // 移動速度
+const rotateSpeed = 0.03; // 回転速度
 
 // シーンの初期化
 function init() {
@@ -173,6 +174,42 @@ function render() {
     propeller.rotation.y += 0.5;
   });
 
+  // ドローンの浮遊感アニメーション
+  if (drone && dronePositioned) {
+    hoverTime += 0.016; // 約60FPSでの経過時間（秒）
+
+    // 基準位置を保存（初回のみ）
+    if (!drone.userData.basePosition) {
+      drone.userData.basePosition = drone.position.clone();
+    }
+
+    // サイン波を使った滑らかな上下揺れ（振幅0.003m = 3mm）
+    const hoverY = Math.sin(hoverTime * 2) * 0.003;
+
+    // コサイン波を使った前後揺れ（振幅0.002m = 2mm）
+    const hoverZ = Math.cos(hoverTime * 1.5) * 0.002;
+
+    // 少しずつ異なる周期で左右揺れ（振幅0.002m = 2mm）
+    const hoverX = Math.sin(hoverTime * 1.3) * 0.002;
+
+    // 微妙な傾き（ロール・ピッチ）
+    const tiltX = Math.sin(hoverTime * 1.2) * 0.01; // 約0.6度
+    const tiltZ = Math.cos(hoverTime * 1.4) * 0.01; // 約0.6度
+
+    // 浮遊アニメーションを基準位置に加算
+    const basePos = drone.userData.basePosition;
+    drone.position.x = basePos.x + hoverX;
+    drone.position.y = basePos.y + hoverY;
+    drone.position.z = basePos.z + hoverZ;
+
+    // 微妙な傾き（元の回転に加算）
+    if (!drone.userData.baseRotation) {
+      drone.userData.baseRotation = { x: drone.rotation.x, z: drone.rotation.z };
+    }
+    drone.rotation.x = drone.userData.baseRotation.x + tiltX;
+    drone.rotation.z = drone.userData.baseRotation.z + tiltZ;
+  }
+
   // ゲームパッド入力でドローンを操作
   if (xrSession && drone && dronePositioned) {
     const inputSources = xrSession.inputSources;
@@ -188,12 +225,12 @@ function render() {
         if (source.handedness === 'right' && axes.length >= 4) {
           // 左右移動（ワールド座標のX軸）
           if (Math.abs(axes[2]) > 0.1) {
-            drone.position.x += axes[2] * moveSpeed;
+            drone.userData.basePosition.x += axes[2] * moveSpeed;
           }
 
           // 上昇・下降（ワールド座標のY軸）
           if (Math.abs(axes[3]) > 0.1) {
-            drone.position.y -= axes[3] * moveSpeed; // 上下反転
+            drone.userData.basePosition.y -= axes[3] * moveSpeed; // 上下反転
           }
         }
 
@@ -211,7 +248,7 @@ function render() {
             const forward = new THREE.Vector3(0, 0, -1);
             forward.applyQuaternion(drone.quaternion);
             forward.multiplyScalar(axes[3] * moveSpeed);
-            drone.position.add(forward);
+            drone.userData.basePosition.add(forward);
           }
         }
       }
