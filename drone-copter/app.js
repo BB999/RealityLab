@@ -6,6 +6,9 @@ let xrSession = null;
 let rightController = null;
 let dronePositioned = false;
 let propellers = [];
+let gamepad = null;
+const moveSpeed = 0.01; // 移動速度
+const rotateSpeed = 0.02; // 回転速度
 
 // シーンの初期化
 function init() {
@@ -120,6 +123,51 @@ function render() {
   propellers.forEach((propeller) => {
     propeller.rotation.y += 0.5;
   });
+
+  // ゲームパッド入力でドローンを操作
+  if (xrSession && drone && dronePositioned) {
+    const inputSources = xrSession.inputSources;
+
+    for (const source of inputSources) {
+      if (source.gamepad) {
+        const gp = source.gamepad;
+        const axes = gp.axes;
+
+        // 右コントローラー（handedness: 'right'）
+        // axes[2]: 右スティック左右 → 左右移動
+        // axes[3]: 右スティック上下 → 上昇・下降
+        if (source.handedness === 'right' && axes.length >= 4) {
+          // 左右移動（ワールド座標のX軸）
+          if (Math.abs(axes[2]) > 0.1) {
+            drone.position.x += axes[2] * moveSpeed;
+          }
+
+          // 上昇・下降（ワールド座標のY軸）
+          if (Math.abs(axes[3]) > 0.1) {
+            drone.position.y -= axes[3] * moveSpeed; // 上下反転
+          }
+        }
+
+        // 左コントローラー（handedness: 'left'）
+        // axes[2]: 左スティック左右 → 旋回
+        // axes[3]: 左スティック上下 → 前後移動
+        if (source.handedness === 'left' && axes.length >= 4) {
+          // 旋回（Y軸回転）
+          if (Math.abs(axes[2]) > 0.1) {
+            drone.rotation.y -= axes[2] * rotateSpeed;
+          }
+
+          // 前後移動（ドローンのローカルZ軸方向）
+          if (Math.abs(axes[3]) > 0.1) {
+            const forward = new THREE.Vector3(0, 0, -1);
+            forward.applyQuaternion(drone.quaternion);
+            forward.multiplyScalar(axes[3] * moveSpeed);
+            drone.position.add(forward);
+          }
+        }
+      }
+    }
+  }
 
   renderer.render(scene, camera);
 }
