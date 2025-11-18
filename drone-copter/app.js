@@ -10,6 +10,8 @@ let gamepad = null;
 let audioListener = null;
 let droneSound = null;
 let hoverTime = 0; // 浮遊アニメーション用タイマー
+let isSoundMuted = false; // 音声のミュート状態
+let leftStickButtonPressed = false; // 左スティックボタンの押下状態（トグル用）
 
 // 深度センサー用変数
 let depthDataTexture = null;
@@ -317,6 +319,7 @@ function render() {
       if (source.gamepad) {
         const gp = source.gamepad;
         const axes = gp.axes;
+        const buttons = gp.buttons;
 
         // 右コントローラー（handedness: 'right'）
         // axes[2]: 右スティック左右 → 左右移動
@@ -334,6 +337,7 @@ function render() {
         // 左コントローラー（handedness: 'left'）
         // axes[2]: 左スティック左右 → 旋回
         // axes[3]: 左スティック上下 → 前後移動
+        // buttons[3]: 左スティック押し込み → 音声オンオフ
         if (source.handedness === 'left' && axes.length >= 4) {
           if (Math.abs(axes[2]) > 0.3) {
             inputRotation = -axes[2];
@@ -341,6 +345,29 @@ function render() {
           if (Math.abs(axes[3]) > 0.3) {
             inputZ = axes[3];
             rawInputZ = axes[3];
+          }
+
+          // 左スティック押し込みで音声オンオフ（トグル）
+          if (buttons.length > 3 && buttons[3].pressed) {
+            if (!leftStickButtonPressed && droneSound) {
+              // ボタンが押された瞬間のみ反応（トグル処理）
+              isSoundMuted = !isSoundMuted;
+
+              if (isSoundMuted) {
+                droneSound.setVolume(0);
+                console.log('ドローン音声: ミュート');
+                updateInfo('ドローン音声: ミュート');
+              } else {
+                droneSound.setVolume(1.0);
+                console.log('ドローン音声: オン');
+                updateInfo('ドローン音声: オン');
+              }
+
+              leftStickButtonPressed = true;
+            }
+          } else {
+            // ボタンが離されたらフラグをリセット
+            leftStickButtonPressed = false;
           }
         }
       }
