@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 let scene, camera, renderer, drone;
 let xrSession = null;
 let rightController = null;
+let leftController = null;
 let dronePositioned = false;
 let propellers = [];
 let gamepad = null;
@@ -21,6 +22,34 @@ let showDepthVisualization = false;
 // VR用背景とグリッド
 let vrBackground = null;
 let gridHelper = null;
+
+// ハンドトラッキングとグリップ機能用変数
+let hand1 = null;
+let hand2 = null;
+let isGrabbedByController = false; // コントローラーで掴んでいるか
+let isGrabbedByHand = false; // 手で掴んでいるか
+let grabbingController = null; // 掴んでいるコントローラー
+let grabbingInputSource = null; // 掴んでいるinputSource
+let grabbingHand = null; // 掴んでいる手
+let grabOffset = new THREE.Vector3(); // 掴んだ時のオフセット
+let grabRotationOffset = new THREE.Quaternion(); // 掴んだ時の回転オフセット
+let rightGripPressed = false; // 右グリップボタンの状態
+let leftGripPressed = false; // 左グリップボタンの状態
+let smoothedHandPosition = new THREE.Vector3(); // スムージングされた手の位置
+let smoothedHandRotation = new THREE.Quaternion(); // スムージングされた手の回転
+const handSmoothingFactor = 0.3; // スムージング係数（0.0-1.0、大きいほど速く追従）
+let smoothedControllerPosition = new THREE.Vector3(); // スムージングされたコントローラーの位置
+let smoothedControllerRotation = new THREE.Quaternion(); // スムージングされたコントローラーの回転
+const controllerSmoothingFactor = 0.3; // コントローラーのスムージング係数
+
+// 離した時のアニメーション用変数
+let isReturningToHover = false; // ホバー状態に戻る途中か
+let returnStartPosition = new THREE.Vector3(); // 戻る開始位置
+let returnStartRotation = new THREE.Quaternion(); // 戻る開始回転
+let returnTargetRotation = new THREE.Quaternion(); // 戻る目標回転（水平）
+let returnProgress = 0; // 戻るアニメーションの進行度（0.0-1.0）
+const returnDuration = 1.0; // 戻るアニメーションの時間（秒）
+const returnSpeed = 1.0 / returnDuration; // 戻る速度（秒あたりの進行度）
 
 // 物理演算用パラメータ
 let velocity = new THREE.Vector3(0, 0, 0); // 速度ベクトル
@@ -277,21 +306,24 @@ function render() {
     }
   }
 
-  // 右コントローラーの位置を取得してドローンを配置
-  if (rightController && drone && !dronePositioned) {
+  // コントローラーの位置を取得してドローンを配置
+  if ((rightController || leftController) && drone && !dronePositioned) {
+    // 右コントローラーが存在すればそれを使用、なければ左コントローラーを使用
+    const controller = rightController || leftController;
+
     // コントローラーの位置を取得
     const controllerPos = new THREE.Vector3();
-    rightController.getWorldPosition(controllerPos);
+    controller.getWorldPosition(controllerPos);
 
     // コントローラーの前方向を取得
     const direction = new THREE.Vector3(0, 0, -1);
-    direction.applyQuaternion(rightController.quaternion);
+    direction.applyQuaternion(controller.quaternion);
 
     // コントローラーの前方30cm（0.3m）にドローンを配置
     drone.position.copy(controllerPos).add(direction.multiplyScalar(0.3));
 
     dronePositioned = true;
-    updateInfo('ドローンを右コントローラーの前に配置');
+    updateInfo('ドローンをコントローラーの前に配置');
   }
 
   // プロペラをy軸回転
@@ -299,8 +331,38 @@ function render() {
     propeller.rotation.y += 0.5;
   });
 
-  // ドローンの浮遊感アニメーション
-  if (drone && dronePositioned) {
+  // 離した後のホバー位置への戻りアニメーション
+  if (isReturningToHover && drone && dronePositioned) {
+    // アニメーションの進行度を更新（約60FPSで0.016秒/フレーム）
+    returnProgress += returnSpeed * 0.016;
+
+    if (returnProgress >= 1.0) {
+      // アニメーション完了
+      returnProgress = 1.0;
+      isReturningToHover = false;
+      updateInfo('ホバー位置に戻りました');
+    }
+
+    // イージング関数（ease-out: 最初は速く、後半ゆっくり）
+    const easeProgress = 1 - Math.pow(1 - returnProgress, 3);
+
+    // 位置はそのまま（現在位置を維持）
+    if (!drone.userData.basePosition) {
+      drone.userData.basePosition = drone.position.clone();
+    }
+    drone.userData.basePosition.copy(drone.position);
+
+    // 回転のみ水平に戻す（球面線形補間）
+    const currentRotation = drone.quaternion.clone();
+    drone.quaternion.slerpQuaternions(returnStartRotation, returnTargetRotation, easeProgress);
+
+    // 速度と角速度をリセット
+    velocity.set(0, 0, 0);
+    angularVelocity = 0;
+  }
+
+  // ドローンの浮遊感アニメーション（掴んでいない時、かつ戻りアニメーション中でない時のみ）
+  if (drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand && !isReturningToHover) {
     hoverTime += 0.016; // 約60FPSでの経過時間（秒）
 
     // 基準位置を保存（初回のみ）
@@ -341,8 +403,174 @@ function render() {
     drone.rotation.z = drone.userData.physicsTilt.z + hoverTiltZ;
   }
 
+  // コントローラーでドローンを掴む処理
+  if (xrSession && drone && dronePositioned && !isGrabbedByHand) {
+    const inputSources = xrSession.inputSources;
+
+    for (const source of inputSources) {
+      if (source.gamepad && source.gripSpace) {
+        const gp = source.gamepad;
+        const buttons = gp.buttons;
+
+        // グリップボタン（通常buttons[1]）の状態を取得
+        const gripButton = buttons[1];
+        const isGripPressed = gripButton && gripButton.pressed;
+
+        // 右コントローラーのグリップ
+        if (source.handedness === 'right') {
+          if (isGripPressed && !rightGripPressed && source.gripSpace) {
+            // グリップボタンが押された瞬間
+            const dronePos = new THREE.Vector3();
+            drone.getWorldPosition(dronePos);
+
+            // gripSpaceから直接位置を取得
+            const frame = renderer.xr.getFrame();
+            const referenceSpace = renderer.xr.getReferenceSpace();
+            if (frame && referenceSpace) {
+              const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+              if (gripPose) {
+                const controllerPos = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().fromArray(gripPose.transform.matrix));
+
+                // ドローンとコントローラーの距離をチェック（8cm以内なら掴める）
+                const distance = dronePos.distanceTo(controllerPos);
+                if (distance < 0.08) {
+                  isGrabbedByController = true;
+                  grabbingInputSource = source;
+
+                  // スムージング用の初期位置・回転を先に設定
+                  smoothedControllerPosition.copy(controllerPos);
+
+                  const controllerQuat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().fromArray(gripPose.transform.matrix));
+                  smoothedControllerRotation.copy(controllerQuat);
+
+                  // オフセットを保存
+                  grabOffset.copy(dronePos).sub(smoothedControllerPosition);
+
+                  const droneQuat = new THREE.Quaternion();
+                  drone.getWorldQuaternion(droneQuat);
+                  grabRotationOffset.copy(smoothedControllerRotation).invert().multiply(droneQuat);
+
+                  updateInfo('右コントローラーでドローンを掴んだ (距離: ' + (distance * 100).toFixed(1) + 'cm)');
+                  console.log('右コントローラーでドローンを掴んだ');
+                }
+              }
+            }
+          } else if (!isGripPressed && rightGripPressed && isGrabbedByController && grabbingInputSource === source) {
+            // グリップボタンが離された瞬間
+            isGrabbedByController = false;
+            grabbingInputSource = null;
+
+            // 戻るアニメーションを開始
+            isReturningToHover = true;
+            returnProgress = 0;
+            returnStartPosition.copy(drone.position);
+            returnStartRotation.copy(drone.quaternion);
+            returnTargetRotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), drone.rotation.y);
+
+            updateInfo('ドローンを離した - ホバー位置に戻ります');
+            console.log('ドローンを離した');
+          }
+          rightGripPressed = isGripPressed;
+        }
+
+        // 左コントローラーのグリップ
+        if (source.handedness === 'left') {
+          if (isGripPressed && !leftGripPressed && source.gripSpace) {
+            // グリップボタンが押された瞬間
+            const dronePos = new THREE.Vector3();
+            drone.getWorldPosition(dronePos);
+
+            // gripSpaceから直接位置を取得
+            const frame = renderer.xr.getFrame();
+            const referenceSpace = renderer.xr.getReferenceSpace();
+            if (frame && referenceSpace) {
+              const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+              if (gripPose) {
+                const controllerPos = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().fromArray(gripPose.transform.matrix));
+
+                // ドローンとコントローラーの距離をチェック（8cm以内なら掴める）
+                const distance = dronePos.distanceTo(controllerPos);
+                if (distance < 0.08) {
+                  isGrabbedByController = true;
+                  grabbingInputSource = source;
+
+                  // スムージング用の初期位置・回転を先に設定
+                  smoothedControllerPosition.copy(controllerPos);
+
+                  const controllerQuat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().fromArray(gripPose.transform.matrix));
+                  smoothedControllerRotation.copy(controllerQuat);
+
+                  // オフセットを保存
+                  grabOffset.copy(dronePos).sub(smoothedControllerPosition);
+
+                  const droneQuat = new THREE.Quaternion();
+                  drone.getWorldQuaternion(droneQuat);
+                  grabRotationOffset.copy(smoothedControllerRotation).invert().multiply(droneQuat);
+
+                  updateInfo('左コントローラーでドローンを掴んだ (距離: ' + (distance * 100).toFixed(1) + 'cm)');
+                  console.log('左コントローラーでドローンを掴んだ');
+                }
+              }
+            }
+          } else if (!isGripPressed && leftGripPressed && isGrabbedByController && grabbingInputSource === source) {
+            // グリップボタンが離された瞬間
+            isGrabbedByController = false;
+            grabbingInputSource = null;
+
+            // 戻るアニメーションを開始
+            isReturningToHover = true;
+            returnProgress = 0;
+            returnStartPosition.copy(drone.position);
+            returnStartRotation.copy(drone.quaternion);
+            returnTargetRotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), drone.rotation.y);
+
+            updateInfo('ドローンを離した - ホバー位置に戻ります');
+            console.log('ドローンを離した');
+          }
+          leftGripPressed = isGripPressed;
+        }
+      }
+    }
+
+    // コントローラーで掴んでいる場合、ドローンをコントローラーに追従させる
+    if (isGrabbedByController && grabbingInputSource && grabbingInputSource.gripSpace) {
+      const frame = renderer.xr.getFrame();
+      const referenceSpace = renderer.xr.getReferenceSpace();
+      if (frame && referenceSpace) {
+        const gripPose = frame.getPose(grabbingInputSource.gripSpace, referenceSpace);
+        if (gripPose) {
+          const controllerPos = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().fromArray(gripPose.transform.matrix));
+
+          // 位置のスムージング（線形補間）
+          smoothedControllerPosition.lerp(controllerPos, controllerSmoothingFactor);
+
+          // コントローラーの位置 + オフセットでドローンの位置を更新
+          const newPos = smoothedControllerPosition.clone().add(grabOffset);
+          drone.position.copy(newPos);
+          // basePositionも同期
+          if (drone.userData.basePosition) {
+            drone.userData.basePosition.copy(newPos);
+          }
+
+          // コントローラーの回転に合わせてドローンを回転（スムージング付き）
+          const controllerQuat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().fromArray(gripPose.transform.matrix));
+
+          // 回転のスムージング（球面線形補間）
+          smoothedControllerRotation.slerp(controllerQuat, controllerSmoothingFactor);
+
+          const targetQuat = smoothedControllerRotation.clone().multiply(grabRotationOffset);
+          drone.quaternion.copy(targetQuat);
+
+          // 速度と角速度をリセット（掴んでいる間は物理演算を無効化）
+          velocity.set(0, 0, 0);
+          angularVelocity = 0;
+        }
+      }
+    }
+  }
+
   // ゲームパッド入力でドローンを操作（物理演算）
-  if (xrSession && drone && dronePositioned) {
+  if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand && !isReturningToHover) {
     const inputSources = xrSession.inputSources;
     let inputX = 0, inputY = 0, inputZ = 0; // 入力値
     let inputRotation = 0;
@@ -461,6 +689,142 @@ function render() {
     drone.userData.physicsTilt.z += (targetTiltZ - drone.userData.physicsTilt.z) * tiltSmoothing;
   }
 
+  // ハンドトラッキングでドローンを掴む処理
+  if (xrSession && drone && dronePositioned && !isGrabbedByController) {
+    const frame = renderer.xr.getFrame();
+    if (frame) {
+      const hands = [hand1, hand2];
+
+      for (let i = 0; i < hands.length; i++) {
+        const hand = hands[i];
+        if (!hand) continue;
+
+        // 手のジョイント（関節）情報を取得
+        const indexTip = hand.joints['index-finger-tip'];
+        const thumbTip = hand.joints['thumb-tip'];
+
+        if (indexTip && thumbTip) {
+          // ピンチジェスチャー判定（親指と人差し指の距離）
+          const indexPos = new THREE.Vector3();
+          const thumbPos = new THREE.Vector3();
+          indexTip.getWorldPosition(indexPos);
+          thumbTip.getWorldPosition(thumbPos);
+
+          const pinchDistance = indexPos.distanceTo(thumbPos);
+          const isPinching = pinchDistance < 0.025; // 2.5cm以内でピンチと判定（より厳密に）
+
+          // ドローンの位置を取得
+          const dronePos = new THREE.Vector3();
+          drone.getWorldPosition(dronePos);
+
+          // 手の中心位置（親指と人差し指の中点）
+          const handCenter = new THREE.Vector3().addVectors(indexPos, thumbPos).multiplyScalar(0.5);
+
+          // ドローンと手の距離
+          const distanceToDrone = handCenter.distanceTo(dronePos);
+
+          if (isPinching && !isGrabbedByHand && distanceToDrone < 0.08) {
+            // ピンチして掴む（8cm以内に変更 - さらに縮小）
+            isGrabbedByHand = true;
+            grabbingHand = hand;
+
+            // ドローンと手の位置の差分を保存（ワールド座標）
+            grabOffset.copy(dronePos).sub(handCenter);
+
+            // スムージング用の初期位置を設定
+            smoothedHandPosition.copy(handCenter);
+
+            // 手の手首の関節を取得して、手の向きを基準にする
+            const wrist = hand.joints['wrist'];
+            if (wrist) {
+              // 手首の回転を基準にオフセットを計算
+              const wristQuat = new THREE.Quaternion();
+              wrist.getWorldQuaternion(wristQuat);
+              const droneQuat = new THREE.Quaternion();
+              drone.getWorldQuaternion(droneQuat);
+              grabRotationOffset.copy(wristQuat).invert().multiply(droneQuat);
+              // スムージング用の初期回転を設定
+              smoothedHandRotation.copy(wristQuat);
+            } else {
+              // 手首が取れない場合はhand全体の回転を使用
+              const handQuat = new THREE.Quaternion();
+              hand.getWorldQuaternion(handQuat);
+              const droneQuat = new THREE.Quaternion();
+              drone.getWorldQuaternion(droneQuat);
+              grabRotationOffset.copy(handQuat).invert().multiply(droneQuat);
+              // スムージング用の初期回転を設定
+              smoothedHandRotation.copy(handQuat);
+            }
+
+            updateInfo('手でドローンを掴んだ (距離: ' + (distanceToDrone * 100).toFixed(1) + 'cm)');
+            console.log('手でドローンを掴んだ 距離:', distanceToDrone);
+          } else if (!isPinching && isGrabbedByHand && grabbingHand === hand) {
+            // ピンチを離して放す
+            isGrabbedByHand = false;
+            grabbingHand = null;
+
+            // 戻るアニメーションを開始
+            isReturningToHover = true;
+            returnProgress = 0;
+            returnStartPosition.copy(drone.position);
+            returnStartRotation.copy(drone.quaternion);
+            // 水平姿勢（Y軸回転のみ保持）
+            returnTargetRotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), drone.rotation.y);
+
+            updateInfo('ドローンを離した - ホバー位置に戻ります');
+            console.log('ドローンを離した');
+          }
+
+          // 掴んでいる場合、ドローンを手に追従させる
+          if (isGrabbedByHand && grabbingHand === hand) {
+            // 手の中心位置を再計算
+            indexTip.getWorldPosition(indexPos);
+            thumbTip.getWorldPosition(thumbPos);
+            handCenter.addVectors(indexPos, thumbPos).multiplyScalar(0.5);
+
+            // 位置のスムージング（線形補間）
+            smoothedHandPosition.lerp(handCenter, handSmoothingFactor);
+
+            // 手の位置 + オフセットでドローンの位置を更新
+            const newPos = smoothedHandPosition.clone().add(grabOffset);
+            drone.position.copy(newPos);
+            // basePositionも同期
+            if (drone.userData.basePosition) {
+              drone.userData.basePosition.copy(newPos);
+            }
+
+            // 手首の回転に合わせてドローンを回転（スムージング付き）
+            const wrist = hand.joints['wrist'];
+            if (wrist) {
+              const wristQuat = new THREE.Quaternion();
+              wrist.getWorldQuaternion(wristQuat);
+
+              // 回転のスムージング（球面線形補間）
+              smoothedHandRotation.slerp(wristQuat, handSmoothingFactor);
+
+              const targetQuat = smoothedHandRotation.clone().multiply(grabRotationOffset);
+              drone.quaternion.copy(targetQuat);
+            } else {
+              // 手首が取れない場合はhand全体の回転を使用
+              const handQuat = new THREE.Quaternion();
+              hand.getWorldQuaternion(handQuat);
+
+              // 回転のスムージング（球面線形補間）
+              smoothedHandRotation.slerp(handQuat, handSmoothingFactor);
+
+              const targetQuat = smoothedHandRotation.clone().multiply(grabRotationOffset);
+              drone.quaternion.copy(targetQuat);
+            }
+
+            // 速度と角速度をリセット（掴んでいる間は物理演算を無効化）
+            velocity.set(0, 0, 0);
+            angularVelocity = 0;
+          }
+        }
+      }
+    }
+  }
+
   renderer.render(scene, camera);
 }
 
@@ -497,10 +861,10 @@ async function startXR() {
       return;
     }
 
-    // XRセッション開始（深度センサーを有効化）
+    // XRセッション開始（深度センサーとハンドトラッキングを有効化）
     xrSession = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: [],
-      optionalFeatures: ['local-floor', 'bounded-floor', 'depth-sensing'],
+      optionalFeatures: ['local-floor', 'bounded-floor', 'depth-sensing', 'hand-tracking'],
       depthSensing: {
         usagePreference: ['cpu-optimized', 'gpu-optimized'],
         dataFormatPreference: ['luminance-alpha', 'float32']
@@ -509,9 +873,17 @@ async function startXR() {
 
     await renderer.xr.setSession(xrSession);
 
-    // 右コントローラーを取得
-    rightController = renderer.xr.getController(1); // 1 = 右コントローラー
+    // コントローラーを取得
+    rightController = renderer.xr.getController(0);
+    leftController = renderer.xr.getController(1);
     scene.add(rightController);
+    scene.add(leftController);
+
+    // ハンドトラッキングを取得
+    hand1 = renderer.xr.getHand(0);
+    hand2 = renderer.xr.getHand(1);
+    scene.add(hand1);
+    scene.add(hand2);
 
     // ドローン配置フラグをリセット
     dronePositioned = false;
@@ -608,7 +980,7 @@ async function startVR() {
     // XRセッション開始（VRモード）
     xrSession = await navigator.xr.requestSession('immersive-vr', {
       requiredFeatures: [],
-      optionalFeatures: ['local-floor', 'bounded-floor']
+      optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
     });
 
     await renderer.xr.setSession(xrSession);
@@ -616,9 +988,17 @@ async function startVR() {
     // VR環境（背景とグリッド）を作成
     createVREnvironment();
 
-    // 右コントローラーを取得
-    rightController = renderer.xr.getController(1); // 1 = 右コントローラー
+    // コントローラーを取得
+    rightController = renderer.xr.getController(0);
+    leftController = renderer.xr.getController(1);
     scene.add(rightController);
+    scene.add(leftController);
+
+    // ハンドトラッキングを取得
+    hand1 = renderer.xr.getHand(0);
+    hand2 = renderer.xr.getHand(1);
+    scene.add(hand1);
+    scene.add(hand2);
 
     // ドローン配置フラグをリセット
     dronePositioned = false;
