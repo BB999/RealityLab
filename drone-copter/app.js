@@ -18,6 +18,10 @@ let depthDataTexture = null;
 let depthMesh = null;
 let showDepthVisualization = false;
 
+// VR用背景とグリッド
+let vrBackground = null;
+let gridHelper = null;
+
 // 物理演算用パラメータ
 let velocity = new THREE.Vector3(0, 0, 0); // 速度ベクトル
 let angularVelocity = 0; // 角速度（Y軸回転）
@@ -127,6 +131,35 @@ function init() {
 
   // アニメーションループ
   renderer.setAnimationLoop(render);
+}
+
+// VR用の背景とグリッドを作成
+function createVREnvironment() {
+  // 薄いグレーの背景色を設定
+  scene.background = new THREE.Color(0xcccccc);
+
+  // 床グリッドを作成（細かいグリッド）
+  const gridSize = 50; // グリッドのサイズ（50m x 50m）
+  const gridDivisions = 100; // 分割数（0.5m間隔）
+  gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0x888888, 0x999999);
+  gridHelper.position.y = 0; // 床の高さ
+  scene.add(gridHelper);
+
+  console.log('VR環境を作成しました');
+}
+
+// VR環境を削除
+function removeVREnvironment() {
+  // 背景色を透明に戻す
+  scene.background = null;
+
+  // グリッドを削除
+  if (gridHelper) {
+    scene.remove(gridHelper);
+    gridHelper = null;
+  }
+
+  console.log('VR環境を削除しました');
 }
 
 // ドローン音声の設定
@@ -494,6 +527,10 @@ async function startXR() {
     if (button) {
       button.style.display = 'none';
     }
+    const vrButton = document.getElementById('vr-button');
+    if (vrButton) {
+      vrButton.style.display = 'none';
+    }
 
     // セッション開始イベントを発火
     window.dispatchEvent(new Event('xr-session-start'));
@@ -533,6 +570,9 @@ async function startXR() {
       if (button) {
         button.style.display = 'block';
       }
+      if (vrButton) {
+        vrButton.style.display = 'block';
+      }
     });
 
   } catch (error) {
@@ -545,6 +585,99 @@ async function startXR() {
   }
 }
 
+// VRセッション開始
+async function startVR() {
+  if (!navigator.xr) {
+    updateInfo('WebXRがサポートされていません');
+    alert('このデバイスはWebXRをサポートしていません');
+    return;
+  }
+
+  try {
+    updateInfo('VRセッションを開始中...');
+
+    // immersive-vr モードをサポートしているか確認
+    const supported = await navigator.xr.isSessionSupported('immersive-vr');
+
+    if (!supported) {
+      updateInfo('immersive-VRがサポートされていません');
+      alert('このデバイスはVR機能をサポートしていません');
+      return;
+    }
+
+    // XRセッション開始（VRモード）
+    xrSession = await navigator.xr.requestSession('immersive-vr', {
+      requiredFeatures: [],
+      optionalFeatures: ['local-floor', 'bounded-floor']
+    });
+
+    await renderer.xr.setSession(xrSession);
+
+    // VR環境（背景とグリッド）を作成
+    createVREnvironment();
+
+    // 右コントローラーを取得
+    rightController = renderer.xr.getController(1); // 1 = 右コントローラー
+    scene.add(rightController);
+
+    // ドローン配置フラグをリセット
+    dronePositioned = false;
+
+    // ドローン音声を再生開始
+    if (droneSound && !droneSound.isPlaying) {
+      droneSound.play();
+      console.log('ドローン音声再生開始');
+    }
+
+    // ボタンを非表示
+    const button = document.getElementById('start-button');
+    if (button) {
+      button.style.display = 'none';
+    }
+    const vrButton = document.getElementById('vr-button');
+    if (vrButton) {
+      vrButton.style.display = 'none';
+    }
+
+    // セッション開始イベントを発火
+    window.dispatchEvent(new Event('xr-session-start'));
+
+    updateInfo('VRセッション開始');
+
+    xrSession.addEventListener('end', () => {
+      xrSession = null;
+
+      // VR環境を削除
+      removeVREnvironment();
+
+      // ドローン音声を停止
+      if (droneSound && droneSound.isPlaying) {
+        droneSound.stop();
+        console.log('ドローン音声停止');
+      }
+
+      // セッション終了イベントを発火
+      window.dispatchEvent(new Event('xr-session-end'));
+
+      updateInfo('VRセッション終了');
+      if (button) {
+        button.style.display = 'block';
+      }
+      if (vrButton) {
+        vrButton.style.display = 'block';
+      }
+    });
+
+  } catch (error) {
+    console.error('VRセッション開始エラー:', error);
+    console.error('エラー名:', error.name);
+    console.error('エラーメッセージ:', error.message);
+    console.error('エラー詳細:', JSON.stringify(error, null, 2));
+    updateInfo('エラー: ' + (error.message || error.name || 'Unknown error'));
+    alert('VRセッションを開始できませんでした: ' + (error.message || error.name || 'Unknown error'));
+  }
+}
+
 // 初期化実行
 init();
 
@@ -552,6 +685,11 @@ init();
 const startButton = document.getElementById('start-button');
 if (startButton) {
   startButton.addEventListener('click', startXR);
+}
+
+const vrButton = document.getElementById('vr-button');
+if (vrButton) {
+  vrButton.addEventListener('click', startVR);
 }
 
 // 深度表示切り替えボタン
