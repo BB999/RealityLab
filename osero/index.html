@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>3D Othello with Three.js</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #333; font-family: sans-serif; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-size: 24px;
+            pointer-events: none;
+            text-shadow: 1px 1px 2px black;
+        }
+        #turn-indicator { font-weight: bold; color: #ffcc00; }
+        #vr-button {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            background-color: #00aa00;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #vr-button:hover {
+            background-color: #00cc00;
+        }
+        #vr-button:active {
+            background-color: #008800;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">3D OTHELLO - <span id="turn-indicator">黒の番 (Black)</span></div>
+    <button id="vr-button">VR/MRモードに入る</button>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+        import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
+        import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory.js';
+        import { XRHandModelFactory } from 'three/examples/jsm/webxr/XRHandModelFactory.js';
+
+        // --- グローバル変数 ---
+        let scene, camera, renderer, controls;
+        let boardGroup;
+        let raycaster, mouse;
+
+        // XR関連
+        let hand1, hand2;
+        let xrSession = null;
+        let boardInitialized = false;
+
+        // ポインター（指先の照準）
+        let leftPointer, rightPointer;
+
+        // ハンドトラッキング状態
+        let handJoints = { left: null, right: null };
+        let isPinching = { left: false, right: false };
+        let isTouching = { left: false, right: false };
+        let lastHandAngleY = null;
+        let lastHandAngleX = null;
+        let lastPinchDistance = 0;
+        let boardDragStart = null;
+        let twoHandMode = null; // 'scale' or 'rotate'
+
+        // ゲームの状態
+        // 0: 空, 1: 黒, -1: 白
+        let boardState = [];
+        let pieces = []; // 3Dオブジェクトの配列
+        let currentTurn = 1; // 1 = 黒, -1 = 白
+        const boardSize = 8;
+
+        init();
+        animate();
+
+        function init() {
+            // 1. シーンのセットアップ
+            scene = new THREE.Scene();
+            // MRモードでは背景を透明に
+            scene.background = null;
+
+            // 2. カメラのセットアップ
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 12, 10);
+            camera.lookAt(0, 0, 0);
+
+            // 3. レンダラー
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.xr.enabled = true; // WebXR有効化
+
+            // 深度テストを有効化して正しい深度順でレンダリング
+            renderer.sortObjects = true;
+
+            document.body.appendChild(renderer.domElement);
+
+            // 4. ライト
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(5, 10, 5);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            // 5. 盤面の作成
+            createBoard();
+
+            // 6. 初期配置 (オセロのルール)
+            initGame();
+
+            // 7. コントロールとインタラクション
+            controls = new OrbitControls(camera, renderer.domElement);
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            // 8. WebXRのセットアップ
+            setupXR();
+
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('click', onMouseClick);
+        }
+
+        async function setupXR() {
+            // WebGLコンテキストをXR互換にする
+            const gl = renderer.getContext();
+            await gl.makeXRCompatible();
+
+            // MRボタンの設定
+            const vrButton = document.getElementById('vr-button');
+            vrButton.innerText = 'MRモードに入る';
+
+            vrButton.addEventListener('click', async () => {
+                if (navigator.xr) {
+                    try {
+                        // MRモードのみサポート
+                        const immersiveArSupported = await navigator.xr.isSessionSupported('immersive-ar');
+
+                        if (immersiveArSupported) {
+                            // MRモードで起動（ハンドトラッキング必須）
+                            renderer.xr.setReferenceSpaceType('local');
+                            xrSession = await navigator.xr.requestSession('immersive-ar', {
+                                requiredFeatures: ['local', 'hand-tracking'],
+                                optionalFeatures: ['depth-sensing'],
+                                depthSensing: {
+                                    usagePreference: ['cpu-optimized', 'gpu-optimized'],
+                                    dataFormatPreference: ['luminance-alpha', 'float32']
+                                }
+                            });
+
+                            await renderer.xr.setSession(xrSession);
+
+                            // ハンドトラッキングのセットアップ
+                            setupHandTracking();
+                        } else {
+                            alert('このデバイスはMRモードをサポートしていません');
+                        }
+                    } catch (error) {
+                        console.error('XRセッションの開始に失敗しました:', error);
+                        alert('MRモードの起動に失敗しました。ハンドトラッキングが有効か確認してください。');
+                    }
+                }
+            });
+        }
+
+        function setupHandTracking() {
+            // ハンドトラッキングの初期化
+            hand1 = renderer.xr.getHand(0);
+            hand2 = renderer.xr.getHand(1);
+
+            // 手のメッシュモデルを追加
+            const handModelFactory = new XRHandModelFactory();
+
+            // 手のモデルをメッシュとして表示（深度テストで正しく表示される）
+            const handModel1 = handModelFactory.createHandModel(hand1, 'mesh');
+            hand1.add(handModel1);
+
+            const handModel2 = handModelFactory.createHandModel(hand2, 'mesh');
+            hand2.add(handModel2);
+
+            // ポインター（指先の照準）を作成
+            createPointers();
+
+            scene.add(hand1);
+            scene.add(hand2);
+        }
+
+        function createPointers() {
+            // 左手のポインター
+            const pointerGeometry = new THREE.SphereGeometry(0.01, 16, 16);
+            const pointerMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff0000,
+                transparent: true,
+                opacity: 0.8
+            });
+            leftPointer = new THREE.Mesh(pointerGeometry, pointerMaterial);
+            leftPointer.visible = false;
+            scene.add(leftPointer);
+
+            // 右手のポインター
+            const rightPointerMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ff00,
+                transparent: true,
+                opacity: 0.8
+            });
+            rightPointer = new THREE.Mesh(pointerGeometry.clone(), rightPointerMaterial);
+            rightPointer.visible = false;
+            scene.add(rightPointer);
+        }
+
+        // ピンチ検出のヘルパー関数
+        function getPinchDistance(hand) {
+            const indexTip = hand.joints['index-finger-tip'];
+            const thumbTip = hand.joints['thumb-tip'];
+
+            if (indexTip && thumbTip) {
+                return indexTip.position.distanceTo(thumbTip.position);
+            }
+            return null;
+        }
+
+        function getIndexFingerTip(hand) {
+            return hand.joints['index-finger-tip'];
+        }
+
+        function getHandCenter(hand) {
+            const wrist = hand.joints['wrist'];
+            return wrist ? wrist.position : null;
+        }
+
+        function createBoard() {
+            boardGroup = new THREE.Group();
+            const squareSize = 1;
+            const geometry = new THREE.BoxGeometry(squareSize, 0.2, squareSize);
+
+            // 緑色の市松模様風にするためのマテリアル
+            const matDark = new THREE.MeshStandardMaterial({ color: 0x006600, roughness: 0.5 });
+            const matLight = new THREE.MeshStandardMaterial({ color: 0x007700, roughness: 0.5 });
+            const borderMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
+
+            // 外枠
+            const borderGeo = new THREE.BoxGeometry(boardSize + 0.4, 0.3, boardSize + 0.4);
+            const border = new THREE.Mesh(borderGeo, borderMat);
+            border.position.y = -0.15;
+            boardGroup.add(border);
+
+            for (let z = 0; z < boardSize; z++) {
+                for (let x = 0; x < boardSize; x++) {
+                    const isDark = (x + z) % 2 === 0;
+                    const square = new THREE.Mesh(geometry, isDark ? matDark : matLight);
+
+                    // グリッド座標を中心座標に変換
+                    // (0,0) -> (-3.5, -3.5)
+                    square.position.set(x - 3.5, 0, z - 3.5);
+                    square.receiveShadow = true;
+
+                    // ユーザーデータに座標を保存（クリック判定用）
+                    square.userData = {
+                        x: x,
+                        z: z,
+                        originalMaterial: square.material
+                    };
+
+                    boardGroup.add(square);
+                }
+            }
+
+            // 初期サイズを1/16に設定
+            boardGroup.scale.set(0.0625, 0.0625, 0.0625);
+
+            scene.add(boardGroup);
+        }
+
+        function createPieceMesh() {
+            // 石のジオメトリ（円柱）
+            const radius = 0.4;
+            const height = 0.15;
+            const geometry = new THREE.CylinderGeometry(radius, radius, height, 32);
+
+            // マテリアル（側面、上面=白、底面=黒）
+            // CylinderGeometryの素材インデックス: 0:側面, 1:上面, 2:底面
+            const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+            const blackMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2 });
+            const sideMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
+
+            const mesh = new THREE.Mesh(geometry, [sideMat, whiteMat, blackMat]);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            return mesh;
+        }
+
+        function initGame() {
+            // 盤面初期化
+            for(let i=0; i<boardSize; i++) {
+                boardState[i] = [];
+                pieces[i] = [];
+                for(let j=0; j<boardSize; j++) {
+                    boardState[i][j] = 0;
+                    pieces[i][j] = null;
+                }
+            }
+
+            // 中央の4つを配置
+            placePiece(3, 3, -1); // 白
+            placePiece(4, 4, -1); // 白
+            placePiece(3, 4, 1);  // 黒
+            placePiece(4, 3, 1);  // 黒
+
+            updateUI();
+        }
+
+        function placePiece(x, z, color) {
+            boardState[z][x] = color;
+
+            const piece = createPieceMesh();
+            // 位置設定
+            piece.position.set(x - 3.5, 0.2, z - 3.5);
+
+            // 回転設定 (黒なら底面(index 2)を上に、白なら上面(index 1)を上に)
+            // CylinderはデフォルトでY軸向き。
+            // 黒(1)の場合: 裏返す(Z軸180度) -> 底面(黒)が上に来る
+            // 白(-1)の場合: そのまま -> 上面(白)が上に来る
+
+            // ※ CylinderGeometryのmappingを考慮し、
+            // 上面(Y+)が白、底面(Y-)が黒と定義したので：
+            // 白を表示したい -> 回転なし (Y+が上)
+            // 黒を表示したい -> 180度回転 (Y-が上)
+
+            // 現在の回転角度ターゲット（アニメーション用）
+            piece.userData.targetRotationZ = (color === 1) ? Math.PI : 0;
+            piece.rotation.z = piece.userData.targetRotationZ;
+
+            // コマをboardGroupの子要素として追加（盤面と一緒に動くように）
+            boardGroup.add(piece);
+            pieces[z][x] = piece;
+        }
+
+        function flipPieces(x, z, colorToSet) {
+            const piece = pieces[z][x];
+            if(piece) {
+                boardState[z][x] = colorToSet;
+                // ターゲットの回転角度を更新（アニメーションで追従させる）
+                piece.userData.targetRotationZ = (colorToSet === 1) ? Math.PI : 0;
+            }
+        }
+
+        // --- ゲームロジック ---
+
+        function onMouseClick(event) {
+            // マウス位置の正規化
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            // 盤面のマス目との交差判定
+            const intersects = raycaster.intersectObjects(boardGroup.children);
+
+            if (intersects.length > 0) {
+                const obj = intersects[0].object;
+                // マス目かどうか確認
+                if (obj.userData && obj.userData.x !== undefined) {
+                    const ix = obj.userData.x;
+                    const iz = obj.userData.z;
+                    
+                    attemptMove(ix, iz);
+                }
+            }
+        }
+
+        function attemptMove(x, z) {
+            // 既に石がある場所には置けない
+            if (boardState[z][x] !== 0) return;
+
+            const flipped = getFlippableDiscs(x, z, currentTurn);
+
+            if (flipped.length > 0) {
+                // 石を置く
+                placePiece(x, z, currentTurn);
+
+                // 挟んだ石を裏返す
+                flipped.forEach(pos => {
+                    flipPieces(pos.x, pos.z, currentTurn);
+                });
+
+                // ターン交代
+                currentTurn *= -1;
+                
+                // 次のプレイヤーが置けるかチェック（パス判定）
+                if (!canPlayerMove(currentTurn)) {
+                    console.log("パス！");
+                    currentTurn *= -1;
+                    if (!canPlayerMove(currentTurn)) {
+                        alert("ゲーム終了！");
+                    } else {
+                        alert("置ける場所がないためパスしました");
+                    }
+                }
+
+                updateUI();
+            }
+        }
+
+        // 裏返せる石のリストを取得する
+        function getFlippableDiscs(x, z, playerColor) {
+            const directions = [
+                [1, 0], [-1, 0], [0, 1], [0, -1],
+                [1, 1], [1, -1], [-1, 1], [-1, -1]
+            ];
+            let result = [];
+
+            directions.forEach(dir => {
+                let temp = [];
+                let cx = x + dir[0];
+                let cz = z + dir[1];
+
+                while (cx >= 0 && cx < boardSize && cz >= 0 && cz < boardSize) {
+                    if (boardState[cz][cx] === 0) break; // 空マスなら終了
+                    if (boardState[cz][cx] === playerColor) {
+                        // 自分の色に到達したら、間の石を確定
+                        result = result.concat(temp);
+                        break;
+                    }
+                    // 相手の色なら候補に追加
+                    temp.push({ x: cx, z: cz });
+                    
+                    cx += dir[0];
+                    cz += dir[1];
+                }
+            });
+
+            return result;
+        }
+
+        function canPlayerMove(playerColor) {
+            for (let z = 0; z < boardSize; z++) {
+                for (let x = 0; x < boardSize; x++) {
+                    if (boardState[z][x] === 0) {
+                        if (getFlippableDiscs(x, z, playerColor).length > 0) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        function updateUI() {
+            const el = document.getElementById('turn-indicator');
+            if(currentTurn === 1) {
+                el.innerText = "黒の番 (Black)";
+                el.style.color = "#333";
+                el.style.backgroundColor = "#fff";
+                el.style.padding = "2px 10px";
+            } else {
+                el.innerText = "白の番 (White)";
+                el.style.color = "#fff";
+                el.style.backgroundColor = "#333";
+                el.style.padding = "2px 10px";
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            // WebXRセッション中はsetAnimationLoopを使う
+            renderer.setAnimationLoop(render);
+        }
+
+        function render() {
+            // 置ける場所のハイライト更新
+            updateValidMoves();
+
+            // 石の回転アニメーション
+            for(let z=0; z<boardSize; z++){
+                for(let x=0; x<boardSize; x++){
+                    const piece = pieces[z][x];
+                    if(piece){
+                        // 線形補間(Lerp)で滑らかに回転させる
+                        const target = piece.userData.targetRotationZ;
+                        // 0 と PI の間の最短経路を計算するのは単純なLerpでOK（0->PIへの移動のみなので）
+                        piece.rotation.z += (target - piece.rotation.z) * 0.1;
+
+                        // 空中に浮くアニメーション（ひっくり返るときだけ少し浮かす演出）
+                        const diff = Math.abs(target - piece.rotation.z);
+                        if(diff > 0.1) {
+                            piece.position.y = 0.2 + Math.sin(diff) * 0.5;
+                        } else {
+                            piece.position.y = 0.2;
+                        }
+                    }
+                }
+            }
+
+            // XRセッション中でない場合のみOrbitControlsを更新
+            if (!renderer.xr.isPresenting) {
+                controls.update();
+            } else {
+                // ハンドトラッキング処理
+                updateHandTracking();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function updateValidMoves() {
+            // 全てのマスをチェックして、置ける場所をハイライト
+            boardGroup.children.forEach(child => {
+                if (child.userData && child.userData.x !== undefined) {
+                    const x = child.userData.x;
+                    const z = child.userData.z;
+
+                    // 空マスで、かつ置ける場所かチェック
+                    if (boardState[z][x] === 0) {
+                        const canPlace = getFlippableDiscs(x, z, currentTurn).length > 0;
+                        if (canPlace) {
+                            // ハイライト（黄色に光る、半透明）
+                            child.material = new THREE.MeshStandardMaterial({
+                                color: 0xffff00,
+                                emissive: 0xffff00,
+                                emissiveIntensity: 0.3,
+                                roughness: 0.5,
+                                transparent: true,
+                                opacity: 0.5
+                            });
+                        } else {
+                            // 元の色に戻す
+                            child.material = child.userData.originalMaterial;
+                        }
+                    } else {
+                        // コマが置いてあるマスは元の色
+                        child.material = child.userData.originalMaterial;
+                    }
+                }
+            });
+        }
+
+        function updateHandTracking() {
+            if (!hand1 || !hand2) return;
+
+            const frame = renderer.xr.getFrame();
+            if (!frame) return;
+
+            // 両手のジョイント情報を取得
+            const leftHand = hand1;
+            const rightHand = hand2;
+
+            // 初回のみ：右手の前に盤面を配置
+            if (!boardInitialized) {
+                const rightCenter = getHandCenter(rightHand);
+                if (rightCenter) {
+                    // 右手の30cm前に配置
+                    boardGroup.position.set(
+                        rightCenter.x,
+                        rightCenter.y - 0.15, // 少し下
+                        rightCenter.z - 0.3   // 30cm前
+                    );
+                    boardInitialized = true;
+                }
+            }
+
+            // 左手の人差し指でピンチ（コマを置く）
+            const leftPinchDist = getPinchDistance(leftHand);
+            const rightPinchDist = getPinchDistance(rightHand);
+
+            // 両手ピンチをチェック（拡大縮小が優先）
+            const bothPinching = (leftPinchDist !== null && rightPinchDist !== null &&
+                                  leftPinchDist < 0.02 && rightPinchDist < 0.02);
+
+            // ポインターの位置を更新し、盤面タッチを検出
+            updatePointers(leftHand, rightHand);
+            checkBoardTouch(leftHand, rightHand, bothPinching);
+
+            // 両手ピンチで拡大縮小
+            if (bothPinching) {
+
+                const leftCenter = getHandCenter(leftHand);
+                const rightCenter = getHandCenter(rightHand);
+
+                if (leftCenter && rightCenter) {
+                    const currentDistance = leftCenter.distanceTo(rightCenter);
+
+                    // 拡大縮小
+                    if (lastPinchDistance > 0) {
+                        const scale = currentDistance / lastPinchDistance;
+                        boardGroup.scale.multiplyScalar(scale);
+                        boardGroup.scale.clampScalar(0.05, 5.0);
+                    }
+
+                    lastPinchDistance = currentDistance;
+                }
+            } else {
+                lastPinchDistance = 0;
+            }
+
+            // 右手のピンチで移動＋回転（手の移動量で回転）
+            // 両手ピンチでない場合のみ
+            if (!bothPinching && rightPinchDist !== null && rightPinchDist < 0.02 &&
+                (leftPinchDist === null || leftPinchDist >= 0.02)) {
+
+                const rightCenter = getHandCenter(rightHand);
+                const rightIndexTip = getIndexFingerTip(rightHand);
+
+                if (rightCenter && rightIndexTip) {
+                    // 移動処理
+                    if (boardDragStart === null) {
+                        boardDragStart = rightCenter.clone();
+                        lastHandAngleY = null;
+                        lastHandAngleX = null;
+                    } else {
+                        const delta = new THREE.Vector3().subVectors(rightCenter, boardDragStart);
+                        boardGroup.position.add(delta);
+                        boardDragStart = rightCenter.clone();
+                    }
+
+                    // 手の向きの変化量で回転を加算
+                    const handDirection = new THREE.Vector3()
+                        .subVectors(rightIndexTip.position, rightCenter);
+
+                    // Y軸回転（水平方向の向き）
+                    const handAngleY = Math.atan2(handDirection.x, handDirection.z);
+                    if (lastHandAngleY !== null) {
+                        let deltaAngleY = handAngleY - lastHandAngleY;
+                        // -πとπの境界を考慮
+                        if (deltaAngleY > Math.PI) deltaAngleY -= Math.PI * 2;
+                        if (deltaAngleY < -Math.PI) deltaAngleY += Math.PI * 2;
+                        boardGroup.rotation.y += deltaAngleY;
+                    }
+                    lastHandAngleY = handAngleY;
+
+                    // X軸回転（上下の傾き）
+                    const horizontalDistance = Math.sqrt(
+                        handDirection.x * handDirection.x +
+                        handDirection.z * handDirection.z
+                    );
+                    const handAngleX = -Math.atan2(handDirection.y, horizontalDistance);
+                    if (lastHandAngleX !== null) {
+                        let deltaAngleX = handAngleX - lastHandAngleX;
+                        // -πとπの境界を考慮
+                        if (deltaAngleX > Math.PI) deltaAngleX -= Math.PI * 2;
+                        if (deltaAngleX < -Math.PI) deltaAngleX += Math.PI * 2;
+                        boardGroup.rotation.x += deltaAngleX;
+                    }
+                    lastHandAngleX = handAngleX;
+                }
+            } else {
+                if (rightPinchDist === null || rightPinchDist >= 0.02) {
+                    boardDragStart = null;
+                    lastHandAngleY = null;
+                    lastHandAngleX = null;
+                }
+            }
+        }
+
+        function updatePointers(leftHand, rightHand) {
+            // 左手のポインター
+            const leftIndexTip = getIndexFingerTip(leftHand);
+            if (leftIndexTip) {
+                leftPointer.position.copy(leftIndexTip.position);
+                leftPointer.visible = true;
+            } else {
+                leftPointer.visible = false;
+            }
+
+            // 右手のポインター
+            const rightIndexTip = getIndexFingerTip(rightHand);
+            if (rightIndexTip) {
+                rightPointer.position.copy(rightIndexTip.position);
+                rightPointer.visible = true;
+            } else {
+                rightPointer.visible = false;
+            }
+        }
+
+        function checkBoardTouch(leftHand, rightHand, bothPinching) {
+            // 両手ピンチ中や移動中は無効
+            if (bothPinching || boardDragStart !== null) {
+                isTouching.left = false;
+                isTouching.right = false;
+                return;
+            }
+
+            // 左手のタッチ判定
+            const leftIndexTip = getIndexFingerTip(leftHand);
+            if (leftIndexTip) {
+                const leftTouching = checkPointerTouch(leftIndexTip);
+                if (leftTouching && !isTouching.left) {
+                    // タッチ開始
+                    isTouching.left = true;
+                    handleTouchPlace(leftHand);
+                } else if (!leftTouching) {
+                    isTouching.left = false;
+                }
+            }
+
+            // 右手のタッチ判定
+            const rightIndexTip = getIndexFingerTip(rightHand);
+            if (rightIndexTip) {
+                const rightPinchDist = getPinchDistance(rightHand);
+                // ピンチしていない場合のみタッチ判定
+                if (rightPinchDist === null || rightPinchDist >= 0.02) {
+                    const rightTouching = checkPointerTouch(rightIndexTip);
+                    if (rightTouching && !isTouching.right) {
+                        // タッチ開始
+                        isTouching.right = true;
+                        handleTouchPlace(rightHand);
+                    } else if (!rightTouching) {
+                        isTouching.right = false;
+                    }
+                }
+            }
+        }
+
+        function checkPointerTouch(indexTip) {
+            // 人差し指の位置から盤面の中心に向かってレイキャスト
+            const rayOrigin = indexTip.position.clone();
+            const rayDirection = new THREE.Vector3()
+                .subVectors(boardGroup.position, rayOrigin)
+                .normalize();
+
+            raycaster.set(rayOrigin, rayDirection);
+            const intersects = raycaster.intersectObjects(boardGroup.children, true);
+
+            if (intersects.length > 0) {
+                // 盤面までの距離が3cm以内ならタッチとみなす
+                return intersects[0].distance < 0.03;
+            }
+            return false;
+        }
+
+        function handleTouchPlace(hand) {
+            const indexTip = getIndexFingerTip(hand);
+            if (!indexTip) return;
+
+            // 人差し指の位置から盤面の中心に向かってレイキャスト
+            const rayOrigin = indexTip.position.clone();
+            const rayDirection = new THREE.Vector3()
+                .subVectors(boardGroup.position, rayOrigin)
+                .normalize();
+
+            raycaster.set(rayOrigin, rayDirection);
+            const intersects = raycaster.intersectObjects(boardGroup.children, true);
+
+            if (intersects.length > 0) {
+                for (let i = 0; i < intersects.length; i++) {
+                    const obj = intersects[i].object;
+                    if (obj.userData && obj.userData.x !== undefined) {
+                        const ix = obj.userData.x;
+                        const iz = obj.userData.z;
+                        attemptMove(ix, iz);
+                        break;
+                    }
+                }
+            }
+        }
+
+        function handlePinchPlace(hand) {
+            const indexTip = getIndexFingerTip(hand);
+            if (!indexTip) return;
+
+            // 人差し指の位置から盤面の中心に向かってレイキャスト
+            const rayOrigin = indexTip.position.clone();
+            const rayDirection = new THREE.Vector3()
+                .subVectors(boardGroup.position, rayOrigin)
+                .normalize();
+
+            raycaster.set(rayOrigin, rayDirection);
+
+            // boardGroupの子要素（マス目とコマ）を全て検査
+            const intersects = raycaster.intersectObjects(boardGroup.children, true);
+
+            if (intersects.length > 0) {
+                // 最初にヒットしたオブジェクトを探す
+                for (let i = 0; i < intersects.length; i++) {
+                    const obj = intersects[i].object;
+                    // マス目のデータを持つオブジェクトを探す
+                    if (obj.userData && obj.userData.x !== undefined) {
+                        const ix = obj.userData.x;
+                        const iz = obj.userData.z;
+                        attemptMove(ix, iz);
+                        break;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
