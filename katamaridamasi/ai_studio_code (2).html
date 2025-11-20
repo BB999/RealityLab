@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Three.js Katamari Clone (Size Limit Ver)</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+            pointer-events: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        矢印キー (WASD) で移動<br>
+        サイズ(半径): <span id="size-display">1.00</span>m<br>
+        <small>※大きい物体は弾かれます！小さいものから巻き込んでください</small>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import * as CANNON from 'cannon-es';
+
+        // --- 設定 ---
+        const START_SIZE = 1.0;
+        let currentSize = START_SIZE;
+        const WORLD_GRAVITY = -50;
+        const FLOOR_SIZE = 300;
+        
+        // --- Three.js 初期化 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 150);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 20, 30);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        // --- 照明 ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(50, 100, 50);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.left = -100;
+        dirLight.shadow.camera.right = 100;
+        dirLight.shadow.camera.top = 100;
+        dirLight.shadow.camera.bottom = -100;
+        scene.add(dirLight);
+
+        // --- 物理エンジン ---
+        const world = new CANNON.World();
+        world.gravity.set(0, WORLD_GRAVITY, 0);
+        world.broadphase = new CANNON.NaiveBroadphase();
+        world.solver.iterations = 20;
+
+        const physicsMaterial = new CANNON.Material('physics');
+        const physics_physics = new CANNON.ContactMaterial(physicsMaterial, physicsMaterial, {
+            friction: 0.9,
+            restitution: 0.1, // あまり跳ねない
+        });
+        world.addContactMaterial(physics_physics);
+
+        // --- 地面 ---
+        const floorGeo = new THREE.PlaneGeometry(FLOOR_SIZE, FLOOR_SIZE);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+        const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+        floorMesh.receiveShadow = true;
+        floorMesh.rotation.x = -Math.PI / 2;
+        scene.add(floorMesh);
+
+        const floorBody = new CANNON.Body({
+            type: CANNON.Body.STATIC,
+            shape: new CANNON.Plane(),
+            material: physicsMaterial
+        });
+        floorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+        world.addBody(floorBody);
+
+        // --- プレイヤー（塊） ---
+        const ballGeo = new THREE.SphereGeometry(START_SIZE, 32, 32);
+        const canvas = document.createElement('canvas');
+        canvas.width = 128; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#FFD700'; ctx.fillRect(0,0,128,128);
+        ctx.fillStyle = '#FF4500'; ctx.fillRect(0,0,64,64); ctx.fillRect(64,64,64,64);
+        const ballTexture = new THREE.CanvasTexture(canvas);
+        
+        const ballMat = new THREE.MeshStandardMaterial({ map: ballTexture, roughness: 0.7 });
+        const ballMesh = new THREE.Mesh(ballGeo, ballMat);
+        ballMesh.castShadow = true;
+        scene.add(ballMesh);
+
+        const ballShape = new CANNON.Sphere(START_SIZE);
+        const ballBody = new CANNON.Body({
+            mass: 50,
+            shape: ballShape,
+            position: new CANNON.Vec3(0, 5, 0),
+            material: physicsMaterial,
+            angularDamping: 0.99, // 慣性制御
+            linearDamping: 0.9,
+        });
+        world.addBody(ballBody);
+
+        // --- 王子（キャラクター） ---
+        const princeGroup = new THREE.Group();
+        const princeParts = {};
+
+        function createPrince() {
+            // 頭
+            const headGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.6, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0x00FF00 });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.rotation.z = Math.PI / 2;
+            head.position.y = 0.8;
+            head.castShadow = true;
+            princeGroup.add(head);
+
+            // 顔
+            const faceGeo = new THREE.CylinderGeometry(0.16, 0.16, 0.2, 16);
+            const faceMat = new THREE.MeshStandardMaterial({ color: 0x4B0082 });
+            const face = new THREE.Mesh(faceGeo, faceMat);
+            face.rotation.z = Math.PI / 2;
+            face.position.y = 0.8;
+            princeGroup.add(face);
+
+            // アンテナ
+            const antGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.2);
+            const antMat = new THREE.MeshStandardMaterial({ color: 0xFF0000 });
+            const ant = new THREE.Mesh(antGeo, antMat);
+            ant.position.y = 1.0;
+            const antBall = new THREE.Mesh(new THREE.SphereGeometry(0.05), antMat);
+            antBall.position.y = 1.1;
+            princeGroup.add(ant);
+            princeGroup.add(antBall);
+
+            // 体
+            const bodyGeo = new THREE.BoxGeometry(0.2, 0.3, 0.15);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x00FF00 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.5;
+            body.castShadow = true;
+            princeGroup.add(body);
+
+            // 足
+            const legGeo = new THREE.BoxGeometry(0.08, 0.3, 0.08);
+            const legMat = new THREE.MeshStandardMaterial({ color: 0x4B0082 });
+            
+            const lLegGroup = new THREE.Group();
+            lLegGroup.position.set(-0.06, 0.35, 0);
+            const leftLeg = new THREE.Mesh(legGeo, legMat);
+            leftLeg.position.set(0, -0.15, 0);
+            lLegGroup.add(leftLeg);
+            princeGroup.add(lLegGroup);
+
+            const rLegGroup = new THREE.Group();
+            rLegGroup.position.set(0.06, 0.35, 0);
+            const rightLeg = new THREE.Mesh(legGeo, legMat);
+            rightLeg.position.set(0, -0.15, 0);
+            rLegGroup.add(rightLeg);
+            princeGroup.add(rLegGroup);
+
+            // 腕
+            const armGeo = new THREE.BoxGeometry(0.06, 0.3, 0.06);
+            const lArmGroup = new THREE.Group();
+            lArmGroup.position.set(-0.14, 0.6, 0);
+            const leftArm = new THREE.Mesh(armGeo, bodyMat);
+            leftArm.position.set(0, -0.15, 0);
+            lArmGroup.add(leftArm);
+            princeGroup.add(lArmGroup);
+
+            const rArmGroup = new THREE.Group();
+            rArmGroup.position.set(0.14, 0.6, 0);
+            const rightArm = new THREE.Mesh(armGeo, bodyMat);
+            rightArm.position.set(0, -0.15, 0);
+            rArmGroup.add(rightArm);
+            princeGroup.add(rArmGroup);
+
+            lArmGroup.rotation.x = -Math.PI / 3; 
+            rArmGroup.rotation.x = -Math.PI / 3;
+
+            princeParts.lLeg = lLegGroup;
+            princeParts.rLeg = rLegGroup;
+            princeParts.lArm = lArmGroup;
+            princeParts.rArm = rArmGroup;
+            
+            princeGroup.scale.set(2.0, 2.0, 2.0); // 巨大王子
+
+            scene.add(princeGroup);
+        }
+
+        createPrince();
+
+
+        // --- 物体管理 ---
+        const objectsToCatch = []; 
+
+        function createRandomObject() {
+            const x = (Math.random() - 0.5) * (FLOOR_SIZE - 20);
+            const z = (Math.random() - 0.5) * (FLOOR_SIZE - 20);
+            const y = 15 + Math.random() * 30;
+
+            const type = Math.floor(Math.random() * 4); 
+            let mesh, body, shape, widthForGrow;
+
+            const color = new THREE.Color().setHSL(Math.random(), 1, 0.5);
+            const material = new THREE.MeshStandardMaterial({ color: color });
+            
+            // 0.3(小さい) 〜 5.3(超巨大) までランダムに生成
+            // 最初は小さいものを拾う必要がある
+            const scaleBase = 0.3 + Math.random() * 5.0; 
+
+            if (type === 0) { // 箱
+                const sx = scaleBase * (0.8 + Math.random());
+                const sy = scaleBase * (0.8 + Math.random());
+                const sz = scaleBase * (0.8 + Math.random());
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), material);
+                shape = new CANNON.Box(new CANNON.Vec3(sx/2, sy/2, sz/2));
+                widthForGrow = Math.max(sx, sy, sz);
+            } 
+            else if (type === 1) { // 柱 or 板
+                if (Math.random() > 0.5) {
+                    const sx = scaleBase * 0.3;
+                    const sy = scaleBase * 3.0;
+                    const sz = scaleBase * 0.3;
+                    mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), material);
+                    shape = new CANNON.Box(new CANNON.Vec3(sx/2, sy/2, sz/2));
+                    widthForGrow = sy * 0.5;
+                } else {
+                    const sx = scaleBase * 2.0;
+                    const sy = scaleBase * 0.1;
+                    const sz = scaleBase * 2.0;
+                    mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), material);
+                    shape = new CANNON.Box(new CANNON.Vec3(sx/2, sy/2, sz/2));
+                    widthForGrow = sx * 0.5;
+                }
+            }
+            else if (type === 2) { // 球体
+                const r = scaleBase * 0.6;
+                mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 16), material);
+                shape = new CANNON.Sphere(r);
+                widthForGrow = r * 2;
+            }
+            else { // 円柱
+                const rt = scaleBase * 0.4;
+                const h = scaleBase * 1.2;
+                mesh = new THREE.Mesh(new THREE.CylinderGeometry(rt, rt, h, 16), material);
+                shape = new CANNON.Cylinder(rt, rt, h, 12);
+                widthForGrow = h;
+            }
+
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.position.set(x, y, z);
+            scene.add(mesh);
+
+            body = new CANNON.Body({
+                mass: scaleBase * 10, // 質量を重くする（弾かれた時の反動のため）
+                shape: shape,
+                position: new CANNON.Vec3(x, y, z),
+                material: physicsMaterial
+            });
+            body.quaternion.setFromEuler(Math.random()*Math.PI, Math.random()*Math.PI, 0);
+            world.addBody(body);
+
+            objectsToCatch.push({ mesh, body, width: widthForGrow });
+        }
+
+        // 初期配置
+        for(let i=0; i<100; i++) { createRandomObject(); }
+        setInterval(createRandomObject, 500); 
+
+
+        // --- 接着ロジック（重要修正箇所） ---
+        ballBody.addEventListener("collide", (e) => {
+            const contactBody = e.body;
+            
+            // 衝突した相手が「巻き込み対象リスト」にあるか探す
+            const index = objectsToCatch.findIndex(obj => obj.body === contactBody);
+
+            if (index !== -1) {
+                const target = objectsToCatch[index];
+                
+                // 【サイズチェック】
+                // currentSize（塊の半径）に対して、物体の大きさが許容範囲か？
+                // 許容範囲: 塊の直径(半径*2)に対して、物体のサイズが「少し小さい」くらいまでOKとする
+                // ここでは「塊の半径 * 1.3」より小さい物体ならくっつく、とします。
+                // これにより、自分と同じくらいの大きさの物体は弾かれます。
+                
+                const catchThreshold = currentSize * 1.3;
+
+                if (target.width < catchThreshold) {
+                    stickObject(target, index);
+                } else {
+                    // くっつかない（何もしない）。
+                    // Cannon.jsの物理演算により、自然と衝突・反射します。
+                }
+            }
+        });
+
+        function stickObject(target, index) {
+            world.removeBody(target.body);
+            objectsToCatch.splice(index, 1);
+            ballMesh.attach(target.mesh);
+
+            const growFactor = 0.02 * target.width; 
+            ballShape.radius += growFactor;
+            ballBody.updateBoundingRadius(); 
+            currentSize += growFactor;
+            
+            document.getElementById('size-display').innerText = currentSize.toFixed(2);
+        }
+
+        // --- 操作 ---
+        const keyState = {};
+        let currentAngle = 0;
+
+        window.addEventListener('keydown', (e) => { keyState[e.code] = true; });
+        window.addEventListener('keyup', (e) => { keyState[e.code] = false; });
+
+        function lerpAngle(start, end, t) {
+            const diff = end - start;
+            const wrappedDiff = Math.atan2(Math.sin(diff), Math.cos(diff)); 
+            return start + wrappedDiff * t;
+        }
+
+        function updateControlAndPrince(time) {
+            let inputX = 0;
+            let inputZ = 0;
+            let isMoving = false;
+
+            if (keyState['KeyW'] || keyState['ArrowUp'])    { inputZ -= 1; }
+            if (keyState['KeyS'] || keyState['ArrowDown'])  { inputZ += 1; }
+            if (keyState['KeyA'] || keyState['ArrowLeft'])  { inputX -= 1; }
+            if (keyState['KeyD'] || keyState['ArrowRight']) { inputX += 1; }
+
+            // 塊が大きくなると質量感（操作の重さ）を出すために力を調整
+            const strength = 2500 * Math.pow(currentSize, 1.5);
+            
+            if (inputX !== 0 || inputZ !== 0) {
+                isMoving = true;
+                const torqueX = inputZ * strength;
+                const torqueZ = inputX * -strength;
+
+                ballBody.applyTorque(new CANNON.Vec3(torqueX, 0, torqueZ));
+
+                const moveAngle = Math.atan2(inputX, inputZ); 
+                currentAngle = lerpAngle(currentAngle, moveAngle, 0.15);
+            }
+
+            // 王子の位置計算
+            const bx = ballMesh.position.x;
+            const by = ballMesh.position.y;
+            const bz = ballMesh.position.z;
+            const dist = currentSize + 3.5; 
+
+            const px = bx - Math.sin(currentAngle) * dist;
+            const pz = bz - Math.cos(currentAngle) * dist;
+            let py = by - currentSize + 1.0;
+            if (py < 1.0) py = 1.0;
+
+            princeGroup.position.set(px, py, pz);
+            princeGroup.lookAt(bx, by, bz); 
+
+            if (isMoving) {
+                const speed = 20;
+                princeParts.lLeg.rotation.x = Math.sin(time * speed) * 0.8;
+                princeParts.rLeg.rotation.x = Math.cos(time * speed) * 0.8;
+                princeParts.lArm.rotation.x = -Math.PI/3 + Math.sin(time * speed) * 0.3;
+                princeParts.rArm.rotation.x = -Math.PI/3 + Math.cos(time * speed) * 0.3;
+                princeGroup.position.y += Math.abs(Math.sin(time * speed * 2)) * 0.1;
+            } else {
+                princeParts.lLeg.rotation.x = THREE.MathUtils.lerp(princeParts.lLeg.rotation.x, 0, 0.1);
+                princeParts.rLeg.rotation.x = THREE.MathUtils.lerp(princeParts.rLeg.rotation.x, 0, 0.1);
+                princeParts.lArm.rotation.x = THREE.MathUtils.lerp(princeParts.lArm.rotation.x, -Math.PI/3, 0.1);
+                princeParts.rArm.rotation.x = THREE.MathUtils.lerp(princeParts.rArm.rotation.x, -Math.PI/3, 0.1);
+            }
+
+            const camOffsetZ = 20 + (currentSize * 3);
+            const camOffsetY = 15 + (currentSize * 2);
+            
+            const targetCamPos = new THREE.Vector3(bx, by + camOffsetY, bz + camOffsetZ);
+            camera.position.lerp(targetCamPos, 0.1);
+            camera.lookAt(bx, by, bz);
+        }
+
+
+        // --- アニメーションループ ---
+        const timeStep = 1 / 60;
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const elapsedTime = clock.getElapsedTime();
+
+            world.step(timeStep);
+            updateControlAndPrince(elapsedTime);
+
+            ballMesh.position.copy(ballBody.position);
+            ballMesh.quaternion.copy(ballBody.quaternion);
+
+            for (const obj of objectsToCatch) {
+                obj.mesh.position.copy(obj.body.position);
+                obj.mesh.quaternion.copy(obj.body.quaternion);
+                
+                if (obj.body.position.y < -20) {
+                   // リセット時はサイズをランダムにし直して再利用
+                   // リセット時に巨大なものが降ってくる可能性あり
+                   obj.body.position.set((Math.random()-0.5)*FLOOR_SIZE/2, 30, (Math.random()-0.5)*FLOOR_SIZE/2);
+                   obj.body.velocity.set(0,0,0);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

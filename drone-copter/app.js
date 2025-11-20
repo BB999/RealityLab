@@ -113,7 +113,7 @@ function init() {
       propellers = [];
       drone.traverse((child) => {
         if (child.name === 'pera1' || child.name === 'pera2' ||
-            child.name === 'pera3' || child.name === 'pera4') {
+          child.name === 'pera3' || child.name === 'pera4') {
 
           // ジオメトリの中心を計算
           if (child.geometry) {

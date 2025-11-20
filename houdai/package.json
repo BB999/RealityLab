@@ -1,0 +1,21 @@
+{
+  "name": "quest3-mr-defense",
+  "version": "1.0.0",
+  "description": "Quest3 MR Defense Game",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": ["webxr", "quest3", "mr", "three.js"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "vite-plugin-mkcert": "^1.17.0"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  }
+}
