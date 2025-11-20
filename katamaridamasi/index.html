@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Katamari MR - Mixed Reality</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 10px;
+            pointer-events: none;
+            user-select: none;
+            z-index: 100;
+        }
+        #MRButton {
+            position: absolute;
+            bottom: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 40px;
+            font-size: 1.2em;
+            background: #00d4ff;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            z-index: 100;
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+        #MRButton:hover {
+            background: #0099ff;
+            transform: translateX(-50%) translateY(-3px);
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2>Katamari MR</h2>
+        <p>Quest 3でMRモードを起動してください</p>
+        <p>左スティック: 移動</p>
+        <p>右スティック: 移動</p>
+        <p>サイズ(半径): <span id="size-display">1.00</span>m</p>
+        <small>※大きい物体は弾かれます！小さいものから巻き込んでください</small>
+    </div>
+
+    <script type="module" src="./main.js"></script>
+</body>
+</html>
