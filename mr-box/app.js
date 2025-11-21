@@ -376,12 +376,139 @@ class MRDepthButton {
   }
 }
 
+// MRButton helper with mesh-detection
+class MRMeshButton {
+  static createButton(renderer, onSessionStarted) {
+    const button = document.createElement('button');
+
+    function showStartMR() {
+      let currentSession = null;
+
+      async function onMRSessionStarted(session) {
+        session.addEventListener('end', onSessionEnded);
+
+        await renderer.xr.setSession(session);
+        button.textContent = 'EXIT MR';
+
+        currentSession = session;
+
+        if (onSessionStarted) {
+          onSessionStarted(session);
+        }
+      }
+
+      function onSessionEnded() {
+        currentSession.removeEventListener('end', onSessionEnded);
+
+        button.textContent = 'ENTER MR (mesh-detection)';
+
+        currentSession = null;
+      }
+
+      button.style.display = '';
+      button.style.cursor = 'pointer';
+      button.style.left = 'calc(50% - 100px)';
+      button.style.width = '200px';
+      button.textContent = 'ENTER MR (mesh-detection)';
+
+      button.onmouseenter = function () {
+        button.style.opacity = '1.0';
+        button.style.transform = 'scale(1.05)';
+      };
+
+      button.onmouseleave = function () {
+        button.style.opacity = '0.9';
+        button.style.transform = 'scale(1)';
+      };
+
+      button.onclick = function () {
+        if (currentSession === null) {
+          const sessionInit = {
+            requiredFeatures: ['mesh-detection']
+          };
+          navigator.xr.requestSession('immersive-ar', sessionInit).then(onMRSessionStarted);
+        } else {
+          currentSession.end();
+        }
+      };
+    }
+
+    function disableButton() {
+      button.style.display = '';
+      button.style.cursor = 'auto';
+      button.style.left = 'calc(50% - 75px)';
+      button.style.width = '150px';
+
+      button.onmouseenter = null;
+      button.onmouseleave = null;
+      button.onclick = null;
+    }
+
+    function showMRNotSupported() {
+      disableButton();
+      button.textContent = 'MR NOT SUPPORTED';
+    }
+
+    function showMRNotAllowed() {
+      disableButton();
+      button.textContent = 'MR NOT ALLOWED';
+    }
+
+    button.style.position = 'absolute';
+    button.style.top = 'calc(50% + 180px)';
+    button.style.padding = '16px 24px';
+    button.style.border = '2px solid #fff';
+    button.style.borderRadius = '12px';
+    button.style.background = 'linear-gradient(135deg, rgba(139, 92, 246, 0.8), rgba(168, 85, 247, 0.8))';
+    button.style.color = '#fff';
+    button.style.font = 'bold 14px sans-serif';
+    button.style.textAlign = 'center';
+    button.style.opacity = '0.9';
+    button.style.outline = 'none';
+    button.style.zIndex = '999';
+    button.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.3)';
+    button.style.transition = 'all 0.3s ease';
+
+    if ('xr' in navigator) {
+      navigator.xr.isSessionSupported('immersive-ar').then(function (supported) {
+        supported ? showStartMR() : showMRNotSupported();
+      }).catch(showMRNotAllowed);
+
+      return button;
+    } else {
+      const message = document.createElement('a');
+      message.href = 'https://immersiveweb.dev/';
+      message.innerHTML = 'WEBXR NOT AVAILABLE';
+
+      message.style.left = 'calc(50% - 90px)';
+      message.style.width = '180px';
+      message.style.textDecoration = 'none';
+
+      message.style.position = 'absolute';
+      message.style.bottom = '20px';
+      message.style.padding = '12px 6px';
+      message.style.border = '1px solid #fff';
+      message.style.borderRadius = '4px';
+      message.style.background = 'rgba(0,0,0,0.1)';
+      message.style.color = '#fff';
+      message.style.font = 'normal 13px sans-serif';
+      message.style.textAlign = 'center';
+      message.style.opacity = '0.5';
+      message.style.outline = 'none';
+      message.style.zIndex = '999';
+
+      return message;
+    }
+  }
+}
+
 let camera, scene, renderer;
 let cube;
 let rightController;
 let cubePositioned = false;
 let xrSession = null;
 let detectedPlanes = new Map();
+let detectedMeshes = new Map();
 let depthDataTexture = null;
 let depthEnabled = false;
 let occlusionMesh = null;
@@ -494,6 +621,11 @@ function init() {
   // MRボタンの作成（depth-sensing付き）
   document.body.appendChild(
     MRDepthButton.createButton(renderer, onMRSessionStarted)
+  );
+
+  // MRボタンの作成（mesh-detection付き）
+  document.body.appendChild(
+    MRMeshButton.createButton(renderer, onMRSessionStarted)
   );
 
   // ウィンドウリサイズ対応
@@ -676,6 +808,107 @@ function render() {
               mesh.geometry.dispose();
               mesh.geometry = geometry;
             }
+          }
+        });
+      }
+
+      // mesh-detectionの処理
+      const detectedMeshesThisFrame = frame.detectedMeshes;
+
+      if (detectedMeshesThisFrame) {
+        // 古いメッシュを削除
+        detectedMeshes.forEach((threeMesh, xrMesh) => {
+          if (!detectedMeshesThisFrame.has(xrMesh)) {
+            scene.remove(threeMesh);
+            detectedMeshes.delete(xrMesh);
+          }
+        });
+
+        // 新しいメッシュを追加または更新
+        detectedMeshesThisFrame.forEach((xrMesh) => {
+          const pose = frame.getPose(xrMesh.meshSpace, referenceSpace);
+          if (pose) {
+            let threeMesh = detectedMeshes.get(xrMesh);
+
+            if (!threeMesh) {
+              // 新しいメッシュを作成
+              const geometry = new THREE.BufferGeometry();
+
+              // メッシュの頂点データを取得
+              const vertices = xrMesh.vertices;
+              const indices = xrMesh.indices;
+
+              // BufferGeometryにデータを設定
+              geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+              if (indices) {
+                geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
+              }
+              geometry.computeVertexNormals();
+
+              // semanticLabelに応じて色と透明度を設定
+              const label = xrMesh.semanticLabel || 'unknown';
+              let color = 0x00ffaa;
+              let opacity = 0.7;
+
+              if (label === 'global mesh') {
+                // global meshは薄く表示
+                color = 0x444444;
+                opacity = 0.15;
+              } else if (label === 'table') {
+                color = 0xff6b6b;
+              } else if (label === 'bed') {
+                color = 0x4ecdc4;
+              } else if (label === 'shelf') {
+                color = 0xffe66d;
+              } else if (label === 'wall') {
+                color = 0x95e1d3;
+                opacity = 0.3;
+              } else if (label === 'floor') {
+                color = 0xf38181;
+                opacity = 0.3;
+              } else if (label === 'ceiling') {
+                color = 0xaa96da;
+                opacity = 0.3;
+              }
+
+              // ワイヤーフレーム表示用のマテリアル
+              const material = new THREE.MeshBasicMaterial({
+                color: color,
+                wireframe: true,
+                transparent: true,
+                opacity: opacity,
+                side: THREE.DoubleSide
+              });
+
+              threeMesh = new THREE.Mesh(geometry, material);
+              scene.add(threeMesh);
+              detectedMeshes.set(xrMesh, threeMesh);
+
+              console.log('New mesh detected:', {
+                vertexCount: vertices.length / 3,
+                indexCount: indices ? indices.length : 0,
+                meshSpace: xrMesh.meshSpace,
+                semanticLabel: label
+              });
+            } else {
+              // 既存のメッシュを更新
+              const geometry = threeMesh.geometry;
+              const vertices = xrMesh.vertices;
+              const indices = xrMesh.indices;
+
+              geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+              if (indices) {
+                geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
+              }
+              geometry.computeVertexNormals();
+              geometry.attributes.position.needsUpdate = true;
+            }
+
+            // メッシュの変換行列を適用
+            const matrix = new THREE.Matrix4();
+            matrix.fromArray(pose.transform.matrix);
+            threeMesh.matrixAutoUpdate = false;
+            threeMesh.matrix.copy(matrix);
           }
         });
       }
