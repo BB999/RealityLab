@@ -140,14 +140,20 @@ function init() {
   light.position.set(0.5, 1, 0.25);
   scene.add(light);
 
-  // キューブの作成
+  // キューブの作成（各面に異なる色）
   const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-  const material = new THREE.MeshStandardMaterial({
-    color: 0x00ff00,
-    roughness: 0.7,
-    metalness: 0.3
-  });
-  cube = new THREE.Mesh(geometry, material);
+
+  // 各面に異なる色のマテリアルを作成
+  const materials = [
+    new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.7, metalness: 0.3 }), // 右面: 赤
+    new THREE.MeshStandardMaterial({ color: 0xff6600, roughness: 0.7, metalness: 0.3 }), // 左面: オレンジ
+    new THREE.MeshStandardMaterial({ color: 0x00ff00, roughness: 0.7, metalness: 0.3 }), // 上面: 緑
+    new THREE.MeshStandardMaterial({ color: 0x0000ff, roughness: 0.7, metalness: 0.3 }), // 下面: 青
+    new THREE.MeshStandardMaterial({ color: 0xffff00, roughness: 0.7, metalness: 0.3 }), // 前面: 黄
+    new THREE.MeshStandardMaterial({ color: 0xff00ff, roughness: 0.7, metalness: 0.3 })  // 後面: マゼンタ
+  ];
+
+  cube = new THREE.Mesh(geometry, materials);
 
   // レンダラーの作成
   renderer = new THREE.WebGLRenderer({
