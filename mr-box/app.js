@@ -12,7 +12,7 @@ class ARButton {
         session.addEventListener('end', onSessionEnded);
 
         await renderer.xr.setSession(session);
-        button.textContent = 'STOP AR';
+        button.textContent = 'EXIT AR';
 
         currentSession = session;
       }
@@ -20,23 +20,25 @@ class ARButton {
       function onSessionEnded() {
         currentSession.removeEventListener('end', onSessionEnded);
 
-        button.textContent = 'START AR';
+        button.textContent = 'ENTER AR';
 
         currentSession = null;
       }
 
       button.style.display = '';
       button.style.cursor = 'pointer';
-      button.style.left = 'calc(50% - 50px)';
-      button.style.width = '100px';
-      button.textContent = 'START AR';
+      button.style.left = 'calc(50% - 100px)';
+      button.style.width = '200px';
+      button.textContent = 'ENTER AR';
 
       button.onmouseenter = function () {
         button.style.opacity = '1.0';
+        button.style.transform = 'scale(1.05)';
       };
 
       button.onmouseleave = function () {
-        button.style.opacity = '0.5';
+        button.style.opacity = '0.9';
+        button.style.transform = 'scale(1)';
       };
 
       button.onclick = function () {
@@ -70,17 +72,19 @@ class ARButton {
     }
 
     button.style.position = 'absolute';
-    button.style.bottom = '20px';
-    button.style.padding = '12px 6px';
-    button.style.border = '1px solid #fff';
-    button.style.borderRadius = '4px';
-    button.style.background = 'rgba(0,0,0,0.1)';
+    button.style.top = 'calc(50% - 60px)';
+    button.style.padding = '16px 24px';
+    button.style.border = '2px solid #fff';
+    button.style.borderRadius = '12px';
+    button.style.background = 'linear-gradient(135deg, rgba(102, 126, 234, 0.8), rgba(118, 75, 162, 0.8))';
     button.style.color = '#fff';
-    button.style.font = 'normal 13px sans-serif';
+    button.style.font = 'bold 14px sans-serif';
     button.style.textAlign = 'center';
-    button.style.opacity = '0.5';
+    button.style.opacity = '0.9';
     button.style.outline = 'none';
     button.style.zIndex = '999';
+    button.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.3)';
+    button.style.transition = 'all 0.3s ease';
 
     if ('xr' in navigator) {
       navigator.xr.isSessionSupported('immersive-ar').then(function (supported) {
@@ -127,7 +131,7 @@ class MRButton {
         session.addEventListener('end', onSessionEnded);
 
         await renderer.xr.setSession(session);
-        button.textContent = 'STOP MR';
+        button.textContent = 'EXIT MR';
 
         currentSession = session;
 
@@ -139,23 +143,25 @@ class MRButton {
       function onSessionEnded() {
         currentSession.removeEventListener('end', onSessionEnded);
 
-        button.textContent = 'START MR';
+        button.textContent = 'ENTER MR (plane-detection)';
 
         currentSession = null;
       }
 
       button.style.display = '';
       button.style.cursor = 'pointer';
-      button.style.left = 'calc(50% + 60px)';
-      button.style.width = '100px';
-      button.textContent = 'START MR';
+      button.style.left = 'calc(50% - 100px)';
+      button.style.width = '200px';
+      button.textContent = 'ENTER MR (plane-detection)';
 
       button.onmouseenter = function () {
         button.style.opacity = '1.0';
+        button.style.transform = 'scale(1.05)';
       };
 
       button.onmouseleave = function () {
-        button.style.opacity = '0.5';
+        button.style.opacity = '0.9';
+        button.style.transform = 'scale(1)';
       };
 
       button.onclick = function () {
@@ -193,17 +199,19 @@ class MRButton {
     }
 
     button.style.position = 'absolute';
-    button.style.bottom = '20px';
-    button.style.padding = '12px 6px';
-    button.style.border = '1px solid #fff';
-    button.style.borderRadius = '4px';
-    button.style.background = 'rgba(0,0,0,0.1)';
+    button.style.top = 'calc(50% + 20px)';
+    button.style.padding = '16px 24px';
+    button.style.border = '2px solid #fff';
+    button.style.borderRadius = '12px';
+    button.style.background = 'linear-gradient(135deg, rgba(234, 88, 12, 0.8), rgba(220, 38, 38, 0.8))';
     button.style.color = '#fff';
-    button.style.font = 'normal 13px sans-serif';
+    button.style.font = 'bold 14px sans-serif';
     button.style.textAlign = 'center';
-    button.style.opacity = '0.5';
+    button.style.opacity = '0.9';
     button.style.outline = 'none';
     button.style.zIndex = '999';
+    button.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.3)';
+    button.style.transition = 'all 0.3s ease';
 
     if ('xr' in navigator) {
       navigator.xr.isSessionSupported('immersive-ar').then(function (supported) {
