@@ -115,10 +115,135 @@ class ARButton {
   }
 }
 
+// MRButton helper with plane-detection
+class MRButton {
+  static createButton(renderer, onSessionStarted) {
+    const button = document.createElement('button');
+
+    function showStartMR() {
+      let currentSession = null;
+
+      async function onMRSessionStarted(session) {
+        session.addEventListener('end', onSessionEnded);
+
+        await renderer.xr.setSession(session);
+        button.textContent = 'STOP MR';
+
+        currentSession = session;
+
+        if (onSessionStarted) {
+          onSessionStarted(session);
+        }
+      }
+
+      function onSessionEnded() {
+        currentSession.removeEventListener('end', onSessionEnded);
+
+        button.textContent = 'START MR';
+
+        currentSession = null;
+      }
+
+      button.style.display = '';
+      button.style.cursor = 'pointer';
+      button.style.left = 'calc(50% + 60px)';
+      button.style.width = '100px';
+      button.textContent = 'START MR';
+
+      button.onmouseenter = function () {
+        button.style.opacity = '1.0';
+      };
+
+      button.onmouseleave = function () {
+        button.style.opacity = '0.5';
+      };
+
+      button.onclick = function () {
+        if (currentSession === null) {
+          const sessionInit = {
+            requiredFeatures: ['plane-detection'],
+            optionalFeatures: ['local-floor']
+          };
+          navigator.xr.requestSession('immersive-ar', sessionInit).then(onMRSessionStarted);
+        } else {
+          currentSession.end();
+        }
+      };
+    }
+
+    function disableButton() {
+      button.style.display = '';
+      button.style.cursor = 'auto';
+      button.style.left = 'calc(50% - 75px)';
+      button.style.width = '150px';
+
+      button.onmouseenter = null;
+      button.onmouseleave = null;
+      button.onclick = null;
+    }
+
+    function showMRNotSupported() {
+      disableButton();
+      button.textContent = 'MR NOT SUPPORTED';
+    }
+
+    function showMRNotAllowed() {
+      disableButton();
+      button.textContent = 'MR NOT ALLOWED';
+    }
+
+    button.style.position = 'absolute';
+    button.style.bottom = '20px';
+    button.style.padding = '12px 6px';
+    button.style.border = '1px solid #fff';
+    button.style.borderRadius = '4px';
+    button.style.background = 'rgba(0,0,0,0.1)';
+    button.style.color = '#fff';
+    button.style.font = 'normal 13px sans-serif';
+    button.style.textAlign = 'center';
+    button.style.opacity = '0.5';
+    button.style.outline = 'none';
+    button.style.zIndex = '999';
+
+    if ('xr' in navigator) {
+      navigator.xr.isSessionSupported('immersive-ar').then(function (supported) {
+        supported ? showStartMR() : showMRNotSupported();
+      }).catch(showMRNotAllowed);
+
+      return button;
+    } else {
+      const message = document.createElement('a');
+      message.href = 'https://immersiveweb.dev/';
+      message.innerHTML = 'WEBXR NOT AVAILABLE';
+
+      message.style.left = 'calc(50% - 90px)';
+      message.style.width = '180px';
+      message.style.textDecoration = 'none';
+
+      message.style.position = 'absolute';
+      message.style.bottom = '20px';
+      message.style.padding = '12px 6px';
+      message.style.border = '1px solid #fff';
+      message.style.borderRadius = '4px';
+      message.style.background = 'rgba(0,0,0,0.1)';
+      message.style.color = '#fff';
+      message.style.font = 'normal 13px sans-serif';
+      message.style.textAlign = 'center';
+      message.style.opacity = '0.5';
+      message.style.outline = 'none';
+      message.style.zIndex = '999';
+
+      return message;
+    }
+  }
+}
+
 let camera, scene, renderer;
 let cube;
 let rightController;
 let cubePositioned = false;
+let xrSession = null;
+let detectedPlanes = new Map();
 
 init();
 animate();
@@ -178,8 +303,17 @@ function init() {
     ARButton.createButton(renderer)
   );
 
+  // MRボタンの作成（plane-detection付き）
+  document.body.appendChild(
+    MRButton.createButton(renderer, onMRSessionStarted)
+  );
+
   // ウィンドウリサイズ対応
   window.addEventListener('resize', onWindowResize);
+}
+
+function onMRSessionStarted(session) {
+  xrSession = session;
 }
 
 function onWindowResize() {
@@ -193,6 +327,94 @@ function animate() {
 }
 
 function render() {
+  // plane-detectionの処理
+  if (xrSession) {
+    const frame = renderer.xr.getFrame();
+    if (frame) {
+      const referenceSpace = renderer.xr.getReferenceSpace();
+      const detectedPlanesThisFrame = frame.detectedPlanes;
+
+      if (detectedPlanesThisFrame) {
+        // 古い平面を削除
+        detectedPlanes.forEach((mesh, plane) => {
+          if (!detectedPlanesThisFrame.has(plane)) {
+            scene.remove(mesh);
+            detectedPlanes.delete(plane);
+          }
+        });
+
+        // 新しい平面を追加または更新
+        detectedPlanesThisFrame.forEach((plane) => {
+          const pose = frame.getPose(plane.planeSpace, referenceSpace);
+          if (pose) {
+            let mesh = detectedPlanes.get(plane);
+
+            if (!mesh) {
+              // 新しい平面のメッシュを作成
+              const geometry = new THREE.PlaneGeometry(1, 1);
+
+              // 平面ごとに異なる色をランダムに生成
+              const colors = [
+                0xff0000, // 赤
+                0x00ff00, // 緑
+                0x0000ff, // 青
+                0xffff00, // 黄
+                0xff00ff, // マゼンタ
+                0x00ffff, // シアン
+                0xff8800, // オレンジ
+                0x8800ff  // 紫
+              ];
+              const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+              const material = new THREE.MeshBasicMaterial({
+                color: randomColor,
+                transparent: true,
+                opacity: 0.5,
+                side: THREE.DoubleSide
+              });
+              mesh = new THREE.Mesh(geometry, material);
+              scene.add(mesh);
+              detectedPlanes.set(plane, mesh);
+            }
+
+            // 平面の変換行列を直接適用
+            const matrix = new THREE.Matrix4();
+            matrix.fromArray(pose.transform.matrix);
+            mesh.matrixAutoUpdate = false;
+            mesh.matrix.copy(matrix);
+
+            // 平面のサイズを更新
+            if (plane.polygon && plane.polygon.length > 0) {
+              // ポリゴンから境界を計算
+              let minX = Infinity, maxX = -Infinity;
+              let minZ = Infinity, maxZ = -Infinity;
+
+              plane.polygon.forEach(point => {
+                minX = Math.min(minX, point.x);
+                maxX = Math.max(maxX, point.x);
+                minZ = Math.min(minZ, point.z);
+                maxZ = Math.max(maxZ, point.z);
+              });
+
+              const width = maxX - minX;
+              const height = maxZ - minZ;
+
+              // ジオメトリを再作成してポリゴン形状に合わせる
+              const centerX = (minX + maxX) / 2;
+              const centerZ = (minZ + maxZ) / 2;
+
+              const geometry = new THREE.PlaneGeometry(width, height);
+              geometry.rotateX(-Math.PI / 2);
+              geometry.translate(centerX, centerZ, 0);
+              mesh.geometry.dispose();
+              mesh.geometry = geometry;
+            }
+          }
+        });
+      }
+    }
+  }
+
   // コントローラーの位置が取得できたら、その前方にキューブを配置（1回だけ）
   if (!cubePositioned && rightController) {
     const controllerPosition = new THREE.Vector3();
