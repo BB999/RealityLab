@@ -246,12 +246,147 @@ class MRButton {
   }
 }
 
+// MRButton helper with depth-sensing
+class MRDepthButton {
+  static createButton(renderer, onSessionStarted) {
+    const button = document.createElement('button');
+
+    function showStartMR() {
+      let currentSession = null;
+
+      async function onMRSessionStarted(session) {
+        session.addEventListener('end', onSessionEnded);
+
+        await renderer.xr.setSession(session);
+        button.textContent = 'EXIT MR';
+
+        currentSession = session;
+
+        if (onSessionStarted) {
+          onSessionStarted(session);
+        }
+      }
+
+      function onSessionEnded() {
+        currentSession.removeEventListener('end', onSessionEnded);
+
+        button.textContent = 'ENTER MR (depth-sensing)';
+
+        currentSession = null;
+      }
+
+      button.style.display = '';
+      button.style.cursor = 'pointer';
+      button.style.left = 'calc(50% - 100px)';
+      button.style.width = '200px';
+      button.textContent = 'ENTER MR (depth-sensing)';
+
+      button.onmouseenter = function () {
+        button.style.opacity = '1.0';
+        button.style.transform = 'scale(1.05)';
+      };
+
+      button.onmouseleave = function () {
+        button.style.opacity = '0.9';
+        button.style.transform = 'scale(1)';
+      };
+
+      button.onclick = function () {
+        if (currentSession === null) {
+          const sessionInit = {
+            requiredFeatures: ['depth-sensing'],
+            depthSensing: {
+              usagePreference: ['cpu-optimized', 'gpu-optimized'],
+              dataFormatPreference: ['luminance-alpha', 'float32']
+            }
+          };
+          navigator.xr.requestSession('immersive-ar', sessionInit).then(onMRSessionStarted);
+        } else {
+          currentSession.end();
+        }
+      };
+    }
+
+    function disableButton() {
+      button.style.display = '';
+      button.style.cursor = 'auto';
+      button.style.left = 'calc(50% - 75px)';
+      button.style.width = '150px';
+
+      button.onmouseenter = null;
+      button.onmouseleave = null;
+      button.onclick = null;
+    }
+
+    function showMRNotSupported() {
+      disableButton();
+      button.textContent = 'MR NOT SUPPORTED';
+    }
+
+    function showMRNotAllowed() {
+      disableButton();
+      button.textContent = 'MR NOT ALLOWED';
+    }
+
+    button.style.position = 'absolute';
+    button.style.top = 'calc(50% + 100px)';
+    button.style.padding = '16px 24px';
+    button.style.border = '2px solid #fff';
+    button.style.borderRadius = '12px';
+    button.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.8), rgba(22, 163, 74, 0.8))';
+    button.style.color = '#fff';
+    button.style.font = 'bold 14px sans-serif';
+    button.style.textAlign = 'center';
+    button.style.opacity = '0.9';
+    button.style.outline = 'none';
+    button.style.zIndex = '999';
+    button.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.3)';
+    button.style.transition = 'all 0.3s ease';
+
+    if ('xr' in navigator) {
+      navigator.xr.isSessionSupported('immersive-ar').then(function (supported) {
+        supported ? showStartMR() : showMRNotSupported();
+      }).catch(showMRNotAllowed);
+
+      return button;
+    } else {
+      const message = document.createElement('a');
+      message.href = 'https://immersiveweb.dev/';
+      message.innerHTML = 'WEBXR NOT AVAILABLE';
+
+      message.style.left = 'calc(50% - 90px)';
+      message.style.width = '180px';
+      message.style.textDecoration = 'none';
+
+      message.style.position = 'absolute';
+      message.style.bottom = '20px';
+      message.style.padding = '12px 6px';
+      message.style.border = '1px solid #fff';
+      message.style.borderRadius = '4px';
+      message.style.background = 'rgba(0,0,0,0.1)';
+      message.style.color = '#fff';
+      message.style.font = 'normal 13px sans-serif';
+      message.style.textAlign = 'center';
+      message.style.opacity = '0.5';
+      message.style.outline = 'none';
+      message.style.zIndex = '999';
+
+      return message;
+    }
+  }
+}
+
 let camera, scene, renderer;
 let cube;
 let rightController;
 let cubePositioned = false;
 let xrSession = null;
 let detectedPlanes = new Map();
+let depthDataTexture = null;
+let depthEnabled = false;
+let occlusionMesh = null;
+let isGrabbing = false;
+let grabOffset = new THREE.Vector3();
 
 init();
 animate();
@@ -276,14 +411,50 @@ function init() {
   // キューブの作成（各面に異なる色）
   const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
 
-  // 各面に異なる色のマテリアルを作成
+  // 各面に異なる色のマテリアルを作成（depth-sensing用にdepthTestとdepthWriteを有効化）
   const materials = [
-    new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.7, metalness: 0.3 }), // 右面: 赤
-    new THREE.MeshStandardMaterial({ color: 0xff6600, roughness: 0.7, metalness: 0.3 }), // 左面: オレンジ
-    new THREE.MeshStandardMaterial({ color: 0x00ff00, roughness: 0.7, metalness: 0.3 }), // 上面: 緑
-    new THREE.MeshStandardMaterial({ color: 0x0000ff, roughness: 0.7, metalness: 0.3 }), // 下面: 青
-    new THREE.MeshStandardMaterial({ color: 0xffff00, roughness: 0.7, metalness: 0.3 }), // 前面: 黄
-    new THREE.MeshStandardMaterial({ color: 0xff00ff, roughness: 0.7, metalness: 0.3 })  // 後面: マゼンタ
+    new THREE.MeshStandardMaterial({
+      color: 0xff0000,
+      roughness: 0.7,
+      metalness: 0.3,
+      depthTest: true,
+      depthWrite: true
+    }), // 右面: 赤
+    new THREE.MeshStandardMaterial({
+      color: 0xff6600,
+      roughness: 0.7,
+      metalness: 0.3,
+      depthTest: true,
+      depthWrite: true
+    }), // 左面: オレンジ
+    new THREE.MeshStandardMaterial({
+      color: 0x00ff00,
+      roughness: 0.7,
+      metalness: 0.3,
+      depthTest: true,
+      depthWrite: true
+    }), // 上面: 緑
+    new THREE.MeshStandardMaterial({
+      color: 0x0000ff,
+      roughness: 0.7,
+      metalness: 0.3,
+      depthTest: true,
+      depthWrite: true
+    }), // 下面: 青
+    new THREE.MeshStandardMaterial({
+      color: 0xffff00,
+      roughness: 0.7,
+      metalness: 0.3,
+      depthTest: true,
+      depthWrite: true
+    }), // 前面: 黄
+    new THREE.MeshStandardMaterial({
+      color: 0xff00ff,
+      roughness: 0.7,
+      metalness: 0.3,
+      depthTest: true,
+      depthWrite: true
+    })  // 後面: マゼンタ
   ];
 
   cube = new THREE.Mesh(geometry, materials);
@@ -303,6 +474,10 @@ function init() {
   rightController = renderer.xr.getController(0);
   scene.add(rightController);
 
+  // コントローラーのイベントリスナーを追加
+  rightController.addEventListener('selectstart', onSelectStart);
+  rightController.addEventListener('selectend', onSelectEnd);
+
   // キューブをシーンに追加（初期位置は原点、後でコントローラー位置から設定）
   scene.add(cube);
 
@@ -316,12 +491,87 @@ function init() {
     MRButton.createButton(renderer, onMRSessionStarted)
   );
 
+  // MRボタンの作成（depth-sensing付き）
+  document.body.appendChild(
+    MRDepthButton.createButton(renderer, onMRSessionStarted)
+  );
+
   // ウィンドウリサイズ対応
   window.addEventListener('resize', onWindowResize);
 }
 
 function onMRSessionStarted(session) {
   xrSession = session;
+
+  // depth-sensingが利用可能かチェック
+  if (session.depthUsage && session.depthDataFormat) {
+    depthEnabled = true;
+    console.log('Depth sensing enabled:', session.depthUsage, session.depthDataFormat);
+  } else {
+    depthEnabled = false;
+    console.log('Depth sensing not available');
+  }
+}
+
+// 深度データの処理（drone-copterを参考）
+function processDepthInformation(frame, referenceSpace) {
+  const pose = frame.getViewerPose(referenceSpace);
+  if (!pose) return;
+
+  // WebGLバインディングを取得（GPU最適化モードの場合）
+  const glBinding = frame.session.renderState.baseLayer;
+
+  for (const view of pose.views) {
+    // GPU最適化モードの場合はWebGLテクスチャとして取得
+    if (glBinding && glBinding.getDepthInformation) {
+      const depthInfo = glBinding.getDepthInformation(view);
+      if (depthInfo) {
+        // WebGLテクスチャとして深度データが利用可能
+        const texture = depthInfo.texture;
+
+        // Three.jsのWebGLTextureとして設定
+        if (!depthDataTexture) {
+          depthDataTexture = new THREE.Texture();
+          // WebGLテクスチャを直接マッピング
+          const properties = renderer.properties.get(depthDataTexture);
+          properties.__webglTexture = texture;
+          properties.__webglInit = true;
+          depthDataTexture.needsUpdate = true;
+
+          console.log('Depth data texture created (GPU mode):', {
+            width: depthInfo.width,
+            height: depthInfo.height
+          });
+        }
+      }
+    }
+  }
+}
+
+function onSelectStart() {
+  // コントローラーのトリガーを引いた時
+  const controllerPosition = new THREE.Vector3();
+  rightController.getWorldPosition(controllerPosition);
+
+  // キューブとコントローラーの距離をチェック
+  const distance = cube.position.distanceTo(controllerPosition);
+
+  if (distance < 0.5) { // 50cm以内なら掴める
+    isGrabbing = true;
+
+    // キューブとコントローラーのオフセットを保存
+    grabOffset.copy(cube.position).sub(controllerPosition);
+
+    console.log('Grabbed cube');
+  }
+}
+
+function onSelectEnd() {
+  // コントローラーのトリガーを離した時
+  if (isGrabbing) {
+    isGrabbing = false;
+    console.log('Released cube');
+  }
 }
 
 function onWindowResize() {
@@ -335,6 +585,15 @@ function animate() {
 }
 
 function render() {
+  // depth-sensingの処理（drone-copterを参考）
+  if (xrSession && depthEnabled) {
+    const frame = renderer.xr.getFrame();
+    const referenceSpace = renderer.xr.getReferenceSpace();
+    if (frame && referenceSpace) {
+      processDepthInformation(frame, referenceSpace);
+    }
+  }
+
   // plane-detectionの処理
   if (xrSession) {
     const frame = renderer.xr.getFrame();
@@ -423,29 +682,38 @@ function render() {
     }
   }
 
-  // コントローラーの位置が取得できたら、その前方にキューブを配置（1回だけ）
-  if (!cubePositioned && rightController) {
+  // キューブを掴んでいる場合、コントローラーに追従
+  if (isGrabbing && rightController) {
     const controllerPosition = new THREE.Vector3();
     rightController.getWorldPosition(controllerPosition);
 
-    // コントローラーの位置が有効な場合（0,0,0以外）
-    if (controllerPosition.length() > 0.01) {
-      const controllerQuaternion = new THREE.Quaternion();
-      rightController.getWorldQuaternion(controllerQuaternion);
+    // キューブをコントローラーの位置+オフセットに移動
+    cube.position.copy(controllerPosition).add(grabOffset);
+  } else {
+    // 掴んでいない場合、コントローラーの位置が取得できたら、その前方にキューブを配置（1回だけ）
+    if (!cubePositioned && rightController) {
+      const controllerPosition = new THREE.Vector3();
+      rightController.getWorldPosition(controllerPosition);
 
-      // コントローラーの前方ベクトルを取得
-      const forward = new THREE.Vector3(0, 0, -0.3);
-      forward.applyQuaternion(controllerQuaternion);
+      // コントローラーの位置が有効な場合（0,0,0以外）
+      if (controllerPosition.length() > 0.01) {
+        const controllerQuaternion = new THREE.Quaternion();
+        rightController.getWorldQuaternion(controllerQuaternion);
 
-      // キューブをコントローラーの前方0.3mに配置
-      cube.position.copy(controllerPosition).add(forward);
-      cubePositioned = true;
+        // コントローラーの前方ベクトルを取得
+        const forward = new THREE.Vector3(0, 0, -0.3);
+        forward.applyQuaternion(controllerQuaternion);
+
+        // キューブをコントローラーの前方0.3mに配置
+        cube.position.copy(controllerPosition).add(forward);
+        cubePositioned = true;
+      }
     }
-  }
 
-  // キューブを回転
-  cube.rotation.x += 0.01;
-  cube.rotation.y += 0.01;
+    // キューブを回転（掴んでいない時のみ）
+    cube.rotation.x += 0.01;
+    cube.rotation.y += 0.01;
+  }
 
   renderer.render(scene, camera);
 }
