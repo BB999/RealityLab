@@ -1,0 +1,19 @@
+{
+  "name": "mr-box",
+  "version": "1.0.0",
+  "description": "A simple MR app displaying a cube",
+  "main": "app.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.3",
+    "vite-plugin-mkcert": "^1.17.6"
+  }
+}
