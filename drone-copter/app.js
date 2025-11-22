@@ -13,11 +13,16 @@ let droneSound = null;
 let hoverTime = 0; // 浮遊アニメーション用タイマー
 let isSoundMuted = false; // 音声のミュート状態
 let leftStickButtonPressed = false; // 左スティックボタンの押下状態（トグル用）
+let droneBoundingBox = null; // ドローンのバウンディングボックス
+let droneCollisionRadius = { horizontal: 0.15, vertical: 0.05 }; // デフォルト値
 
 // 深度センサー用変数
 let depthDataTexture = null;
 let depthMesh = null;
 let showDepthVisualization = false;
+
+// plane-detection用変数
+let detectedPlanes = new Map(); // 検出された平面を格納
 
 // VR用背景とグリッド
 let vrBackground = null;
@@ -141,6 +146,9 @@ function init() {
       console.log('ドローンモデル読み込み完了');
       console.log('プロペラ数:', propellers.length);
 
+      // ドローンのバウンディングボックスを計算
+      calculateDroneBoundingBox();
+
       // ドローン音声の設定
       setupDroneSound();
 
@@ -160,6 +168,29 @@ function init() {
 
   // アニメーションループ
   renderer.setAnimationLoop(render);
+}
+
+// ドローンのバウンディングボックスを計算して当たり判定の半径を設定
+function calculateDroneBoundingBox() {
+  if (!drone) return;
+
+  // バウンディングボックスを計算
+  const box = new THREE.Box3().setFromObject(drone);
+  droneBoundingBox = box;
+
+  // ボックスのサイズを取得
+  const size = new THREE.Vector3();
+  box.getSize(size);
+
+  // 水平方向の半径（XとZの最大値）
+  droneCollisionRadius.horizontal = Math.max(size.x, size.z) / 2;
+
+  // 垂直方向の半径（Yの半分）を10%増し
+  droneCollisionRadius.vertical = (size.y / 2) * 1.1;
+
+  console.log('ドローンのサイズ:', size);
+  console.log('当たり判定 - 水平:', (droneCollisionRadius.horizontal * 100).toFixed(1) + 'cm');
+  console.log('当たり判定 - 垂直:', (droneCollisionRadius.vertical * 100).toFixed(1) + 'cm');
 }
 
 // VR用の背景とグリッドを作成
@@ -288,13 +319,121 @@ function createDepthVisualization() {
   scene.add(depthMesh);
 }
 
+// plane-detectionで検出された平面を処理
+function updatePlanes(frame, referenceSpace) {
+  if (!frame.detectedPlanes) return;
+
+  // 削除された平面を処理
+  detectedPlanes.forEach((plane, xrPlane) => {
+    if (!frame.detectedPlanes.has(xrPlane)) {
+      // 平面が削除された
+      detectedPlanes.delete(xrPlane);
+    }
+  });
+
+  // 新しい平面または更新された平面を処理
+  frame.detectedPlanes.forEach((xrPlane) => {
+    const pose = frame.getPose(xrPlane.planeSpace, referenceSpace);
+    if (!pose) return;
+
+    // 平面の位置と向きを取得
+    const position = new THREE.Vector3().setFromMatrixPosition(
+      new THREE.Matrix4().fromArray(pose.transform.matrix)
+    );
+    const quaternion = new THREE.Quaternion().setFromRotationMatrix(
+      new THREE.Matrix4().fromArray(pose.transform.matrix)
+    );
+
+    // 平面のポリゴンを取得
+    const polygon = xrPlane.polygon;
+
+    if (!detectedPlanes.has(xrPlane)) {
+      // 新しい平面
+      detectedPlanes.set(xrPlane, {
+        position: position,
+        quaternion: quaternion,
+        polygon: polygon,
+        orientation: xrPlane.orientation // 'horizontal' or 'vertical'
+      });
+
+      console.log('新しい平面を検出:', xrPlane.orientation);
+    } else {
+      // 既存の平面を更新
+      const planeData = detectedPlanes.get(xrPlane);
+      planeData.position = position;
+      planeData.quaternion = quaternion;
+      planeData.polygon = polygon;
+    }
+  });
+}
+
+// ドローンと平面の衝突判定
+function checkPlaneCollision() {
+  if (!drone || !dronePositioned) return;
+
+  const dronePos = new THREE.Vector3();
+  drone.getWorldPosition(dronePos);
+
+  detectedPlanes.forEach((planeData, xrPlane) => {
+    const { position, quaternion, polygon, orientation } = planeData;
+
+    // ドローンから平面への距離を計算
+    const planeNormal = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion);
+    const planeToDrone = new THREE.Vector3().subVectors(dronePos, position);
+    const distance = planeToDrone.dot(planeNormal);
+
+    // 平面の向きに応じて異なる半径を使用
+    // 平面が水平（床・天井）なら上下方向の半径を使用、垂直（壁）なら水平方向の半径を使用
+    const effectiveRadius = (Math.abs(planeNormal.y) > 0.7)
+      ? droneCollisionRadius.vertical
+      : droneCollisionRadius.horizontal;
+
+    // 平面に近い場合のみ詳細チェック
+    if (Math.abs(distance) < effectiveRadius) {
+      // ドローンの位置を平面のローカル座標系に変換
+      const inverseQuaternion = quaternion.clone().invert();
+      const localDronePos = dronePos.clone().sub(position).applyQuaternion(inverseQuaternion);
+
+      // ポリゴン内部判定（2D）
+      let inside = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].x, zi = polygon[i].z;
+        const xj = polygon[j].x, zj = polygon[j].z;
+
+        const intersect = ((zi > localDronePos.z) !== (zj > localDronePos.z))
+          && (localDronePos.x < (xj - xi) * (localDronePos.z - zi) / (zj - zi) + xi);
+        if (intersect) inside = !inside;
+      }
+
+      if (inside) {
+        // 衝突！ドローンを平面の外側に押し出す
+        const pushDistance = effectiveRadius - Math.abs(distance);
+        const pushDirection = distance > 0 ? 1 : -1;
+        const correction = planeNormal.clone().multiplyScalar(pushDistance * pushDirection);
+
+        drone.position.add(correction);
+        if (drone.userData.basePosition) {
+          drone.userData.basePosition.add(correction);
+        }
+
+        // 平面方向の速度成分を0にする（反発させる）
+        const velocityAlongNormal = velocity.dot(planeNormal);
+        if (velocityAlongNormal < 0) {
+          velocity.sub(planeNormal.clone().multiplyScalar(velocityAlongNormal * 1.5)); // 1.5倍で少し反発
+        }
+      }
+    }
+  });
+}
+
 function render() {
-  // 深度情報の処理
+  // 深度情報と平面検出の処理
   if (xrSession) {
     const frame = renderer.xr.getFrame();
     const referenceSpace = renderer.xr.getReferenceSpace();
     if (frame && referenceSpace) {
       processDepthInformation(frame, referenceSpace);
+      updatePlanes(frame, referenceSpace);
     }
 
     // 深度視覚化メッシュの作成と更新
@@ -687,6 +826,9 @@ function render() {
     }
     drone.userData.physicsTilt.x += (targetTiltX - drone.userData.physicsTilt.x) * tiltSmoothing;
     drone.userData.physicsTilt.z += (targetTiltZ - drone.userData.physicsTilt.z) * tiltSmoothing;
+
+    // 平面との衝突判定
+    checkPlaneCollision();
   }
 
   // ハンドトラッキングでドローンを掴む処理
@@ -861,10 +1003,10 @@ async function startXR() {
       return;
     }
 
-    // XRセッション開始（深度センサーとハンドトラッキングを有効化）
+    // XRセッション開始（深度センサー、平面検出、ハンドトラッキングを有効化）
     xrSession = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: [],
-      optionalFeatures: ['local-floor', 'bounded-floor', 'depth-sensing', 'hand-tracking'],
+      optionalFeatures: ['local-floor', 'bounded-floor', 'depth-sensing', 'plane-detection', 'hand-tracking'],
       depthSensing: {
         usagePreference: ['cpu-optimized', 'gpu-optimized'],
         dataFormatPreference: ['luminance-alpha', 'float32']
@@ -934,6 +1076,9 @@ async function startXR() {
         depthMesh = null;
       }
       depthDataTexture = null;
+
+      // 平面検出関連のリソースをクリーンアップ
+      detectedPlanes.clear();
 
       // セッション終了イベントを発火
       window.dispatchEvent(new Event('xr-session-end'));
@@ -1093,3 +1238,4 @@ if (depthToggleButton) {
     depthToggleButton.textContent = '深度表示 OFF';
   });
 }
+
