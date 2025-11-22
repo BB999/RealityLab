@@ -19,6 +19,7 @@ let droneCollisionRadius = { horizontal: 0.15, vertical: 0.05 }; // デフォル
 // 衝突エフェクト用変数
 let collisionParticles = [];
 let lastCollisionTime = 0;
+let isColliding = false; // 現在衝突中か
 
 // 自動帰還モード用変数
 let isAutoReturning = false; // 自動帰還中か
@@ -445,6 +446,8 @@ function checkPlaneCollision() {
   const dronePos = new THREE.Vector3();
   drone.getWorldPosition(dronePos);
 
+  let hasCollision = false; // 今回のフレームで衝突があったか
+
   detectedPlanes.forEach((planeData, xrPlane) => {
     const { position, quaternion, polygon, orientation } = planeData;
 
@@ -477,10 +480,15 @@ function checkPlaneCollision() {
       }
 
       if (inside) {
+        hasCollision = true; // 衝突フラグを立てる
+
         // 衝突！ドローンを平面の外側に押し出す
         const pushDistance = effectiveRadius - Math.abs(distance);
         const pushDirection = distance > 0 ? 1 : -1;
         const correction = planeNormal.clone().multiplyScalar(pushDistance * pushDirection);
+
+        // 押し出し距離が大きい = 衝突が強い
+        const collisionStrength = pushDistance;
 
         drone.position.add(correction);
         if (drone.userData.basePosition) {
@@ -492,9 +500,29 @@ function checkPlaneCollision() {
         if (velocityAlongNormal < 0) {
           velocity.sub(planeNormal.clone().multiplyScalar(velocityAlongNormal * 1.5)); // 1.5倍で少し反発
         }
+
+        // コントローラーを振動させる（最初の衝突の瞬間のみ）
+        if (collisionStrength > 0.001 && !isColliding) { // 1mm以上めり込み、かつ衝突していなかった
+          isColliding = true;
+          if (xrSession) {
+            const inputSources = xrSession.inputSources;
+            for (const source of inputSources) {
+              if (source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators.length > 0) {
+                // 衝突の強さに応じて振動の強度を変える（0.3〜1.0）
+                const impactStrength = Math.min(Math.max(collisionStrength * 20, 0.3), 1.0);
+                source.gamepad.hapticActuators[0].pulse(impactStrength, 33); // 33ms振動
+              }
+            }
+          }
+        }
       }
     }
   });
+
+  // 衝突していない場合はフラグをリセット
+  if (!hasCollision) {
+    isColliding = false;
+  }
 }
 
 function render() {
@@ -1031,10 +1059,10 @@ function render() {
       velocity.normalize().multiplyScalar(maxSpeed);
     }
 
-    // デバッグ: 速度を表示
-    if (velocity.length() > 0.001) {
-      console.log('現在速度:', velocity.length().toFixed(4), 'maxSpeed:', maxSpeed);
-    }
+    // デバッグ: 速度を表示（コメントアウト）
+    // if (velocity.length() > 0.001) {
+    //   console.log('現在速度:', velocity.length().toFixed(4), 'maxSpeed:', maxSpeed);
+    // }
 
     // 摩擦による減衰
     velocity.multiplyScalar(friction);
