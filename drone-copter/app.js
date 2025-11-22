@@ -26,6 +26,7 @@ let autoReturnTarget = new THREE.Vector3(); // 帰還先の位置
 let autoReturnSpeed = 0.02; // 帰還速度
 let autoReturnPhase = 'horizontal'; // 'horizontal' または 'vertical'
 let rightAButtonPressed = false; // 右Aボタンの押下状態
+let autoReturnText = null; // 自動帰還中のテキスト表示
 
 // 深度センサー用変数
 let depthDataTexture = null;
@@ -272,6 +273,65 @@ function setupDroneSound() {
   console.log('ドローンに音声を追加');
 }
 
+// 自動帰還中のテキストを作成
+function createAutoReturnText() {
+  if (autoReturnText) return; // 既に存在する場合は作成しない
+
+  // キャンバスを使ってテキストテクスチャを作成
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+
+  // 背景を半透明の黒に
+  context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  // テキストを描画
+  context.fillStyle = '#00ff00'; // 緑色
+  context.font = 'bold 60px Arial';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText('自動帰還中', canvas.width / 2, canvas.height / 2);
+
+  // テクスチャを作成
+  const texture = new THREE.CanvasTexture(canvas);
+
+  // 平面ジオメトリを作成
+  const geometry = new THREE.PlaneGeometry(0.3, 0.075);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  autoReturnText = new THREE.Mesh(geometry, material);
+  scene.add(autoReturnText);
+}
+
+// 自動帰還中のテキストを削除
+function removeAutoReturnText() {
+  if (autoReturnText) {
+    scene.remove(autoReturnText);
+    autoReturnText.geometry.dispose();
+    autoReturnText.material.dispose();
+    autoReturnText.material.map.dispose();
+    autoReturnText = null;
+  }
+}
+
+// 自動帰還中のテキスト位置を更新
+function updateAutoReturnText() {
+  if (autoReturnText && drone) {
+    // ドローンの真上にテキストを配置
+    const offset = new THREE.Vector3(0, 0.2, 0); // ドローンの真上20cm
+    autoReturnText.position.copy(drone.position).add(offset);
+
+    // テキストをカメラの方を向かせる
+    autoReturnText.lookAt(camera.position);
+  }
+}
+
 // 深度データの処理
 function processDepthInformation(frame, referenceSpace) {
   const pose = frame.getViewerPose(referenceSpace);
@@ -438,6 +498,9 @@ function checkPlaneCollision() {
 }
 
 function render() {
+  // 自動帰還中のテキスト位置を更新
+  updateAutoReturnText();
+
   // 深度情報と平面検出の処理
   if (xrSession) {
     const frame = renderer.xr.getFrame();
@@ -457,23 +520,53 @@ function render() {
   }
 
   // コントローラーの位置を取得してドローンを配置
-  if ((rightController || leftController) && drone && !dronePositioned) {
-    // 右コントローラーが存在すればそれを使用、なければ左コントローラーを使用
-    const controller = rightController || leftController;
+  if (xrSession && drone && !dronePositioned) {
+    const frame = renderer.xr.getFrame();
+    const referenceSpace = renderer.xr.getReferenceSpace();
 
-    // コントローラーの位置を取得
-    const controllerPos = new THREE.Vector3();
-    controller.getWorldPosition(controllerPos);
+    if (frame && referenceSpace) {
+      const inputSources = xrSession.inputSources;
 
-    // コントローラーの前方向を取得
-    const direction = new THREE.Vector3(0, 0, -1);
-    direction.applyQuaternion(controller.quaternion);
+      for (const source of inputSources) {
+        // 右コントローラーを優先
+        if (source.handedness === 'right' && source.gripSpace) {
+          const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+          if (gripPose) {
+            const controllerPos = new THREE.Vector3().setFromMatrixPosition(
+              new THREE.Matrix4().fromArray(gripPose.transform.matrix)
+            );
 
-    // コントローラーの前方30cm（0.3m）にドローンを配置
-    drone.position.copy(controllerPos).add(direction.multiplyScalar(0.3));
+            console.log('右コントローラーの位置:', controllerPos);
 
-    dronePositioned = true;
-    updateInfo('ドローンをコントローラーの前に配置');
+            // コントローラーの位置が有効か確認（原点でない）
+            if (controllerPos.length() > 0.01) {
+              // ドローンを右コントローラーの位置に配置（高さも含めて）
+              drone.position.copy(controllerPos);
+
+              console.log('ドローン配置位置:', drone.position);
+
+              // カメラ（ユーザー）の位置を取得
+              const cameraPos = new THREE.Vector3();
+              camera.getWorldPosition(cameraPos);
+
+              // カメラの向き（ユーザーの正面方向）を取得
+              const cameraDirection = new THREE.Vector3(0, 0, -1);
+              cameraDirection.applyQuaternion(camera.quaternion);
+              cameraDirection.y = 0; // 水平面のみ
+              cameraDirection.normalize();
+
+              // ドローンをカメラの正面方向（ユーザーが向いている方向）に設定
+              const angle = Math.atan2(cameraDirection.x, cameraDirection.z);
+              drone.rotation.y = angle;
+
+              dronePositioned = true;
+              updateInfo('ドローンを右コントローラーの位置に配置');
+              break;
+            }
+          }
+        }
+      }
+    }
   }
 
   // プロペラをy軸回転
@@ -756,20 +849,53 @@ function render() {
       const verticalDistance = Math.abs(autoReturnTarget.y - drone.position.y);
 
       if (verticalDistance < 0.05) {
-        // 高度調整完了、自動帰還終了
-        isAutoReturning = false;
-        autoReturnPhase = 'horizontal'; // 次回のためにリセット
-        drone.userData.basePosition.copy(drone.position);
-        velocity.set(0, 0, 0);
-        angularVelocity = 0;
-        updateInfo('自動帰還完了');
-        console.log('自動帰還完了');
+        // 高度調整完了、向き調整フェーズへ
+        autoReturnPhase = 'rotation';
+        updateInfo('高度到達 - 向き調整中');
+        console.log('高度調整完了、向き調整開始');
       } else {
         // 垂直方向に移動
         const direction = Math.sign(autoReturnTarget.y - drone.position.y);
         const moveSpeed = Math.min(autoReturnSpeed, verticalDistance);
         drone.position.y += direction * moveSpeed;
         drone.userData.basePosition.copy(drone.position);
+      }
+    } else if (autoReturnPhase === 'rotation') {
+      // フェーズ3: 向きの調整（初期向き = ユーザーの正面方向）
+      const cameraPos = new THREE.Vector3();
+      camera.getWorldPosition(cameraPos);
+
+      // カメラの向き（ユーザーの正面方向）を取得
+      const cameraDirection = new THREE.Vector3(0, 0, -1);
+      cameraDirection.applyQuaternion(camera.quaternion);
+      cameraDirection.y = 0; // 水平面のみ
+      cameraDirection.normalize();
+
+      // 目標角度
+      const targetAngle = Math.atan2(cameraDirection.x, cameraDirection.z);
+      const currentAngle = drone.rotation.y;
+
+      // 角度差を計算
+      let angleDiff = targetAngle - currentAngle;
+
+      // 角度差を-πからπの範囲に正規化
+      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+      if (Math.abs(angleDiff) < 0.05) {
+        // 向き調整完了、自動帰還終了
+        drone.rotation.y = targetAngle; // 最終的な角度に設定
+        isAutoReturning = false;
+        autoReturnPhase = 'horizontal'; // 次回のためにリセット
+        removeAutoReturnText(); // テキスト表示を削除
+        drone.userData.basePosition.copy(drone.position);
+        velocity.set(0, 0, 0);
+        angularVelocity = 0;
+        updateInfo('自動帰還完了');
+        console.log('自動帰還完了');
+      } else {
+        // 滑らかに回転
+        drone.rotation.y += angleDiff * 0.1;
       }
     }
   }
@@ -800,6 +926,7 @@ function render() {
               isAutoReturning = true;
               autoReturnPhase = 'horizontal'; // 水平移動から開始
               autoReturnTarget.copy(controllerPos);
+              createAutoReturnText(); // テキスト表示を作成
               updateInfo('自動帰還モード開始 - 水平移動中');
               console.log('自動帰還開始:', autoReturnTarget);
             }
