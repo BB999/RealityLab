@@ -71,10 +71,10 @@ const returnSpeed = 1.0 / returnDuration; // 戻る速度（秒あたりの進�
 // 物理演算用パラメータ
 let velocity = new THREE.Vector3(0, 0, 0); // 速度ベクトル
 let angularVelocity = 0; // 角速度（Y軸回転）
-const acceleration = 0.0014; // 加速度
+const acceleration = 0.001; // 加速度
 const maxSpeed = 0.015; // 最大速度
 const friction = 0.965; // 摩擦係数（慣性の減衰）
-const angularAcceleration = 0.0030; // 角加速度
+const angularAcceleration = 0.0015; // 角加速度
 const maxAngularSpeed = 0.06; // 最大角速度
 const angularFriction = 0.965; // 角速度の減衰
 const tiltAmount = 0.6; // 移動方向への傾き量（速度に対する係数）
@@ -613,18 +613,18 @@ function render() {
       drone.userData.basePosition = drone.position.clone();
     }
 
-    // サイン波を使った滑らかな上下揺れ（振幅0.003m = 3mm）
-    const hoverY = Math.sin(hoverTime * 2) * 0.003;
+    // サイン波を使った滑らかな上下揺れ（振幅0.006m = 6mm）
+    const hoverY = Math.sin(hoverTime * 1.2) * 0.006;
 
-    // コサイン波を使った前後揺れ（振幅0.002m = 2mm）
-    const hoverZ = Math.cos(hoverTime * 1.5) * 0.002;
+    // コサイン波を使った前後揺れ（振幅0.004m = 4mm）
+    const hoverZ = Math.cos(hoverTime * 0.9) * 0.004;
 
-    // 少しずつ異なる周期で左右揺れ（振幅0.002m = 2mm）
-    const hoverX = Math.sin(hoverTime * 1.3) * 0.002;
+    // 少しずつ異なる周期で左右揺れ（振幅0.008m = 8mm）
+    const hoverX = Math.sin(hoverTime * 0.8) * 0.008;
 
     // 微妙な傾き（ロール・ピッチ）- 浮遊感用の小さな揺れ
-    const hoverTiltX = Math.sin(hoverTime * 1.2) * 0.005; // 約0.3度
-    const hoverTiltZ = Math.cos(hoverTime * 1.4) * 0.005; // 約0.3度
+    const hoverTiltX = Math.sin(hoverTime * 0.7) * 0.008; // 約0.5度
+    const hoverTiltZ = Math.cos(hoverTime * 0.85) * 0.008; // 約0.5度
 
     // 浮遊アニメーションを基準位置に加算
     const basePos = drone.userData.basePosition;
@@ -955,11 +955,11 @@ function render() {
         // axes[2]: 右スティック左右 → 左右移動
         // axes[3]: 右スティック上下 → 上昇・下降
         if (source.handedness === 'right' && axes.length >= 4) {
-          if (Math.abs(axes[2]) > 0.3) {
+          if (Math.abs(axes[2]) > 0.25) {
             inputX = axes[2];
             rawInputX = axes[2];
           }
-          if (Math.abs(axes[3]) > 0.3) {
+          if (Math.abs(axes[3]) > 0.25) {
             inputY = -axes[3]; // 上下反転
           }
         }
@@ -969,10 +969,10 @@ function render() {
         // axes[3]: 左スティック上下 → 前後移動
         // buttons[3]: 左スティック押し込み → 音声オンオフ
         if (source.handedness === 'left' && axes.length >= 4) {
-          if (Math.abs(axes[2]) > 0.3) {
+          if (Math.abs(axes[2]) > 0.25) {
             inputRotation = -axes[2];
           }
-          if (Math.abs(axes[3]) > 0.3) {
+          if (Math.abs(axes[3]) > 0.25) {
             inputZ = axes[3];
             rawInputZ = axes[3];
           }
