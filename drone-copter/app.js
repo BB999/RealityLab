@@ -72,11 +72,11 @@ const returnSpeed = 1.0 / returnDuration; // 戻る速度（秒あたりの進�
 let velocity = new THREE.Vector3(0, 0, 0); // 速度ベクトル
 let angularVelocity = 0; // 角速度（Y軸回転）
 const acceleration = 0.0014; // 加速度
-const maxSpeed = 0.4; // 最大速度
-const friction = 0.9; // 摩擦係数（慣性の減衰）
+const maxSpeed = 0.015; // 最大速度
+const friction = 0.965; // 摩擦係数（慣性の減衰）
 const angularAcceleration = 0.0030; // 角加速度
 const maxAngularSpeed = 0.06; // 最大角速度
-const angularFriction = 0.90; // 角速度の減衰
+const angularFriction = 0.965; // 角速度の減衰
 const tiltAmount = 0.6; // 移動方向への傾き量（速度に対する係数）
 const tiltSmoothing = 0.05; // 傾きの補間速度（0.0-1.0、大きいほど速く傾く/戻る）
 
@@ -1029,6 +1029,11 @@ function render() {
     // 速度制限
     if (velocity.length() > maxSpeed) {
       velocity.normalize().multiplyScalar(maxSpeed);
+    }
+
+    // デバッグ: 速度を表示
+    if (velocity.length() > 0.001) {
+      console.log('現在速度:', velocity.length().toFixed(4), 'maxSpeed:', maxSpeed);
     }
 
     // 摩擦による減衰
