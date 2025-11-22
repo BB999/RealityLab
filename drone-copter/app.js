@@ -16,6 +16,17 @@ let leftStickButtonPressed = false; // 左スティックボタンの押下状�
 let droneBoundingBox = null; // ドローンのバウンディングボックス
 let droneCollisionRadius = { horizontal: 0.15, vertical: 0.05 }; // デフォルト値
 
+// 衝突エフェクト用変数
+let collisionParticles = [];
+let lastCollisionTime = 0;
+
+// 自動帰還モード用変数
+let isAutoReturning = false; // 自動帰還中か
+let autoReturnTarget = new THREE.Vector3(); // 帰還先の位置
+let autoReturnSpeed = 0.02; // 帰還速度
+let autoReturnPhase = 'horizontal'; // 'horizontal' または 'vertical'
+let rightAButtonPressed = false; // 右Aボタンの押下状態
+
 // 深度センサー用変数
 let depthDataTexture = null;
 let depthMesh = null;
@@ -500,8 +511,8 @@ function render() {
     angularVelocity = 0;
   }
 
-  // ドローンの浮遊感アニメーション（掴んでいない時、かつ戻りアニメーション中でない時のみ）
-  if (drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand && !isReturningToHover) {
+  // ドローンの浮遊感アニメーション（掴んでいない時、かつ戻りアニメーション中でない時、自動帰還中でない時のみ）
+  if (drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand && !isReturningToHover && !isAutoReturning) {
     hoverTime += 0.016; // 約60FPSでの経過時間（秒）
 
     // 基準位置を保存（初回のみ）
@@ -708,8 +719,100 @@ function render() {
     }
   }
 
+  // 自動帰還モードの処理
+  if (isAutoReturning && drone && dronePositioned) {
+    if (autoReturnPhase === 'horizontal') {
+      // フェーズ1: 水平方向（XZ平面）の移動
+      const horizontalTarget = new THREE.Vector3(autoReturnTarget.x, drone.position.y, autoReturnTarget.z);
+      const direction = new THREE.Vector3().subVectors(horizontalTarget, drone.position);
+      const distance = direction.length();
+
+      if (distance < 0.05) {
+        // 水平方向の移動完了、高度調整フェーズへ
+        autoReturnPhase = 'vertical';
+        updateInfo('水平位置到達 - 高度調整中');
+        console.log('水平移動完了、高度調整開始');
+      } else {
+        // 水平方向に移動
+        direction.normalize();
+        const moveSpeed = Math.min(autoReturnSpeed, distance);
+        drone.position.x += direction.x * moveSpeed;
+        drone.position.z += direction.z * moveSpeed;
+        drone.userData.basePosition.copy(drone.position);
+
+        // ドローンを進行方向に向ける（滑らかに）
+        const targetAngle = Math.atan2(direction.x, direction.z);
+        const currentAngle = drone.rotation.y;
+        let angleDiff = targetAngle - currentAngle;
+
+        // 角度差を-πからπの範囲に正規化
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        drone.rotation.y += angleDiff * 0.1; // 滑らかに回転
+      }
+    } else if (autoReturnPhase === 'vertical') {
+      // フェーズ2: 垂直方向（Y軸）の移動
+      const verticalDistance = Math.abs(autoReturnTarget.y - drone.position.y);
+
+      if (verticalDistance < 0.05) {
+        // 高度調整完了、自動帰還終了
+        isAutoReturning = false;
+        autoReturnPhase = 'horizontal'; // 次回のためにリセット
+        drone.userData.basePosition.copy(drone.position);
+        velocity.set(0, 0, 0);
+        angularVelocity = 0;
+        updateInfo('自動帰還完了');
+        console.log('自動帰還完了');
+      } else {
+        // 垂直方向に移動
+        const direction = Math.sign(autoReturnTarget.y - drone.position.y);
+        const moveSpeed = Math.min(autoReturnSpeed, verticalDistance);
+        drone.position.y += direction * moveSpeed;
+        drone.userData.basePosition.copy(drone.position);
+      }
+    }
+  }
+
+  // 右コントローラーのAボタンで自動帰還モード
+  if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand) {
+    const inputSources = xrSession.inputSources;
+
+    for (const source of inputSources) {
+      if (source.handedness === 'right' && source.gamepad) {
+        const buttons = source.gamepad.buttons;
+        // Aボタン（通常buttons[4]）
+        const aButton = buttons[4];
+        const isAPressed = aButton && aButton.pressed;
+
+        if (isAPressed && !rightAButtonPressed && !isAutoReturning) {
+          // Aボタンが押された瞬間（まだ自動帰還中でない場合のみ）
+          const frame = renderer.xr.getFrame();
+          const referenceSpace = renderer.xr.getReferenceSpace();
+          if (frame && referenceSpace && source.gripSpace) {
+            const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+            if (gripPose) {
+              const controllerPos = new THREE.Vector3().setFromMatrixPosition(
+                new THREE.Matrix4().fromArray(gripPose.transform.matrix)
+              );
+
+              // 自動帰還モードを開始
+              isAutoReturning = true;
+              autoReturnPhase = 'horizontal'; // 水平移動から開始
+              autoReturnTarget.copy(controllerPos);
+              updateInfo('自動帰還モード開始 - 水平移動中');
+              console.log('自動帰還開始:', autoReturnTarget);
+            }
+          }
+        }
+
+        rightAButtonPressed = isAPressed;
+      }
+    }
+  }
+
   // ゲームパッド入力でドローンを操作（物理演算）
-  if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand && !isReturningToHover) {
+  if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand && !isReturningToHover && !isAutoReturning) {
     const inputSources = xrSession.inputSources;
     let inputX = 0, inputY = 0, inputZ = 0; // 入力値
     let inputRotation = 0;
