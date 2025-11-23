@@ -24,7 +24,7 @@ let isColliding = false; // 現在衝突中か
 // 自動帰還モード用変数
 let isAutoReturning = false; // 自動帰還中か
 let autoReturnTarget = new THREE.Vector3(); // 帰還先の位置
-let autoReturnSpeed = 0.02; // 帰還速度
+let autoReturnSpeed = 0.02; // 帰還速度（現在の速度に応じて動的に変更）
 let autoReturnPhase = 'horizontal'; // 'horizontal' または 'vertical'
 let rightAButtonPressed = false; // 右Aボタンの押下状態
 let autoReturnText = null; // 自動帰還中のテキスト表示
@@ -73,7 +73,12 @@ const returnSpeed = 1.0 / returnDuration; // 戻る速度（秒あたりの進�
 let velocity = new THREE.Vector3(0, 0, 0); // 速度ベクトル
 let angularVelocity = 0; // 角速度（Y軸回転）
 const acceleration = 0.001; // 加速度
-const maxSpeed = 0.015; // 最大速度
+let maxSpeed = 0.015; // 最大速度
+const baseMaxSpeed = 0.015; // 基準の最大速度
+let speedLevel = 5; // 速度段階（1-10、デフォルトは5）
+let leftTriggerPressed = false; // 左トリガーの押下状態
+let rightTriggerPressed = false; // 右トリガーの押下状態
+let speedText = null; // 速度表示用テキスト
 const friction = 0.965; // 摩擦係数（慣性の減衰）
 const angularAcceleration = 0.0015; // 角加速度
 const maxAngularSpeed = 0.06; // 最大角速度
@@ -333,6 +338,81 @@ function updateAutoReturnText() {
   }
 }
 
+// 速度レベル表示を作成
+function createSpeedText() {
+  // 既に存在する場合は削除
+  if (speedText) {
+    scene.remove(speedText);
+    speedText.geometry.dispose();
+    speedText.material.dispose();
+    speedText.material.map.dispose();
+    speedText = null;
+  }
+
+  // キャンバスを使ってテキストテクスチャを作成
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+
+  // 背景を半透明の黒に
+  context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  // テキストを描画
+  context.fillStyle = '#ffff00'; // 黄色
+  context.font = 'bold 60px Arial';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText('スピード' + speedLevel, canvas.width / 2, canvas.height / 2);
+
+  // テクスチャを作成
+  const texture = new THREE.CanvasTexture(canvas);
+
+  // 平面ジオメトリを作成
+  const geometry = new THREE.PlaneGeometry(0.4, 0.1);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  speedText = new THREE.Mesh(geometry, material);
+  scene.add(speedText);
+
+  // 3秒後に自動で消す
+  setTimeout(() => {
+    if (speedText) {
+      scene.remove(speedText);
+      speedText.geometry.dispose();
+      speedText.material.dispose();
+      speedText.material.map.dispose();
+      speedText = null;
+    }
+  }, 3000);
+}
+
+// 速度レベル表示の位置を更新
+function updateSpeedText() {
+  if (speedText && drone) {
+    // ドローンの真上にテキストを配置
+    const offset = new THREE.Vector3(0, 0.15, 0); // ドローンの真上15cm
+    speedText.position.copy(drone.position).add(offset);
+
+    // テキストをカメラの方を向かせる
+    speedText.lookAt(camera.position);
+  }
+}
+
+// 速度レベルに応じてmaxSpeedを更新
+function updateMaxSpeed() {
+  // speedLevel 5 = 100%, 6 = 120%, 7 = 140%, ..., 10 = 200%
+  // speedLevel 4 = 80%, 3 = 60%, 2 = 40%, 1 = 20%
+  const speedMultiplier = speedLevel * 0.2; // 0.2 ~ 2.0
+  maxSpeed = baseMaxSpeed * speedMultiplier;
+  console.log(`速度レベル: ${speedLevel}, maxSpeed: ${maxSpeed.toFixed(4)}`);
+}
+
 // 深度データの処理
 function processDepthInformation(frame, referenceSpace) {
   const pose = frame.getViewerPose(referenceSpace);
@@ -528,6 +608,9 @@ function checkPlaneCollision() {
 function render() {
   // 自動帰還中のテキスト位置を更新
   updateAutoReturnText();
+
+  // 速度レベル表示の位置を更新
+  updateSpeedText();
 
   // 深度情報と平面検出の処理
   if (xrSession) {
@@ -928,6 +1011,54 @@ function render() {
     }
   }
 
+  // トリガーボタンで速度レベル変更
+  if (xrSession && drone && dronePositioned) {
+    const inputSources = xrSession.inputSources;
+
+    for (const source of inputSources) {
+      if (source.gamepad) {
+        const buttons = source.gamepad.buttons;
+        // トリガーボタン（通常buttons[0]）
+        const triggerButton = buttons[0];
+        const isTriggerPressed = triggerButton && triggerButton.pressed;
+
+        // 左トリガー: 速度ダウン
+        if (source.handedness === 'left' && isTriggerPressed && !leftTriggerPressed) {
+          if (speedLevel > 1) {
+            speedLevel--;
+            updateMaxSpeed();
+            createSpeedText();
+            updateInfo(`速度レベル: ${speedLevel}`);
+          } else {
+            // 最小レベルでも表示
+            createSpeedText();
+            updateInfo(`速度レベル: ${speedLevel} (最小)`);
+          }
+          leftTriggerPressed = true;
+        } else if (source.handedness === 'left' && !isTriggerPressed) {
+          leftTriggerPressed = false;
+        }
+
+        // 右トリガー: 速度アップ
+        if (source.handedness === 'right' && isTriggerPressed && !rightTriggerPressed) {
+          if (speedLevel < 10) {
+            speedLevel++;
+            updateMaxSpeed();
+            createSpeedText();
+            updateInfo(`速度レベル: ${speedLevel}`);
+          } else {
+            // 最大レベルでも表示
+            createSpeedText();
+            updateInfo(`速度レベル: ${speedLevel} (最大)`);
+          }
+          rightTriggerPressed = true;
+        } else if (source.handedness === 'right' && !isTriggerPressed) {
+          rightTriggerPressed = false;
+        }
+      }
+    }
+  }
+
   // 右コントローラーのAボタンで自動帰還モード
   if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand) {
     const inputSources = xrSession.inputSources;
@@ -939,25 +1070,36 @@ function render() {
         const aButton = buttons[4];
         const isAPressed = aButton && aButton.pressed;
 
-        if (isAPressed && !rightAButtonPressed && !isAutoReturning) {
-          // Aボタンが押された瞬間（まだ自動帰還中でない場合のみ）
-          const frame = renderer.xr.getFrame();
-          const referenceSpace = renderer.xr.getReferenceSpace();
-          if (frame && referenceSpace && source.gripSpace) {
-            const gripPose = frame.getPose(source.gripSpace, referenceSpace);
-            if (gripPose) {
-              const controllerPos = new THREE.Vector3().setFromMatrixPosition(
-                new THREE.Matrix4().fromArray(gripPose.transform.matrix)
-              );
+        if (isAPressed && !rightAButtonPressed) {
+          if (!isAutoReturning) {
+            // Aボタンが押された瞬間（まだ自動帰還中でない場合）→ 自動帰還開始
+            const frame = renderer.xr.getFrame();
+            const referenceSpace = renderer.xr.getReferenceSpace();
+            if (frame && referenceSpace && source.gripSpace) {
+              const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+              if (gripPose) {
+                const controllerPos = new THREE.Vector3().setFromMatrixPosition(
+                  new THREE.Matrix4().fromArray(gripPose.transform.matrix)
+                );
 
-              // 自動帰還モードを開始
-              isAutoReturning = true;
-              autoReturnPhase = 'horizontal'; // 水平移動から開始
-              autoReturnTarget.copy(controllerPos);
-              createAutoReturnText(); // テキスト表示を作成
-              updateInfo('自動帰還モード開始 - 水平移動中');
-              console.log('自動帰還開始:', autoReturnTarget);
+                // 自動帰還モードを開始
+                isAutoReturning = true;
+                autoReturnPhase = 'horizontal'; // 水平移動から開始
+                autoReturnTarget.copy(controllerPos);
+                // 現在の速度レベルに応じて帰還速度を設定
+                autoReturnSpeed = maxSpeed * 1.5; // 現在の最大速度の1.5倍
+                createAutoReturnText(); // テキスト表示を作成
+                updateInfo('自動帰還モード開始 - 水平移動中');
+                console.log('自動帰還開始:', autoReturnTarget, 'speed:', autoReturnSpeed);
+              }
             }
+          } else {
+            // 自動帰還中にAボタンが押された場合 → キャンセル
+            isAutoReturning = false;
+            autoReturnPhase = 'horizontal';
+            removeAutoReturnText();
+            updateInfo('自動帰還モードをキャンセル');
+            console.log('自動帰還キャンセル');
           }
         }
 
