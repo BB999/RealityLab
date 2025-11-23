@@ -82,7 +82,8 @@ const returnSpeed = 1.0 / returnDuration; // 戻る速度（秒あたりの進�
 // 物理演算用パラメータ
 let velocity = new THREE.Vector3(0, 0, 0); // 速度ベクトル
 let angularVelocity = 0; // 角速度（Y軸回転）
-const acceleration = 0.001; // 加速度
+let acceleration = 0.001; // 加速度（サイズに応じて変化）
+const baseAcceleration = 0.001; // 基準の加速度
 let maxSpeed = 0.015; // 最大速度
 const baseMaxSpeed = 0.015; // 基準の最大速度
 let speedLevel = 5; // 速度段階（1-10、デフォルトは5）
@@ -91,10 +92,12 @@ let rightTriggerPressed = false; // 右トリガーの押下状態
 let speedText = null; // 速度表示用テキスト（ドローン上）
 let speedRightControllerText = null; // 速度表示用テキスト（右コントローラー上）
 let speedLeftControllerText = null; // 速度表示用テキスト（左コントローラー上）
-const friction = 0.965; // 摩擦係数（慣性の減衰）
+let friction = 0.965; // 摩擦係数（慣性の減衰）- サイズに応じて変化
+const baseFriction = 0.965; // 基準の摩擦係数
 const angularAcceleration = 0.0015; // 角加速度
 const maxAngularSpeed = 0.06; // 最大角速度
-const angularFriction = 0.965; // 角速度の減衰
+let angularFriction = 0.965; // 角速度の減衰 - サイズに応じて変化
+const baseAngularFriction = 0.965; // 基準の角速度減衰
 const tiltAmount = 0.6; // 移動方向への傾き量（速度に対する係数）
 const tiltSmoothing = 0.05; // 傾きの補間速度（0.0-1.0、大きいほど速く傾く/戻る）
 
@@ -239,7 +242,10 @@ function updateDroneScale(newScale) {
   // 当たり判定を再計算
   calculateDroneBoundingBox();
 
-  // 音のピッチを更新
+  // 速度と加速度を更新（サイズに応じて）
+  updateMaxSpeed();
+
+  // 音のピッチと音量を更新
   updateDroneSoundPitch();
 
   console.log('ドローンのスケール変更:', newScale.toFixed(2), '音のピッチ:', droneSound && droneSound.source ? droneSound.source.playbackRate.value.toFixed(2) : 'N/A');
@@ -601,19 +607,40 @@ function updateSpeedText() {
   }
 }
 
-// 速度レベルに応じてmaxSpeedを更新
+// 速度レベルとサイズに応じてmaxSpeedと加速度を更新
 function updateMaxSpeed() {
   // speedLevel 5 = 100%, 6 = 120%, 7 = 140%, ..., 10 = 200%
   // speedLevel 4 = 80%, 3 = 60%, 2 = 40%, 1 = 20%
   const speedMultiplier = speedLevel * 0.2; // 0.2 ~ 2.0
-  maxSpeed = baseMaxSpeed * speedMultiplier;
+
+  // サイズに応じた速度倍率（大きいほど速く、小さいほど遅く）
+  // スケール0.3で1.0倍、スケール1.0で1.73倍、スケール0.1で0.58倍
+  const sizeMultiplier = Math.pow(currentDroneScale / 0.3, 0.5);
+  // サイズ倍率は0.5〜2.0に制限
+  const clampedSizeMultiplier = Math.max(0.5, Math.min(2.0, sizeMultiplier));
+
+  // 最終的な最大速度と加速度
+  maxSpeed = baseMaxSpeed * speedMultiplier * clampedSizeMultiplier;
+  acceleration = baseAcceleration * clampedSizeMultiplier;
+
+  // サイズに応じた摩擦係数（大きいほど慣性が大きい）
+  // 大きいドローン: 摩擦小（1に近い、止まりにくい）
+  // 小さいドローン: 摩擦大（低い値、止まりやすい）
+  const frictionAdjustment = (clampedSizeMultiplier - 1.0) * 0.04;
+  friction = baseFriction + frictionAdjustment;
+  // 摩擦係数を0.90〜0.98に制限
+  friction = Math.max(0.90, Math.min(0.98, friction));
+
+  angularFriction = baseAngularFriction + frictionAdjustment;
+  // 角速度の摩擦も同様に制限
+  angularFriction = Math.max(0.90, Math.min(0.98, angularFriction));
 
   // 自動帰還中の場合は、autoReturnSpeedも更新
   if (isAutoReturning) {
     autoReturnSpeed = maxSpeed * 1.5;
-    console.log(`速度レベル: ${speedLevel}, maxSpeed: ${maxSpeed.toFixed(4)}, autoReturnSpeed: ${autoReturnSpeed.toFixed(4)}`);
+    console.log(`速度レベル: ${speedLevel}, サイズ倍率: ${clampedSizeMultiplier.toFixed(2)}, maxSpeed: ${maxSpeed.toFixed(4)}, autoReturnSpeed: ${autoReturnSpeed.toFixed(4)}, 摩擦: ${friction.toFixed(3)}`);
   } else {
-    console.log(`速度レベル: ${speedLevel}, maxSpeed: ${maxSpeed.toFixed(4)}`);
+    console.log(`速度レベル: ${speedLevel}, サイズ倍率: ${clampedSizeMultiplier.toFixed(2)}, maxSpeed: ${maxSpeed.toFixed(4)}, 加速度: ${acceleration.toFixed(6)}, 摩擦: ${friction.toFixed(3)}`);
   }
 }
 
@@ -1001,18 +1028,24 @@ function render() {
       drone.userData.basePosition = drone.position.clone();
     }
 
-    // サイン波を使った滑らかな上下揺れ（振幅0.006m = 6mm）
-    const hoverY = Math.sin(hoverTime * 1.2) * 0.006;
+    // サイズに応じた浮遊感の倍率（大きいほど浮遊感大）
+    // スケール0.3で1.0倍、スケール1.0で1.73倍、スケール0.1で0.58倍
+    const hoverMultiplier = Math.pow(currentDroneScale / 0.3, 0.5);
+    // 倍率を0.3〜2.0に制限
+    const clampedHoverMultiplier = Math.max(0.3, Math.min(2.0, hoverMultiplier));
 
-    // コサイン波を使った前後揺れ（振幅0.004m = 4mm）
-    const hoverZ = Math.cos(hoverTime * 0.9) * 0.004;
+    // サイン波を使った滑らかな上下揺れ（基準振幅0.006m = 6mm）
+    const hoverY = Math.sin(hoverTime * 1.2) * 0.006 * clampedHoverMultiplier;
 
-    // 少しずつ異なる周期で左右揺れ（振幅0.008m = 8mm）
-    const hoverX = Math.sin(hoverTime * 0.8) * 0.008;
+    // コサイン波を使った前後揺れ（基準振幅0.004m = 4mm）
+    const hoverZ = Math.cos(hoverTime * 0.9) * 0.004 * clampedHoverMultiplier;
 
-    // 微妙な傾き（ロール・ピッチ）- 浮遊感用の小さな揺れ
-    const hoverTiltX = Math.sin(hoverTime * 0.7) * 0.008; // 約0.5度
-    const hoverTiltZ = Math.cos(hoverTime * 0.85) * 0.008; // 約0.5度
+    // 少しずつ異なる周期で左右揺れ（基準振幅0.008m = 8mm）
+    const hoverX = Math.sin(hoverTime * 0.8) * 0.008 * clampedHoverMultiplier;
+
+    // 微妙な傾き（ロール・ピッチ）- 浮遊感用の小さな揺れ（基準約0.5度）
+    const hoverTiltX = Math.sin(hoverTime * 0.7) * 0.008 * clampedHoverMultiplier;
+    const hoverTiltZ = Math.cos(hoverTime * 0.85) * 0.008 * clampedHoverMultiplier;
 
     // 浮遊アニメーションを基準位置に加算
     const basePos = drone.userData.basePosition;
