@@ -459,14 +459,14 @@ function updateAutoReturnText() {
     autoReturnText.lookAt(camera.position);
   }
 
-  // 左右両方のコントローラーの上にもテキストを配置
+  // 右コントローラーの上にもテキストを配置
   if (xrSession) {
     const frame = renderer.xr.getFrame();
     const referenceSpace = renderer.xr.getReferenceSpace();
     if (frame && referenceSpace) {
       const inputSources = xrSession.inputSources;
       for (const source of inputSources) {
-        if (source.gripSpace) {
+        if (source.handedness === 'right' && source.gripSpace) {
           const gripPose = frame.getPose(source.gripSpace, referenceSpace);
           if (gripPose) {
             const controllerPos = new THREE.Vector3().setFromMatrixPosition(
@@ -476,14 +476,12 @@ function updateAutoReturnText() {
             // コントローラーの真上にテキストを配置
             const offset = new THREE.Vector3(0, 0.15, 0); // コントローラーの真上15cm
 
-            if (source.handedness === 'right' && autoReturnRightControllerText) {
+            if (autoReturnRightControllerText) {
               autoReturnRightControllerText.position.copy(controllerPos).add(offset);
               autoReturnRightControllerText.lookAt(camera.position);
-            } else if (source.handedness === 'left' && autoReturnLeftControllerText) {
-              autoReturnLeftControllerText.position.copy(controllerPos).add(offset);
-              autoReturnLeftControllerText.lookAt(camera.position);
             }
           }
+          break;
         }
       }
     }
@@ -506,13 +504,6 @@ function createSpeedText() {
     speedRightControllerText.material.dispose();
     speedRightControllerText.material.map.dispose();
     speedRightControllerText = null;
-  }
-  if (speedLeftControllerText) {
-    scene.remove(speedLeftControllerText);
-    speedLeftControllerText.geometry.dispose();
-    speedLeftControllerText.material.dispose();
-    speedLeftControllerText.material.map.dispose();
-    speedLeftControllerText = null;
   }
 
   // キャンバスを使ってテキストテクスチャを作成
@@ -545,8 +536,8 @@ function createSpeedText() {
   speedText = new THREE.Mesh(geometry1, material1);
   scene.add(speedText);
 
-  // 右コントローラー上のテキストを作成
-  const geometry2 = new THREE.PlaneGeometry(0.4, 0.1);
+  // 右コントローラー上のテキストを作成（サイズは半分）
+  const geometry2 = new THREE.PlaneGeometry(0.2, 0.05);
   const material2 = new THREE.MeshBasicMaterial({
     map: texture.clone(),
     transparent: true,
@@ -554,16 +545,6 @@ function createSpeedText() {
   });
   speedRightControllerText = new THREE.Mesh(geometry2, material2);
   scene.add(speedRightControllerText);
-
-  // 左コントローラー上のテキストを作成
-  const geometry3 = new THREE.PlaneGeometry(0.4, 0.1);
-  const material3 = new THREE.MeshBasicMaterial({
-    map: texture.clone(),
-    transparent: true,
-    side: THREE.DoubleSide
-  });
-  speedLeftControllerText = new THREE.Mesh(geometry3, material3);
-  scene.add(speedLeftControllerText);
 
   // 3秒後に自動で消す
   setTimeout(() => {
@@ -581,13 +562,6 @@ function createSpeedText() {
       speedRightControllerText.material.map.dispose();
       speedRightControllerText = null;
     }
-    if (speedLeftControllerText) {
-      scene.remove(speedLeftControllerText);
-      speedLeftControllerText.geometry.dispose();
-      speedLeftControllerText.material.dispose();
-      speedLeftControllerText.material.map.dispose();
-      speedLeftControllerText = null;
-    }
   }, 3000);
 }
 
@@ -595,21 +569,26 @@ function createSpeedText() {
 function updateSpeedText() {
   if (speedText && drone) {
     // ドローンの真上にテキストを配置
-    const offset = new THREE.Vector3(0, 0.15, 0); // ドローンの真上15cm
-    speedText.position.copy(drone.position).add(offset);
+    const baseOffset = new THREE.Vector3(0, 0.15, 0); // ドローンの真上15cm
+    speedText.position.copy(drone.position).add(baseOffset);
+
+    // カメラの方向に向ける前に、カメラ方向へ5cm移動（手前に配置）
+    const toCamera = new THREE.Vector3();
+    toCamera.subVectors(camera.position, speedText.position).normalize();
+    speedText.position.add(toCamera.multiplyScalar(0.05));
 
     // テキストをカメラの方を向かせる
     speedText.lookAt(camera.position);
   }
 
-  // 左右両方のコントローラーの上にもテキストを配置
+  // 右コントローラーの上にもテキストを配置
   if (xrSession) {
     const frame = renderer.xr.getFrame();
     const referenceSpace = renderer.xr.getReferenceSpace();
     if (frame && referenceSpace) {
       const inputSources = xrSession.inputSources;
       for (const source of inputSources) {
-        if (source.gripSpace) {
+        if (source.handedness === 'right' && source.gripSpace) {
           const gripPose = frame.getPose(source.gripSpace, referenceSpace);
           if (gripPose) {
             const controllerPos = new THREE.Vector3().setFromMatrixPosition(
@@ -617,16 +596,20 @@ function updateSpeedText() {
             );
 
             // コントローラーの真上にテキストを配置
-            const offset = new THREE.Vector3(0, 0.15, 0); // コントローラーの真上15cm
+            const baseOffset = new THREE.Vector3(0, 0.15, 0); // コントローラーの真上15cm
 
-            if (source.handedness === 'right' && speedRightControllerText) {
-              speedRightControllerText.position.copy(controllerPos).add(offset);
+            if (speedRightControllerText) {
+              speedRightControllerText.position.copy(controllerPos).add(baseOffset);
+
+              // カメラの方向に向ける前に、カメラ方向へ5cm移動（手前に配置）
+              const toCamera = new THREE.Vector3();
+              toCamera.subVectors(camera.position, speedRightControllerText.position).normalize();
+              speedRightControllerText.position.add(toCamera.multiplyScalar(0.05));
+
               speedRightControllerText.lookAt(camera.position);
-            } else if (source.handedness === 'left' && speedLeftControllerText) {
-              speedLeftControllerText.position.copy(controllerPos).add(offset);
-              speedLeftControllerText.lookAt(camera.position);
             }
           }
+          break;
         }
       }
     }
@@ -1387,7 +1370,6 @@ function render() {
                 autoReturnSpeed = maxSpeed * 1.5; // 現在の最大速度の1.5倍
                 createAutoReturnText(); // ドローン上のテキスト表示を作成
                 createAutoReturnRightControllerText(); // 右コントローラー上のテキスト表示を作成
-                createAutoReturnLeftControllerText(); // 左コントローラー上のテキスト表示を作成
                 updateInfo('自動帰還モード開始 - 水平移動中');
                 console.log('自動帰還開始:', autoReturnTarget, 'speed:', autoReturnSpeed);
               }
