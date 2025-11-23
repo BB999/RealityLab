@@ -245,21 +245,33 @@ function updateDroneScale(newScale) {
   console.log('ドローンのスケール変更:', newScale.toFixed(2), '音のピッチ:', droneSound && droneSound.source ? droneSound.source.playbackRate.value.toFixed(2) : 'N/A');
 }
 
-// ドローンの音のピッチを更新（サイズと移動速度を考慮）
+// ドローンの音のピッチと音量を更新（サイズと移動速度を考慮）
 function updateDroneSoundPitch() {
   if (!droneSound || !droneSound.source) return;
 
+  // ミュート中は音量を更新しない
+  if (!isSoundMuted) {
+    // サイズに基づく音量（大きいほど大きい音、小さいほど小さい音）
+    // スケール0.3で0.7、スケール1.0で1.0、スケール0.01で0.1を基準
+    const volumeFromSize = Math.pow(currentDroneScale / 0.3, 0.5) * 0.7;
+    // 音量の範囲を0.1〜1.0に制限
+    const finalVolume = Math.max(0.1, Math.min(1.0, volumeFromSize));
+    droneSound.setVolume(finalVolume);
+  }
+
   // サイズに基づく基本ピッチ（大きいほど低い音、小さいほど高い音）
-  const basePitchFromSize = Math.pow(0.3 / currentDroneScale, 0.5);
+  let basePitchFromSize = Math.pow(0.3 / currentDroneScale, 0.5);
+  // サイズによるピッチは0.2〜2.7に制限（移動速度による変化の余地を残す）
+  basePitchFromSize = Math.max(0.2, Math.min(2.7, basePitchFromSize));
 
-  // 移動速度に基づく追加ピッチ（移動中は少し高くなる）
-  // 速度が0.5m/s以上で効果が出始め、最大で1.2倍まで高くなる
-  const velocityBoost = 1.0 + Math.min(droneVelocity * 0.4, 0.2);
+  // 移動速度に基づく追加ピッチ（移動中は加算で高くなる）
+  // 速度0.5m/s以上で効果が出始め、最大+0.3まで加算
+  const velocityAddition = Math.min(droneVelocity * 0.6, 0.3);
 
-  // 最終的なピッチ
-  const finalPitch = basePitchFromSize * velocityBoost;
+  // 最終的なピッチ（加算方式なので必ず移動時の変化が聞こえる）
+  const finalPitch = basePitchFromSize + velocityAddition;
 
-  // ピッチの範囲を0.2〜3.0に制限（極端な値を避ける）
+  // 最終的なピッチの範囲を0.2〜3.0に制限
   droneSound.source.playbackRate.value = Math.max(0.2, Math.min(3.0, finalPitch));
 }
 
@@ -1456,7 +1468,8 @@ function render() {
             updateInfo('ドローン音声: ミュート');
             createVolumeText(false); // 音量オフ表示
           } else {
-            droneSound.setVolume(0.7);
+            // 音量をオンにする時は、現在のサイズに応じた音量に戻す
+            updateDroneSoundPitch();
             console.log('ドローン音声: オン');
             updateInfo('ドローン音声: オン');
             createVolumeText(true); // 音量オン表示
