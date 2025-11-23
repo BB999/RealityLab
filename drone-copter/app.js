@@ -27,7 +27,9 @@ let autoReturnTarget = new THREE.Vector3(); // 帰還先の位置
 let autoReturnSpeed = 0.02; // 帰還速度（現在の速度に応じて動的に変更）
 let autoReturnPhase = 'horizontal'; // 'horizontal' または 'vertical'
 let rightAButtonPressed = false; // 右Aボタンの押下状態
-let autoReturnText = null; // 自動帰還中のテキスト表示
+let autoReturnText = null; // 自動帰還中のテキスト表示（ドローン上）
+let autoReturnRightControllerText = null; // 自動帰還中のテキスト表示（右コントローラー上）
+let autoReturnLeftControllerText = null; // 自動帰還中のテキスト表示（左コントローラー上）
 
 // 深度センサー用変数
 let depthDataTexture = null;
@@ -82,7 +84,9 @@ const baseMaxSpeed = 0.015; // 基準の最大速度
 let speedLevel = 5; // 速度段階（1-10、デフォルトは5）
 let leftTriggerPressed = false; // 左トリガーの押下状態
 let rightTriggerPressed = false; // 右トリガーの押下状態
-let speedText = null; // 速度表示用テキスト
+let speedText = null; // 速度表示用テキスト（ドローン上）
+let speedRightControllerText = null; // 速度表示用テキスト（右コントローラー上）
+let speedLeftControllerText = null; // 速度表示用テキスト（左コントローラー上）
 const friction = 0.965; // 摩擦係数（慣性の減衰）
 const angularAcceleration = 0.0015; // 角加速度
 const maxAngularSpeed = 0.06; // 最大角速度
@@ -289,7 +293,7 @@ function setupDroneSound() {
     (buffer) => {
       droneSound.setBuffer(buffer);
       droneSound.setLoop(true); // ループ再生
-      droneSound.setVolume(1.0); // 基本音量
+      droneSound.setVolume(0.7); // 基本音量
       droneSound.setRefDistance(0.5); // 基準距離（この距離で最大音量）
       droneSound.setRolloffFactor(2); // 距離減衰率（大きいほど急激に減衰）
       droneSound.setMaxDistance(10); // 最大聴取距離
@@ -347,6 +351,78 @@ function createAutoReturnText() {
   scene.add(autoReturnText);
 }
 
+// 自動帰還中のコントローラーテキストを作成（右）
+function createAutoReturnRightControllerText() {
+  if (autoReturnRightControllerText) return; // 既に存在する場合は作成しない
+
+  // キャンバスを使ってテキストテクスチャを作成
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+
+  // 背景を半透明の黒に
+  context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  // テキストを描画
+  context.fillStyle = '#00ff00'; // 緑色
+  context.font = 'bold 60px Arial';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText('自動帰還中', canvas.width / 2, canvas.height / 2);
+
+  // テクスチャを作成
+  const texture = new THREE.CanvasTexture(canvas);
+
+  // 平面ジオメトリを作成
+  const geometry = new THREE.PlaneGeometry(0.3, 0.075);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  autoReturnRightControllerText = new THREE.Mesh(geometry, material);
+  scene.add(autoReturnRightControllerText);
+}
+
+// 自動帰還中のコントローラーテキストを作成（左）
+function createAutoReturnLeftControllerText() {
+  if (autoReturnLeftControllerText) return; // 既に存在する場合は作成しない
+
+  // キャンバスを使ってテキストテクスチャを作成
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+
+  // 背景を半透明の黒に
+  context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  // テキストを描画
+  context.fillStyle = '#00ff00'; // 緑色
+  context.font = 'bold 60px Arial';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText('自動帰還中', canvas.width / 2, canvas.height / 2);
+
+  // テクスチャを作成
+  const texture = new THREE.CanvasTexture(canvas);
+
+  // 平面ジオメトリを作成
+  const geometry = new THREE.PlaneGeometry(0.3, 0.075);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  autoReturnLeftControllerText = new THREE.Mesh(geometry, material);
+  scene.add(autoReturnLeftControllerText);
+}
+
 // 自動帰還中のテキストを削除
 function removeAutoReturnText() {
   if (autoReturnText) {
@@ -355,6 +431,20 @@ function removeAutoReturnText() {
     autoReturnText.material.dispose();
     autoReturnText.material.map.dispose();
     autoReturnText = null;
+  }
+  if (autoReturnRightControllerText) {
+    scene.remove(autoReturnRightControllerText);
+    autoReturnRightControllerText.geometry.dispose();
+    autoReturnRightControllerText.material.dispose();
+    autoReturnRightControllerText.material.map.dispose();
+    autoReturnRightControllerText = null;
+  }
+  if (autoReturnLeftControllerText) {
+    scene.remove(autoReturnLeftControllerText);
+    autoReturnLeftControllerText.geometry.dispose();
+    autoReturnLeftControllerText.material.dispose();
+    autoReturnLeftControllerText.material.map.dispose();
+    autoReturnLeftControllerText = null;
   }
 }
 
@@ -368,6 +458,36 @@ function updateAutoReturnText() {
     // テキストをカメラの方を向かせる
     autoReturnText.lookAt(camera.position);
   }
+
+  // 左右両方のコントローラーの上にもテキストを配置
+  if (xrSession) {
+    const frame = renderer.xr.getFrame();
+    const referenceSpace = renderer.xr.getReferenceSpace();
+    if (frame && referenceSpace) {
+      const inputSources = xrSession.inputSources;
+      for (const source of inputSources) {
+        if (source.gripSpace) {
+          const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+          if (gripPose) {
+            const controllerPos = new THREE.Vector3().setFromMatrixPosition(
+              new THREE.Matrix4().fromArray(gripPose.transform.matrix)
+            );
+
+            // コントローラーの真上にテキストを配置
+            const offset = new THREE.Vector3(0, 0.15, 0); // コントローラーの真上15cm
+
+            if (source.handedness === 'right' && autoReturnRightControllerText) {
+              autoReturnRightControllerText.position.copy(controllerPos).add(offset);
+              autoReturnRightControllerText.lookAt(camera.position);
+            } else if (source.handedness === 'left' && autoReturnLeftControllerText) {
+              autoReturnLeftControllerText.position.copy(controllerPos).add(offset);
+              autoReturnLeftControllerText.lookAt(camera.position);
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 // 速度レベル表示を作成
@@ -379,6 +499,20 @@ function createSpeedText() {
     speedText.material.dispose();
     speedText.material.map.dispose();
     speedText = null;
+  }
+  if (speedRightControllerText) {
+    scene.remove(speedRightControllerText);
+    speedRightControllerText.geometry.dispose();
+    speedRightControllerText.material.dispose();
+    speedRightControllerText.material.map.dispose();
+    speedRightControllerText = null;
+  }
+  if (speedLeftControllerText) {
+    scene.remove(speedLeftControllerText);
+    speedLeftControllerText.geometry.dispose();
+    speedLeftControllerText.material.dispose();
+    speedLeftControllerText.material.map.dispose();
+    speedLeftControllerText = null;
   }
 
   // キャンバスを使ってテキストテクスチャを作成
@@ -401,16 +535,35 @@ function createSpeedText() {
   // テクスチャを作成
   const texture = new THREE.CanvasTexture(canvas);
 
-  // 平面ジオメトリを作成
-  const geometry = new THREE.PlaneGeometry(0.4, 0.1);
-  const material = new THREE.MeshBasicMaterial({
-    map: texture,
+  // ドローン上のテキストを作成
+  const geometry1 = new THREE.PlaneGeometry(0.4, 0.1);
+  const material1 = new THREE.MeshBasicMaterial({
+    map: texture.clone(),
     transparent: true,
     side: THREE.DoubleSide
   });
-
-  speedText = new THREE.Mesh(geometry, material);
+  speedText = new THREE.Mesh(geometry1, material1);
   scene.add(speedText);
+
+  // 右コントローラー上のテキストを作成
+  const geometry2 = new THREE.PlaneGeometry(0.4, 0.1);
+  const material2 = new THREE.MeshBasicMaterial({
+    map: texture.clone(),
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+  speedRightControllerText = new THREE.Mesh(geometry2, material2);
+  scene.add(speedRightControllerText);
+
+  // 左コントローラー上のテキストを作成
+  const geometry3 = new THREE.PlaneGeometry(0.4, 0.1);
+  const material3 = new THREE.MeshBasicMaterial({
+    map: texture.clone(),
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+  speedLeftControllerText = new THREE.Mesh(geometry3, material3);
+  scene.add(speedLeftControllerText);
 
   // 3秒後に自動で消す
   setTimeout(() => {
@@ -420,6 +573,20 @@ function createSpeedText() {
       speedText.material.dispose();
       speedText.material.map.dispose();
       speedText = null;
+    }
+    if (speedRightControllerText) {
+      scene.remove(speedRightControllerText);
+      speedRightControllerText.geometry.dispose();
+      speedRightControllerText.material.dispose();
+      speedRightControllerText.material.map.dispose();
+      speedRightControllerText = null;
+    }
+    if (speedLeftControllerText) {
+      scene.remove(speedLeftControllerText);
+      speedLeftControllerText.geometry.dispose();
+      speedLeftControllerText.material.dispose();
+      speedLeftControllerText.material.map.dispose();
+      speedLeftControllerText = null;
     }
   }, 3000);
 }
@@ -434,6 +601,36 @@ function updateSpeedText() {
     // テキストをカメラの方を向かせる
     speedText.lookAt(camera.position);
   }
+
+  // 左右両方のコントローラーの上にもテキストを配置
+  if (xrSession) {
+    const frame = renderer.xr.getFrame();
+    const referenceSpace = renderer.xr.getReferenceSpace();
+    if (frame && referenceSpace) {
+      const inputSources = xrSession.inputSources;
+      for (const source of inputSources) {
+        if (source.gripSpace) {
+          const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+          if (gripPose) {
+            const controllerPos = new THREE.Vector3().setFromMatrixPosition(
+              new THREE.Matrix4().fromArray(gripPose.transform.matrix)
+            );
+
+            // コントローラーの真上にテキストを配置
+            const offset = new THREE.Vector3(0, 0.15, 0); // コントローラーの真上15cm
+
+            if (source.handedness === 'right' && speedRightControllerText) {
+              speedRightControllerText.position.copy(controllerPos).add(offset);
+              speedRightControllerText.lookAt(camera.position);
+            } else if (source.handedness === 'left' && speedLeftControllerText) {
+              speedLeftControllerText.position.copy(controllerPos).add(offset);
+              speedLeftControllerText.lookAt(camera.position);
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 // 速度レベルに応じてmaxSpeedを更新
@@ -442,7 +639,14 @@ function updateMaxSpeed() {
   // speedLevel 4 = 80%, 3 = 60%, 2 = 40%, 1 = 20%
   const speedMultiplier = speedLevel * 0.2; // 0.2 ~ 2.0
   maxSpeed = baseMaxSpeed * speedMultiplier;
-  console.log(`速度レベル: ${speedLevel}, maxSpeed: ${maxSpeed.toFixed(4)}`);
+
+  // 自動帰還中の場合は、autoReturnSpeedも更新
+  if (isAutoReturning) {
+    autoReturnSpeed = maxSpeed * 1.5;
+    console.log(`速度レベル: ${speedLevel}, maxSpeed: ${maxSpeed.toFixed(4)}, autoReturnSpeed: ${autoReturnSpeed.toFixed(4)}`);
+  } else {
+    console.log(`速度レベル: ${speedLevel}, maxSpeed: ${maxSpeed.toFixed(4)}`);
+  }
 }
 
 // 深度データの処理
@@ -1181,7 +1385,9 @@ function render() {
                 autoReturnTarget.copy(controllerPos);
                 // 現在の速度レベルに応じて帰還速度を設定
                 autoReturnSpeed = maxSpeed * 1.5; // 現在の最大速度の1.5倍
-                createAutoReturnText(); // テキスト表示を作成
+                createAutoReturnText(); // ドローン上のテキスト表示を作成
+                createAutoReturnRightControllerText(); // 右コントローラー上のテキスト表示を作成
+                createAutoReturnLeftControllerText(); // 左コントローラー上のテキスト表示を作成
                 updateInfo('自動帰還モード開始 - 水平移動中');
                 console.log('自動帰還開始:', autoReturnTarget, 'speed:', autoReturnSpeed);
               }
@@ -1251,7 +1457,7 @@ function render() {
                 console.log('ドローン音声: ミュート');
                 updateInfo('ドローン音声: ミュート');
               } else {
-                droneSound.setVolume(1.0);
+                droneSound.setVolume(0.7);
                 console.log('ドローン音声: オン');
                 updateInfo('ドローン音声: オン');
               }
