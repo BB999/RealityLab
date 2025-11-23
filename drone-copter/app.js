@@ -33,6 +33,13 @@ let autoReturnRightControllerText = null; // 自動帰還中のテキスト表�
 let autoReturnLeftControllerText = null; // 自動帰還中のテキスト表示（左コントローラー上）
 let volumeText = null; // 音量オンオフのテキスト表示（カメラ右下）
 
+// HUDモード用変数
+let isHUDMode = false; // HUDモードの状態
+let hudModeText = null; // HUDモードのテキスト表示（カメラ左上）
+let hudDirectionArrow = null; // 進行方向を示す矢印
+let hudDroneLocationArrow = null; // ドローン位置を示す矢印（カメラ端）
+let rightAButtonPressed = false; // 右Aボタンの押下状態
+
 // 深度センサー用変数
 let depthDataTexture = null;
 let depthMesh = null;
@@ -488,11 +495,11 @@ function updateAutoReturnText() {
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
     const down = new THREE.Vector3(0, -1, 0).applyQuaternion(camera.quaternion);
 
-    // カメラの前方50cm、右20cm、下20cmの位置
+    // カメラの前方50cm、右20cm、下15cmの位置（スピードテキストと入れ替え）
     const textPos = cameraPos.clone()
       .add(forward.multiplyScalar(0.5))
       .add(right.multiplyScalar(0.2))
-      .add(down.multiplyScalar(0.2));
+      .add(down.multiplyScalar(0.15));
 
     autoReturnText.position.copy(textPos);
     autoReturnText.lookAt(camera.position);
@@ -560,23 +567,25 @@ function createSpeedText() {
   speedRightControllerText = new THREE.Mesh(geometry2, material2);
   scene.add(speedRightControllerText);
 
-  // 3秒後に自動で消す
-  setTimeout(() => {
-    if (speedText) {
-      scene.remove(speedText);
-      speedText.geometry.dispose();
-      speedText.material.dispose();
-      speedText.material.map.dispose();
-      speedText = null;
-    }
-    if (speedRightControllerText) {
-      scene.remove(speedRightControllerText);
-      speedRightControllerText.geometry.dispose();
-      speedRightControllerText.material.dispose();
-      speedRightControllerText.material.map.dispose();
-      speedRightControllerText = null;
-    }
-  }, 3000);
+  // HUDモードでない場合のみ3秒後に自動で消す
+  if (!isHUDMode) {
+    setTimeout(() => {
+      if (speedText) {
+        scene.remove(speedText);
+        speedText.geometry.dispose();
+        speedText.material.dispose();
+        speedText.material.map.dispose();
+        speedText = null;
+      }
+      if (speedRightControllerText) {
+        scene.remove(speedRightControllerText);
+        speedRightControllerText.geometry.dispose();
+        speedRightControllerText.material.dispose();
+        speedRightControllerText.material.map.dispose();
+        speedRightControllerText = null;
+      }
+    }, 3000);
+  }
 }
 
 // 速度レベル表示の位置を更新
@@ -591,11 +600,11 @@ function updateSpeedText() {
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
     const down = new THREE.Vector3(0, -1, 0).applyQuaternion(camera.quaternion);
 
-    // カメラの前方50cm、右20cm、下15cmの位置（自動帰還より5cm上）
+    // カメラの前方50cm、右20cm、下20cmの位置（自動帰還テキストと入れ替え）
     const textPos = cameraPos.clone()
       .add(forward.multiplyScalar(0.5))
       .add(right.multiplyScalar(0.2))
-      .add(down.multiplyScalar(0.15));
+      .add(down.multiplyScalar(0.2));
 
     speedText.position.copy(textPos);
     speedText.lookAt(camera.position);
@@ -679,16 +688,18 @@ function createVolumeText(isOn) {
   volumeText = new THREE.Mesh(geometry, material);
   scene.add(volumeText);
 
-  // 3秒後に自動で消す
-  setTimeout(() => {
-    if (volumeText) {
-      scene.remove(volumeText);
-      volumeText.geometry.dispose();
-      volumeText.material.dispose();
-      volumeText.material.map.dispose();
-      volumeText = null;
-    }
-  }, 3000);
+  // HUDモードでない場合のみ3秒後に自動で消す
+  if (!isHUDMode) {
+    setTimeout(() => {
+      if (volumeText) {
+        scene.remove(volumeText);
+        volumeText.geometry.dispose();
+        volumeText.material.dispose();
+        volumeText.material.map.dispose();
+        volumeText = null;
+      }
+    }, 3000);
+  }
 }
 
 // 音量オンオフ表示の位置を更新
@@ -711,6 +722,209 @@ function updateVolumeText() {
 
     volumeText.position.copy(textPos);
     volumeText.lookAt(camera.position);
+  }
+}
+
+// HUDモードテキストを作成
+function createHUDModeText() {
+  // 既に存在する場合は削除
+  if (hudModeText) {
+    scene.remove(hudModeText);
+    hudModeText.geometry.dispose();
+    hudModeText.material.dispose();
+    hudModeText.material.map.dispose();
+    hudModeText = null;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+
+  context.fillStyle = '#00ffff'; // シアン
+  context.font = 'bold 50px Arial';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText('HUDモード', canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const geometry = new THREE.PlaneGeometry(0.25, 0.06);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  hudModeText = new THREE.Mesh(geometry, material);
+  scene.add(hudModeText);
+}
+
+// HUDモードテキストの位置を更新
+function updateHUDModeText() {
+  if (hudModeText) {
+    const cameraPos = new THREE.Vector3();
+    camera.getWorldPosition(cameraPos);
+
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const left = new THREE.Vector3(-1, 0, 0).applyQuaternion(camera.quaternion);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+
+    // カメラの左上に配置（右寄り）
+    const textPos = cameraPos.clone()
+      .add(forward.multiplyScalar(0.5))
+      .add(left.multiplyScalar(0.15))
+      .add(up.multiplyScalar(0.15));
+
+    hudModeText.position.copy(textPos);
+    hudModeText.lookAt(camera.position);
+  }
+}
+
+// 進行方向の矢印を作成
+function createDirectionArrow() {
+  if (hudDirectionArrow) {
+    scene.remove(hudDirectionArrow);
+    if (hudDirectionArrow.geometry) hudDirectionArrow.geometry.dispose();
+    if (hudDirectionArrow.material) hudDirectionArrow.material.dispose();
+    hudDirectionArrow = null;
+  }
+
+  // 矢印のジオメトリを作成（円錐形状）
+  const geometry = new THREE.ConeGeometry(0.03, 0.1, 8);
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xff0000, // 赤色
+    transparent: true,
+    opacity: 0.8
+  });
+
+  hudDirectionArrow = new THREE.Mesh(geometry, material);
+  scene.add(hudDirectionArrow);
+}
+
+// 進行方向矢印の位置と向きを更新
+function updateDirectionArrow() {
+  if (hudDirectionArrow && drone) {
+    // ドローンのサイズに応じて矢印のスケールを変更
+    const arrowScale = Math.max(0.5, Math.min(2.0, currentDroneScale / 0.3));
+    hudDirectionArrow.scale.set(arrowScale, arrowScale, arrowScale);
+
+    // ドローンのサイズに応じて先端の位置を計算（ドローンの半径 + 矢印の長さ分）
+    const droneRadius = currentDroneScale * 0.5; // ドローンの半径
+    const arrowLength = 0.1 * arrowScale; // 矢印の長さもスケールに応じて変わる
+    const arrowOffset = droneRadius + arrowLength * 0.6; // 先端から矢印の半分の長さ分離す
+
+    const droneForward = new THREE.Vector3(0, 0, 1).applyQuaternion(drone.quaternion);
+    const arrowPos = drone.position.clone().add(droneForward.multiplyScalar(arrowOffset));
+    hudDirectionArrow.position.copy(arrowPos);
+
+    // 矢印をドローンの向きに合わせる（円錐は初期状態でY軸方向を向いているので、前方Z軸正方向に回転）
+    hudDirectionArrow.rotation.copy(drone.rotation);
+    hudDirectionArrow.rotateX(Math.PI / 2); // Y軸から前方（Z軸正方向）に向ける
+  }
+}
+
+// ドローン位置表示矢印を作成
+function createDroneLocationArrow() {
+  if (hudDroneLocationArrow) {
+    scene.remove(hudDroneLocationArrow);
+    if (hudDroneLocationArrow.geometry) hudDroneLocationArrow.geometry.dispose();
+    if (hudDroneLocationArrow.material) hudDroneLocationArrow.material.dispose();
+    hudDroneLocationArrow = null;
+  }
+
+  // 矢印のジオメトリを作成（円錐形状、少し大きめ）
+  const geometry = new THREE.ConeGeometry(0.04, 0.12, 8);
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xffff00, // 黄色
+    transparent: true,
+    opacity: 0.9
+  });
+
+  hudDroneLocationArrow = new THREE.Mesh(geometry, material);
+  scene.add(hudDroneLocationArrow);
+}
+
+// ドローン位置表示矢印の位置と向きを更新
+function updateDroneLocationArrow() {
+  if (!drone || !camera) return;
+
+  const cameraPos = new THREE.Vector3();
+  camera.getWorldPosition(cameraPos);
+
+  const dronePos = drone.position.clone();
+
+  // カメラからドローンへの方向ベクトル
+  const toDrone = dronePos.clone().sub(cameraPos);
+
+  // カメラのローカル座標系でのドローンの位置を計算
+  const toDroneLocal = toDrone.clone().applyQuaternion(camera.quaternion.clone().invert());
+
+  // カメラの視野角（ラジアン）
+  const fovRad = (camera.fov * Math.PI) / 180;
+  const aspectRatio = camera.aspect || (window.innerWidth / window.innerHeight);
+
+  // 視野範囲の判定（少し余裕を持たせる）
+  const verticalHalfAngle = fovRad / 2 * 0.7; // 70%の範囲
+  const horizontalHalfAngle = Math.atan(Math.tan(verticalHalfAngle) * aspectRatio);
+
+  const angleY = Math.atan2(toDroneLocal.y, -toDroneLocal.z);
+  const angleX = Math.atan2(toDroneLocal.x, -toDroneLocal.z);
+
+  const isInView =
+    Math.abs(angleY) < verticalHalfAngle &&
+    Math.abs(angleX) < horizontalHalfAngle &&
+    toDroneLocal.z < 0; // カメラの前方にある
+
+  if (isInView) {
+    // 視野内なら矢印を非表示
+    if (hudDroneLocationArrow) {
+      hudDroneLocationArrow.visible = false;
+    }
+  } else {
+    // 視野外ならカメラの端に矢印を表示
+    if (!hudDroneLocationArrow) {
+      createDroneLocationArrow();
+    }
+    hudDroneLocationArrow.visible = true;
+
+    // カメラの向きベクトルを取得
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+
+    // 矢印を配置する画面端の位置を計算
+    const depth = 0.35; // カメラからの距離
+    let edgePos = cameraPos.clone().add(forward.clone().multiplyScalar(depth));
+
+    // 水平方向（左右）の位置を決定
+    let horizontalOffset = 0;
+    if (Math.abs(angleX) > horizontalHalfAngle) {
+      // 左右の端（両方とも内側に移動）
+      const edgeAngleX = angleX > 0 ? horizontalHalfAngle * 0.75 : -horizontalHalfAngle * 0.65;
+      horizontalOffset = Math.tan(edgeAngleX) * depth;
+    } else {
+      // 中央付近
+      horizontalOffset = Math.tan(angleX) * depth;
+    }
+    edgePos.add(right.clone().multiplyScalar(horizontalOffset));
+
+    // 垂直方向（上下）の位置を決定
+    let verticalOffset = 0;
+    if (Math.abs(angleY) > verticalHalfAngle) {
+      // 上下の端（上はそのまま、下はさらに下に）
+      const edgeAngleY = angleY > 0 ? verticalHalfAngle * 0.85 : -verticalHalfAngle * 1.05;
+      verticalOffset = Math.tan(edgeAngleY) * depth;
+    } else {
+      // 中央付近
+      verticalOffset = Math.tan(angleY) * depth;
+    }
+    edgePos.add(up.clone().multiplyScalar(verticalOffset));
+
+    hudDroneLocationArrow.position.copy(edgePos);
+
+    // 矢印をドローンの方向に向ける
+    hudDroneLocationArrow.lookAt(dronePos);
+    hudDroneLocationArrow.rotateX(Math.PI / 2); // 円錐の向きを調整
   }
 }
 
@@ -915,6 +1129,13 @@ function render() {
 
   // 音量オンオフ表示の位置を更新
   updateVolumeText();
+
+  // HUDモード時の表示更新
+  if (isHUDMode) {
+    updateHUDModeText();
+    updateDirectionArrow();
+    updateDroneLocationArrow();
+  }
 
   // 深度情報と平面検出の処理
   if (xrSession) {
@@ -1476,6 +1697,73 @@ function render() {
         }
 
         rightBButtonPressed = isBPressed;
+
+        // Aボタン（通常buttons[4]）でHUDモードトグル
+        const aButton = buttons[4];
+        const isAPressed = aButton && aButton.pressed;
+
+        if (isAPressed && !rightAButtonPressed) {
+          // HUDモードをトグル
+          isHUDMode = !isHUDMode;
+
+          if (isHUDMode) {
+            // HUDモード開始
+            createHUDModeText();
+            createDirectionArrow();
+            // スピード表示と音量表示を作成
+            createSpeedText();
+            createVolumeText(!isSoundMuted);
+            updateInfo('HUDモード開始');
+            console.log('HUDモード開始');
+          } else {
+            // HUDモード解除
+            if (hudModeText) {
+              scene.remove(hudModeText);
+              hudModeText.geometry.dispose();
+              hudModeText.material.dispose();
+              hudModeText.material.map.dispose();
+              hudModeText = null;
+            }
+            if (hudDirectionArrow) {
+              scene.remove(hudDirectionArrow);
+              hudDirectionArrow.geometry.dispose();
+              hudDirectionArrow.material.dispose();
+              hudDirectionArrow = null;
+            }
+            if (hudDroneLocationArrow) {
+              scene.remove(hudDroneLocationArrow);
+              hudDroneLocationArrow.geometry.dispose();
+              hudDroneLocationArrow.material.dispose();
+              hudDroneLocationArrow = null;
+            }
+            // スピード表示と音量表示も削除
+            if (speedText) {
+              scene.remove(speedText);
+              speedText.geometry.dispose();
+              speedText.material.dispose();
+              speedText.material.map.dispose();
+              speedText = null;
+            }
+            if (speedRightControllerText) {
+              scene.remove(speedRightControllerText);
+              speedRightControllerText.geometry.dispose();
+              speedRightControllerText.material.dispose();
+              speedRightControllerText.material.map.dispose();
+              speedRightControllerText = null;
+            }
+            if (volumeText) {
+              scene.remove(volumeText);
+              volumeText.geometry.dispose();
+              volumeText.material.dispose();
+              volumeText.material.map.dispose();
+              volumeText = null;
+            }
+            updateInfo('HUDモード解除');
+            console.log('HUDモード解除');
+          }
+        }
+
+        rightAButtonPressed = isAPressed;
       }
     }
   }
