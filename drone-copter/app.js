@@ -53,6 +53,10 @@ let grabOffset = new THREE.Vector3(); // 掴んだ時のオフセット
 let grabRotationOffset = new THREE.Quaternion(); // 掴んだ時の回転オフセット
 let rightGripPressed = false; // 右グリップボタンの状態
 let leftGripPressed = false; // 左グリップボタンの状態
+let bothGripsPressed = false; // 両方のグリップボタンが押されているか
+let initialControllerDistance = 0; // スケール変更開始時のコントローラー間の距離
+let initialDroneScale = 0.3; // スケール変更開始時のドローンのスケール
+let currentDroneScale = 0.3; // 現在のドローンのスケール
 let smoothedHandPosition = new THREE.Vector3(); // スムージングされた手の位置
 let smoothedHandRotation = new THREE.Quaternion(); // スムージングされた手の回転
 const handSmoothingFactor = 0.3; // スムージング係数（0.0-1.0、大きいほど速く追従）
@@ -209,6 +213,34 @@ function calculateDroneBoundingBox() {
   console.log('ドローンのサイズ:', size);
   console.log('当たり判定 - 水平:', (droneCollisionRadius.horizontal * 100).toFixed(1) + 'cm');
   console.log('当たり判定 - 垂直:', (droneCollisionRadius.vertical * 100).toFixed(1) + 'cm');
+}
+
+// ドローンのスケールを変更
+function updateDroneScale(newScale) {
+  if (!drone) return;
+
+  // 最小値のみ設定（極端に小さくなりすぎないように）
+  if (newScale < 0.01) {
+    newScale = 0.01;
+  }
+
+  // ドローンのスケールを更新
+  drone.scale.set(newScale, newScale, newScale);
+  currentDroneScale = newScale;
+
+  // 当たり判定を再計算
+  calculateDroneBoundingBox();
+
+  // 音のピッチを調整（大きいほど低い音、小さいほど高い音）
+  // スケールに応じて対数的にピッチを変化させる
+  if (droneSound && droneSound.source) {
+    // スケール0.3で1.0倍速を基準に、対数スケールでピッチを調整
+    const playbackRate = Math.pow(0.3 / newScale, 0.5);
+    // ピッチの範囲を0.2〜3.0に制限（極端な値を避ける）
+    droneSound.source.playbackRate.value = Math.max(0.2, Math.min(3.0, playbackRate));
+  }
+
+  console.log('ドローンのスケール変更:', newScale.toFixed(2), '音のピッチ:', droneSound && droneSound.source ? droneSound.source.playbackRate.value.toFixed(2) : 'N/A');
 }
 
 // VR用の背景とグリッドを作成
@@ -757,8 +789,69 @@ function render() {
     drone.rotation.z = drone.userData.physicsTilt.z + hoverTiltZ;
   }
 
+  // 両方のグリップボタン同時押しでドローンのサイズ変更
+  if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand) {
+    const inputSources = xrSession.inputSources;
+    let rightGripCurrentlyPressed = false;
+    let leftGripCurrentlyPressed = false;
+    let rightControllerPos = null;
+    let leftControllerPos = null;
+
+    // 左右のグリップの状態とコントローラーの位置を取得
+    const frame = renderer.xr.getFrame();
+    const referenceSpace = renderer.xr.getReferenceSpace();
+    if (frame && referenceSpace) {
+      for (const source of inputSources) {
+        if (source.gamepad && source.gripSpace) {
+          const buttons = source.gamepad.buttons;
+          const gripButton = buttons[1];
+          const isGripPressed = gripButton && gripButton.pressed;
+
+          const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+          if (gripPose) {
+            const controllerPos = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().fromArray(gripPose.transform.matrix));
+
+            if (source.handedness === 'right') {
+              rightGripCurrentlyPressed = isGripPressed;
+              rightControllerPos = controllerPos;
+            } else if (source.handedness === 'left') {
+              leftGripCurrentlyPressed = isGripPressed;
+              leftControllerPos = controllerPos;
+            }
+          }
+        }
+      }
+    }
+
+    // 両方のグリップが押されている場合
+    if (rightGripCurrentlyPressed && leftGripCurrentlyPressed && rightControllerPos && leftControllerPos) {
+      if (!bothGripsPressed) {
+        // 両グリップ同時押しの開始
+        bothGripsPressed = true;
+        initialControllerDistance = rightControllerPos.distanceTo(leftControllerPos);
+        initialDroneScale = currentDroneScale;
+        updateInfo('サイズ変更モード開始 (初期距離: ' + (initialControllerDistance * 100).toFixed(1) + 'cm)');
+        console.log('サイズ変更モード開始:', initialControllerDistance, 'スケール:', initialDroneScale);
+      } else {
+        // サイズ変更中
+        const currentDistance = rightControllerPos.distanceTo(leftControllerPos);
+        const scaleRatio = currentDistance / initialControllerDistance;
+        const newScale = initialDroneScale * scaleRatio;
+
+        updateDroneScale(newScale);
+      }
+    } else {
+      if (bothGripsPressed) {
+        // 両グリップ同時押し終了
+        bothGripsPressed = false;
+        updateInfo('サイズ変更モード終了 (最終スケール: ' + currentDroneScale.toFixed(2) + ')');
+        console.log('サイズ変更モード終了');
+      }
+    }
+  }
+
   // コントローラーでドローンを掴む処理
-  if (xrSession && drone && dronePositioned && !isGrabbedByHand) {
+  if (xrSession && drone && dronePositioned && !isGrabbedByHand && !bothGripsPressed) {
     const inputSources = xrSession.inputSources;
 
     for (const source of inputSources) {
@@ -1012,7 +1105,7 @@ function render() {
   }
 
   // トリガーボタンで速度レベル変更
-  if (xrSession && drone && dronePositioned) {
+  if (xrSession && drone && dronePositioned && !bothGripsPressed) {
     const inputSources = xrSession.inputSources;
 
     for (const source of inputSources) {
@@ -1060,7 +1153,7 @@ function render() {
   }
 
   // 右コントローラーのAボタンで自動帰還モード
-  if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand) {
+  if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand && !bothGripsPressed) {
     const inputSources = xrSession.inputSources;
 
     for (const source of inputSources) {
@@ -1109,7 +1202,7 @@ function render() {
   }
 
   // ゲームパッド入力でドローンを操作（物理演算）
-  if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand && !isReturningToHover && !isAutoReturning) {
+  if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand && !isReturningToHover && !isAutoReturning && !bothGripsPressed) {
     const inputSources = xrSession.inputSources;
     let inputX = 0, inputY = 0, inputZ = 0; // 入力値
     let inputRotation = 0;
@@ -1237,7 +1330,7 @@ function render() {
   }
 
   // ハンドトラッキングでドローンを掴む処理
-  if (xrSession && drone && dronePositioned && !isGrabbedByController) {
+  if (xrSession && drone && dronePositioned && !isGrabbedByController && !bothGripsPressed) {
     const frame = renderer.xr.getFrame();
     if (frame) {
       const hands = [hand1, hand2];
