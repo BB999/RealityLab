@@ -13,6 +13,7 @@ let droneSound = null;
 let hoverTime = 0; // 浮遊アニメーション用タイマー
 let isSoundMuted = false; // 音声のミュート状態
 let leftStickButtonPressed = false; // 左スティックボタンの押下状態（トグル用）
+let leftYButtonPressed = false; // 左Yボタンの押下状態（トグル用）
 let droneBoundingBox = null; // ドローンのバウンディングボックス
 let droneCollisionRadius = { horizontal: 0.15, vertical: 0.05 }; // デフォルト値
 
@@ -26,10 +27,11 @@ let isAutoReturning = false; // 自動帰還中か
 let autoReturnTarget = new THREE.Vector3(); // 帰還先の位置
 let autoReturnSpeed = 0.02; // 帰還速度（現在の速度に応じて動的に変更）
 let autoReturnPhase = 'horizontal'; // 'horizontal' または 'vertical'
-let rightAButtonPressed = false; // 右Aボタンの押下状態
+let rightBButtonPressed = false; // 右Bボタンの押下状態
 let autoReturnText = null; // 自動帰還中のテキスト表示（ドローン上）
 let autoReturnRightControllerText = null; // 自動帰還中のテキスト表示（右コントローラー上）
 let autoReturnLeftControllerText = null; // 自動帰還中のテキスト表示（左コントローラー上）
+let volumeText = null; // 音量オンオフのテキスト表示（カメラ右下）
 
 // 深度センサー用変数
 let depthDataTexture = null;
@@ -603,6 +605,76 @@ function updateMaxSpeed() {
   }
 }
 
+// 音量オンオフ表示を作成
+function createVolumeText(isOn) {
+  // 既に存在する場合は削除
+  if (volumeText) {
+    scene.remove(volumeText);
+    volumeText.geometry.dispose();
+    volumeText.material.dispose();
+    volumeText.material.map.dispose();
+    volumeText = null;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+
+  // 背景は透明
+  context.fillStyle = '#00ff00';
+  context.font = 'bold 60px Arial';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  const text = isOn ? '音量オン' : '音量オフ';
+  context.fillText(text, canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const geometry = new THREE.PlaneGeometry(0.2, 0.05); // スピード表示と同じサイズ
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  volumeText = new THREE.Mesh(geometry, material);
+  scene.add(volumeText);
+
+  // 3秒後に自動で消す
+  setTimeout(() => {
+    if (volumeText) {
+      scene.remove(volumeText);
+      volumeText.geometry.dispose();
+      volumeText.material.dispose();
+      volumeText.material.map.dispose();
+      volumeText = null;
+    }
+  }, 3000);
+}
+
+// 音量オンオフ表示の位置を更新
+function updateVolumeText() {
+  if (volumeText) {
+    // カメラの右下に固定配置（自動帰還テキストの下、スピードテキストより下）
+    const cameraPos = new THREE.Vector3();
+    camera.getWorldPosition(cameraPos);
+
+    // カメラの向きベクトルを取得
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    const down = new THREE.Vector3(0, -1, 0).applyQuaternion(camera.quaternion);
+
+    // カメラの前方50cm、右20cm、下25cmの位置（自動帰還より5cm下）
+    const textPos = cameraPos.clone()
+      .add(forward.multiplyScalar(0.5))
+      .add(right.multiplyScalar(0.2))
+      .add(down.multiplyScalar(0.25));
+
+    volumeText.position.copy(textPos);
+    volumeText.lookAt(camera.position);
+  }
+}
+
 // 深度データの処理
 function processDepthInformation(frame, referenceSpace) {
   const pose = frame.getViewerPose(referenceSpace);
@@ -801,6 +873,9 @@ function render() {
 
   // 速度レベル表示の位置を更新
   updateSpeedText();
+
+  // 音量オンオフ表示の位置を更新
+  updateVolumeText();
 
   // 深度情報と平面検出の処理
   if (xrSession) {
@@ -1310,20 +1385,20 @@ function render() {
     }
   }
 
-  // 右コントローラーのAボタンで自動帰還モード
+  // 右コントローラーのBボタンで自動帰還モード
   if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand && !bothGripsPressed) {
     const inputSources = xrSession.inputSources;
 
     for (const source of inputSources) {
       if (source.handedness === 'right' && source.gamepad) {
         const buttons = source.gamepad.buttons;
-        // Aボタン（通常buttons[4]）
-        const aButton = buttons[4];
-        const isAPressed = aButton && aButton.pressed;
+        // Bボタン（通常buttons[5]）
+        const bButton = buttons[5];
+        const isBPressed = bButton && bButton.pressed;
 
-        if (isAPressed && !rightAButtonPressed) {
+        if (isBPressed && !rightBButtonPressed) {
           if (!isAutoReturning) {
-            // Aボタンが押された瞬間（まだ自動帰還中でない場合）→ 自動帰還開始
+            // Bボタンが押された瞬間（まだ自動帰還中でない場合）→ 自動帰還開始
             const frame = renderer.xr.getFrame();
             const referenceSpace = renderer.xr.getReferenceSpace();
             if (frame && referenceSpace && source.gripSpace) {
@@ -1346,7 +1421,7 @@ function render() {
               }
             }
           } else {
-            // 自動帰還中にAボタンが押された場合 → キャンセル
+            // 自動帰還中にBボタンが押された場合 → キャンセル
             isAutoReturning = false;
             autoReturnPhase = 'horizontal';
             removeAutoReturnText();
@@ -1355,7 +1430,40 @@ function render() {
           }
         }
 
-        rightAButtonPressed = isAPressed;
+        rightBButtonPressed = isBPressed;
+      }
+    }
+  }
+
+  // 左コントローラーのYボタンで音量オンオフ
+  if (xrSession && droneSound) {
+    const inputSources = xrSession.inputSources;
+
+    for (const source of inputSources) {
+      if (source.handedness === 'left' && source.gamepad) {
+        const buttons = source.gamepad.buttons;
+        // Yボタン（通常buttons[4]）
+        const yButton = buttons[4];
+        const isYPressed = yButton && yButton.pressed;
+
+        if (isYPressed && !leftYButtonPressed) {
+          // ボタンが押された瞬間のみ反応（トグル処理）
+          isSoundMuted = !isSoundMuted;
+
+          if (isSoundMuted) {
+            droneSound.setVolume(0);
+            console.log('ドローン音声: ミュート');
+            updateInfo('ドローン音声: ミュート');
+            createVolumeText(false); // 音量オフ表示
+          } else {
+            droneSound.setVolume(0.7);
+            console.log('ドローン音声: オン');
+            updateInfo('ドローン音声: オン');
+            createVolumeText(true); // 音量オン表示
+          }
+        }
+
+        leftYButtonPressed = isYPressed;
       }
     }
   }
@@ -1399,28 +1507,6 @@ function render() {
             rawInputZ = axes[3];
           }
 
-          // 左スティック押し込みで音声オンオフ（トグル）
-          if (buttons.length > 3 && buttons[3].pressed) {
-            if (!leftStickButtonPressed && droneSound) {
-              // ボタンが押された瞬間のみ反応（トグル処理）
-              isSoundMuted = !isSoundMuted;
-
-              if (isSoundMuted) {
-                droneSound.setVolume(0);
-                console.log('ドローン音声: ミュート');
-                updateInfo('ドローン音声: ミュート');
-              } else {
-                droneSound.setVolume(0.7);
-                console.log('ドローン音声: オン');
-                updateInfo('ドローン音声: オン');
-              }
-
-              leftStickButtonPressed = true;
-            }
-          } else {
-            // ボタンが離されたらフラグをリセット
-            leftStickButtonPressed = false;
-          }
         }
       }
     }
