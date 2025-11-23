@@ -325,9 +325,7 @@ function createAutoReturnText() {
   canvas.height = 128;
   const context = canvas.getContext('2d');
 
-  // 背景を半透明の黒に
-  context.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  // 背景は透明（描画しない）
 
   // テキストを描画
   context.fillStyle = '#00ff00'; // 緑色
@@ -339,8 +337,8 @@ function createAutoReturnText() {
   // テクスチャを作成
   const texture = new THREE.CanvasTexture(canvas);
 
-  // 平面ジオメトリを作成
-  const geometry = new THREE.PlaneGeometry(0.3, 0.075);
+  // 平面ジオメトリを作成（半分のサイズ）
+  const geometry = new THREE.PlaneGeometry(0.15, 0.0375);
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
@@ -361,9 +359,7 @@ function createAutoReturnRightControllerText() {
   canvas.height = 128;
   const context = canvas.getContext('2d');
 
-  // 背景を半透明の黒に
-  context.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  // 背景は透明（描画しない）
 
   // テキストを描画
   context.fillStyle = '#00ff00'; // 緑色
@@ -375,8 +371,8 @@ function createAutoReturnRightControllerText() {
   // テクスチャを作成
   const texture = new THREE.CanvasTexture(canvas);
 
-  // 平面ジオメトリを作成
-  const geometry = new THREE.PlaneGeometry(0.3, 0.075);
+  // 平面ジオメトリを作成（半分のサイズ）
+  const geometry = new THREE.PlaneGeometry(0.15, 0.0375);
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
@@ -397,9 +393,7 @@ function createAutoReturnLeftControllerText() {
   canvas.height = 128;
   const context = canvas.getContext('2d');
 
-  // 背景を半透明の黒に
-  context.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  // 背景は透明（描画しない）
 
   // テキストを描画
   context.fillStyle = '#00ff00'; // 緑色
@@ -411,8 +405,8 @@ function createAutoReturnLeftControllerText() {
   // テクスチャを作成
   const texture = new THREE.CanvasTexture(canvas);
 
-  // 平面ジオメトリを作成
-  const geometry = new THREE.PlaneGeometry(0.3, 0.075);
+  // 平面ジオメトリを作成（半分のサイズ）
+  const geometry = new THREE.PlaneGeometry(0.15, 0.0375);
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
@@ -450,41 +444,29 @@ function removeAutoReturnText() {
 
 // 自動帰還中のテキスト位置を更新
 function updateAutoReturnText() {
-  if (autoReturnText && drone) {
-    // ドローンの真上にテキストを配置
-    const offset = new THREE.Vector3(0, 0.2, 0); // ドローンの真上20cm
-    autoReturnText.position.copy(drone.position).add(offset);
+  if (autoReturnText) {
+    // カメラの右下に固定配置
+    const cameraPos = new THREE.Vector3();
+    camera.getWorldPosition(cameraPos);
 
-    // テキストをカメラの方を向かせる
+    // カメラの向きベクトルを取得
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    const down = new THREE.Vector3(0, -1, 0).applyQuaternion(camera.quaternion);
+
+    // カメラの前方50cm、右20cm、下20cmの位置
+    const textPos = cameraPos.clone()
+      .add(forward.multiplyScalar(0.5))
+      .add(right.multiplyScalar(0.2))
+      .add(down.multiplyScalar(0.2));
+
+    autoReturnText.position.copy(textPos);
     autoReturnText.lookAt(camera.position);
   }
 
-  // 右コントローラーの上にもテキストを配置
-  if (xrSession) {
-    const frame = renderer.xr.getFrame();
-    const referenceSpace = renderer.xr.getReferenceSpace();
-    if (frame && referenceSpace) {
-      const inputSources = xrSession.inputSources;
-      for (const source of inputSources) {
-        if (source.handedness === 'right' && source.gripSpace) {
-          const gripPose = frame.getPose(source.gripSpace, referenceSpace);
-          if (gripPose) {
-            const controllerPos = new THREE.Vector3().setFromMatrixPosition(
-              new THREE.Matrix4().fromArray(gripPose.transform.matrix)
-            );
-
-            // コントローラーの真上にテキストを配置
-            const offset = new THREE.Vector3(0, 0.15, 0); // コントローラーの真上15cm
-
-            if (autoReturnRightControllerText) {
-              autoReturnRightControllerText.position.copy(controllerPos).add(offset);
-              autoReturnRightControllerText.lookAt(camera.position);
-            }
-          }
-          break;
-        }
-      }
-    }
+  // 右コントローラー上のテキストは削除（使わない）
+  if (autoReturnRightControllerText) {
+    autoReturnRightControllerText.visible = false;
   }
 }
 
@@ -512,9 +494,7 @@ function createSpeedText() {
   canvas.height = 128;
   const context = canvas.getContext('2d');
 
-  // 背景を半透明の黒に
-  context.fillStyle = 'rgba(0, 0, 0, 0.7)';
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  // 背景は透明（描画しない）
 
   // テキストを描画
   context.fillStyle = '#ffff00'; // 黄色
@@ -526,8 +506,8 @@ function createSpeedText() {
   // テクスチャを作成
   const texture = new THREE.CanvasTexture(canvas);
 
-  // ドローン上のテキストを作成
-  const geometry1 = new THREE.PlaneGeometry(0.4, 0.1);
+  // カメラ右下用のテキストを作成（半分のサイズ）
+  const geometry1 = new THREE.PlaneGeometry(0.2, 0.05);
   const material1 = new THREE.MeshBasicMaterial({
     map: texture.clone(),
     transparent: true,
@@ -536,7 +516,7 @@ function createSpeedText() {
   speedText = new THREE.Mesh(geometry1, material1);
   scene.add(speedText);
 
-  // 右コントローラー上のテキストを作成（サイズは半分）
+  // 右コントローラー上のテキストを作成（使わないが互換性のため）
   const geometry2 = new THREE.PlaneGeometry(0.2, 0.05);
   const material2 = new THREE.MeshBasicMaterial({
     map: texture.clone(),
@@ -567,52 +547,29 @@ function createSpeedText() {
 
 // 速度レベル表示の位置を更新
 function updateSpeedText() {
-  if (speedText && drone) {
-    // ドローンの真上にテキストを配置
-    const baseOffset = new THREE.Vector3(0, 0.15, 0); // ドローンの真上15cm
-    speedText.position.copy(drone.position).add(baseOffset);
+  if (speedText) {
+    // カメラの右下に固定配置（自動帰還テキストの少し上）
+    const cameraPos = new THREE.Vector3();
+    camera.getWorldPosition(cameraPos);
 
-    // カメラの方向に向ける前に、カメラ方向へ5cm移動（手前に配置）
-    const toCamera = new THREE.Vector3();
-    toCamera.subVectors(camera.position, speedText.position).normalize();
-    speedText.position.add(toCamera.multiplyScalar(0.05));
+    // カメラの向きベクトルを取得
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    const down = new THREE.Vector3(0, -1, 0).applyQuaternion(camera.quaternion);
 
-    // テキストをカメラの方を向かせる
+    // カメラの前方50cm、右20cm、下15cmの位置（自動帰還より5cm上）
+    const textPos = cameraPos.clone()
+      .add(forward.multiplyScalar(0.5))
+      .add(right.multiplyScalar(0.2))
+      .add(down.multiplyScalar(0.15));
+
+    speedText.position.copy(textPos);
     speedText.lookAt(camera.position);
   }
 
-  // 右コントローラーの上にもテキストを配置
-  if (xrSession) {
-    const frame = renderer.xr.getFrame();
-    const referenceSpace = renderer.xr.getReferenceSpace();
-    if (frame && referenceSpace) {
-      const inputSources = xrSession.inputSources;
-      for (const source of inputSources) {
-        if (source.handedness === 'right' && source.gripSpace) {
-          const gripPose = frame.getPose(source.gripSpace, referenceSpace);
-          if (gripPose) {
-            const controllerPos = new THREE.Vector3().setFromMatrixPosition(
-              new THREE.Matrix4().fromArray(gripPose.transform.matrix)
-            );
-
-            // コントローラーの真上にテキストを配置
-            const baseOffset = new THREE.Vector3(0, 0.15, 0); // コントローラーの真上15cm
-
-            if (speedRightControllerText) {
-              speedRightControllerText.position.copy(controllerPos).add(baseOffset);
-
-              // カメラの方向に向ける前に、カメラ方向へ5cm移動（手前に配置）
-              const toCamera = new THREE.Vector3();
-              toCamera.subVectors(camera.position, speedRightControllerText.position).normalize();
-              speedRightControllerText.position.add(toCamera.multiplyScalar(0.05));
-
-              speedRightControllerText.lookAt(camera.position);
-            }
-          }
-          break;
-        }
-      }
-    }
+  // 右コントローラー上のテキストは削除（使わない）
+  if (speedRightControllerText) {
+    speedRightControllerText.visible = false;
   }
 }
 
