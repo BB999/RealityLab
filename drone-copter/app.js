@@ -65,6 +65,8 @@ const handSmoothingFactor = 0.3; // スムージング係数（0.0-1.0、大き�
 let smoothedControllerPosition = new THREE.Vector3(); // スムージングされたコントローラーの位置
 let smoothedControllerRotation = new THREE.Quaternion(); // スムージングされたコントローラーの回転
 const controllerSmoothingFactor = 0.3; // コントローラーのスムージング係数
+let previousDronePosition = new THREE.Vector3(); // 前フレームのドローン位置（速度計算用）
+let droneVelocity = 0; // ドローンの速度（m/s）
 
 // 離した時のアニメーション用変数
 let isReturningToHover = false; // ホバー状態に戻る途中か
@@ -235,16 +237,28 @@ function updateDroneScale(newScale) {
   // 当たり判定を再計算
   calculateDroneBoundingBox();
 
-  // 音のピッチを調整（大きいほど低い音、小さいほど高い音）
-  // スケールに応じて対数的にピッチを変化させる
-  if (droneSound && droneSound.source) {
-    // スケール0.3で1.0倍速を基準に、対数スケールでピッチを調整
-    const playbackRate = Math.pow(0.3 / newScale, 0.5);
-    // ピッチの範囲を0.2〜3.0に制限（極端な値を避ける）
-    droneSound.source.playbackRate.value = Math.max(0.2, Math.min(3.0, playbackRate));
-  }
+  // 音のピッチを更新
+  updateDroneSoundPitch();
 
   console.log('ドローンのスケール変更:', newScale.toFixed(2), '音のピッチ:', droneSound && droneSound.source ? droneSound.source.playbackRate.value.toFixed(2) : 'N/A');
+}
+
+// ドローンの音のピッチを更新（サイズと移動速度を考慮）
+function updateDroneSoundPitch() {
+  if (!droneSound || !droneSound.source) return;
+
+  // サイズに基づく基本ピッチ（大きいほど低い音、小さいほど高い音）
+  const basePitchFromSize = Math.pow(0.3 / currentDroneScale, 0.5);
+
+  // 移動速度に基づく追加ピッチ（移動中は少し高くなる）
+  // 速度が0.5m/s以上で効果が出始め、最大で1.2倍まで高くなる
+  const velocityBoost = 1.0 + Math.min(droneVelocity * 0.4, 0.2);
+
+  // 最終的なピッチ
+  const finalPitch = basePitchFromSize * velocityBoost;
+
+  // ピッチの範囲を0.2〜3.0に制限（極端な値を避ける）
+  droneSound.source.playbackRate.value = Math.max(0.2, Math.min(3.0, finalPitch));
 }
 
 // VR用の背景とグリッドを作成
@@ -1608,6 +1622,24 @@ function render() {
         }
       }
     }
+  }
+
+  // ドローンの速度を計算して音のピッチを更新
+  if (drone && dronePositioned) {
+    const currentPos = drone.position.clone();
+
+    // 前フレームの位置が設定されている場合のみ速度を計算
+    if (previousDronePosition.length() > 0) {
+      const displacement = currentPos.distanceTo(previousDronePosition);
+      // フレームレート60FPSを想定（0.016秒/フレーム）
+      droneVelocity = displacement / 0.016;
+
+      // 音のピッチを更新
+      updateDroneSoundPitch();
+    }
+
+    // 現在の位置を保存
+    previousDronePosition.copy(currentPos);
   }
 
   renderer.render(scene, camera);
