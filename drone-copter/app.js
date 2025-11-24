@@ -35,9 +35,11 @@ let volumeText = null; // 音量オンオフのテキスト表示（カメラ右
 let collisionText = null; // 当たり判定オンオフのテキスト表示（カメラ左下）
 let isCollisionEnabled = true; // 当たり判定のオンオフ状態
 let rightStickButtonPressed = false; // 右スティックボタンの押下状態
+let rightAButtonPressedForCollision = false; // 右Aボタンの押下状態（当たり判定用）
 let trackingLostText = null; // トラッキングロスト表示（画面下中央）
 let isLeftControllerTracked = true; // 左コントローラーのトラッキング状態
 let isRightControllerTracked = true; // 右コントローラーのトラッキング状態
+let sequenceStatusText = null; // シーケンス状態表示（トラッキングロストの上）
 
 // 起動シーケンス用変数
 let isStartupComplete = false; // 起動シーケンスが完了したか
@@ -47,6 +49,16 @@ let leftXButtonPressed = false; // 左Xボタンの押下状態
 let liftStartTime = null; // 上昇開始時刻
 let liftStartPos = null; // 上昇開始位置
 let liftTargetHeight = null; // 上昇目標高さ
+let liftLastY = null; // 前回の上昇チェック時のY座標
+let liftStuckStartTime = null; // 動いていない状態の開始時刻
+
+// 終了シーケンス用変数
+let isShuttingDown = false; // 終了シーケンス実行中か
+let descentStartTime = null; // 降下開始時刻
+let decelerationStartTime = null; // プロペラ減速開始時刻
+let descentLastY = null; // 前回の降下チェック時のY座標
+let descentStuckStartTime = null; // 動いていない状態の開始時刻
+let landingHeight = null; // 着地高さ（減速時に固定する高さ）
 
 // 起動前の物理シミュレーション用変数
 let dronePhysicsVelocity = new THREE.Vector3(0, 0, 0); // 速度
@@ -900,6 +912,86 @@ function updateTrackingLostText() {
   }
 }
 
+// シーケンス状態表示を作成
+function createSequenceStatusText(message) {
+  // 既に存在する場合は削除
+  if (sequenceStatusText) {
+    scene.remove(sequenceStatusText);
+    sequenceStatusText.geometry.dispose();
+    sequenceStatusText.material.dispose();
+    sequenceStatusText.material.map.dispose();
+    sequenceStatusText = null;
+  }
+
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+
+  // フォント設定してテキストサイズを測定
+  context.font = 'bold 60px Arial';
+  const metrics = context.measureText(message);
+  const textWidth = metrics.width;
+  const textHeight = 60; // フォントサイズ
+
+  // 余白を最小限に（上下左右各5px）
+  const padding = 10;
+  canvas.width = textWidth + padding * 2;
+  canvas.height = textHeight + padding * 2;
+
+  // キャンバスサイズ変更後、再度フォント設定が必要
+  context.font = 'bold 60px Arial';
+  context.fillStyle = '#00ff00';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(message, canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  // キャンバスのアスペクト比に合わせてジオメトリを作成
+  const aspectRatio = canvas.width / canvas.height;
+  const planeHeight = 0.05;
+  const planeWidth = planeHeight * aspectRatio;
+  const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  sequenceStatusText = new THREE.Mesh(geometry, material);
+  scene.add(sequenceStatusText);
+}
+
+// シーケンス状態表示を削除
+function removeSequenceStatusText() {
+  if (sequenceStatusText) {
+    scene.remove(sequenceStatusText);
+    sequenceStatusText.geometry.dispose();
+    sequenceStatusText.material.dispose();
+    sequenceStatusText.material.map.dispose();
+    sequenceStatusText = null;
+  }
+}
+
+// シーケンス状態表示の位置を更新
+function updateSequenceStatusText() {
+  if (sequenceStatusText) {
+    // カメラの下中央に固定配置（トラッキングロストの上）
+    const cameraPos = new THREE.Vector3();
+    camera.getWorldPosition(cameraPos);
+
+    // カメラの向きベクトルを取得
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const down = new THREE.Vector3(0, -1, 0).applyQuaternion(camera.quaternion);
+
+    // カメラの前方50cm、下20cmの位置（トラッキングロストの上）
+    const textPos = cameraPos.clone()
+      .add(forward.multiplyScalar(0.5))
+      .add(down.multiplyScalar(0.2));
+
+    sequenceStatusText.position.copy(textPos);
+    sequenceStatusText.lookAt(camera.position);
+  }
+}
+
 // HUDモードテキストを作成
 function createHUDModeText() {
   // 既に存在する場合は削除
@@ -1211,7 +1303,7 @@ function updatePlanes(frame, referenceSpace) {
 
 // ドローンと平面の衝突判定
 function checkPlaneCollision() {
-  if (!drone || !dronePositioned) return;
+  if (!drone || !dronePositioned) return false;
 
   const dronePos = new THREE.Vector3();
   drone.getWorldPosition(dronePos);
@@ -1293,6 +1385,8 @@ function checkPlaneCollision() {
   if (!hasCollision) {
     isColliding = false;
   }
+
+  return hasCollision;
 }
 
 function render() {
@@ -1310,6 +1404,9 @@ function render() {
 
   // トラッキングロスト表示の位置を更新
   updateTrackingLostText();
+
+  // シーケンス状態表示の位置を更新
+  updateSequenceStatusText();
 
   // HUDモード時の表示更新
   if (isHUDMode) {
@@ -1428,9 +1525,10 @@ function render() {
     }
   }
 
-  // プロペラをy軸回転（起動シーケンス完了前は速度乗数を適用）
+  // プロペラをy軸回転
+  // 起動完了後かつ終了シーケンス中でない場合は通常速度、それ以外は速度乗数を適用
   propellers.forEach((propeller) => {
-    if (isStartupComplete) {
+    if (isStartupComplete && !isShuttingDown) {
       propeller.rotation.y += 0.5;
     } else {
       propeller.rotation.y += 0.5 * propellerSpeedMultiplier;
@@ -1484,8 +1582,14 @@ function render() {
               );
 
               liftStartPos = drone.position.clone();
-              liftTargetHeight = targetPos.y;
-              console.log('上昇開始 - 現在位置:', liftStartPos.y, '目標高さ:', liftTargetHeight);
+              // ドローンがコントローラーより高い位置にある場合は10cm上昇
+              if (drone.position.y >= targetPos.y) {
+                liftTargetHeight = drone.position.y + 0.1; // 10cm上昇
+                console.log('上昇開始 - 現在位置:', liftStartPos.y.toFixed(3), '目標高さ:', liftTargetHeight.toFixed(3), '(コントローラーより高いため10cm上昇)');
+              } else {
+                liftTargetHeight = targetPos.y;
+                console.log('上昇開始 - 現在位置:', liftStartPos.y.toFixed(3), '目標高さ:', liftTargetHeight.toFixed(3), '(コントローラーの高さまで)');
+              }
               break;
             }
           }
@@ -1500,8 +1604,9 @@ function render() {
     }
   }
 
-  // 起動前の物理シミュレーション（掴んでいない時、かつホバー・自動帰還中でない時、上昇中でない時）
-  if (drone && dronePositioned && !isStartupComplete && liftStartTime === null && !isGrabbedByController && !isGrabbedByHand && !isReturningToHover && !isAutoReturning) {
+  // 起動前の物理シミュレーション（掴んでいない時、かつホバー・自動帰還中でない時、シーケンス中でない時）
+  // 起動シーケンス中（isStartingUp）、上昇中、降下中、減速中、停止中は重力落下しない
+  if (drone && dronePositioned && !isStartupComplete && !isStartingUp && liftStartTime === null && descentStartTime === null && decelerationStartTime === null && propellerSpeedMultiplier > 0 && !isGrabbedByController && !isGrabbedByHand && !isReturningToHover && !isAutoReturning) {
     const floorHeight = 0.05; // 床から5cm
     const dt = 0.016; // フレーム時間（60FPS想定）
 
@@ -1621,8 +1726,8 @@ function render() {
     drone.rotation.z = drone.userData.physicsTilt.z + hoverTiltZ;
   }
 
-  // 両方のグリップボタン同時押しでドローンのサイズ変更
-  if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand) {
+  // 両方のグリップボタン同時押しでドローンのサイズ変更（起動・終了シーケンス中は変更不可）
+  if (xrSession && drone && dronePositioned && !isGrabbedByController && !isGrabbedByHand && !isStartingUp && !isShuttingDown) {
     const inputSources = xrSession.inputSources;
     let rightGripCurrentlyPressed = false;
     let leftGripCurrentlyPressed = false;
@@ -1682,8 +1787,8 @@ function render() {
     }
   }
 
-  // コントローラーでドローンを掴む処理
-  if (xrSession && drone && dronePositioned && !isGrabbedByHand && !bothGripsPressed) {
+  // コントローラーでドローンを掴む処理（起動・終了シーケンス中は掴めない）
+  if (xrSession && drone && dronePositioned && !isGrabbedByHand && !bothGripsPressed && !isStartingUp && !isShuttingDown) {
     const inputSources = xrSession.inputSources;
 
     for (const source of inputSources) {
@@ -2145,11 +2250,28 @@ function render() {
         }
 
         rightAButtonPressed = isRightStickPressed;
+
+        // Aボタン（通常buttons[4]）で当たり判定オンオフ
+        const aButton = buttons[4];
+        const isAPressed = aButton && aButton.pressed;
+
+        if (isAPressed && !rightAButtonPressedForCollision) {
+          // 当たり判定をトグル
+          isCollisionEnabled = !isCollisionEnabled;
+
+          // 表示を作成
+          createCollisionText(isCollisionEnabled);
+
+          updateInfo(isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
+          console.log(isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
+        }
+
+        rightAButtonPressedForCollision = isAPressed;
       }
     }
   }
 
-  // 左コントローラーのXボタンで起動シーケンス、Yボタンで音量オンオフ、左スティック押し込みで当たり判定オンオフ
+  // 左コントローラーのXボタンで起動/終了シーケンス、Yボタンで音量オンオフ
   if (xrSession && droneSound) {
     const inputSources = xrSession.inputSources;
 
@@ -2157,15 +2279,16 @@ function render() {
       if (source.handedness === 'left' && source.gamepad) {
         const buttons = source.gamepad.buttons;
 
-        // Xボタン（通常buttons[5]）で起動シーケンス
+        // Xボタン（通常buttons[5]）で起動/終了シーケンス
         const xButton = buttons[5];
         const isXPressed = xButton && xButton.pressed;
 
-        if (isXPressed && !leftXButtonPressed && !isStartupComplete && !isStartingUp && dronePositioned) {
+        if (isXPressed && !leftXButtonPressed && !isStartupComplete && !isStartingUp && !isShuttingDown && dronePositioned) {
           // 起動シーケンスを開始
           isStartingUp = true;
           console.log('起動シーケンス開始');
           updateInfo('Drone Starting...');
+          createSequenceStatusText('STARTING UP');
 
           // ドローン音を低ピッチで再生開始
           if (droneSound && droneSound.buffer && !droneSound.isPlaying) {
@@ -2212,17 +2335,30 @@ function render() {
 
               // 加速完了から0.5秒後に上昇を開始
               setTimeout(() => {
-                console.log('上昇準備完了 - 次のフレームで上昇開始');
+                console.log('=== 上昇準備完了 - 次のフレームで上昇開始 ===');
+                console.log('speedLevel:', speedLevel, 'currentDroneScale:', currentDroneScale.toFixed(3), 'maxSpeed:', maxSpeed.toFixed(4), 'acceleration:', acceleration.toFixed(6));
                 liftStartTime = Date.now();
               }, 500); // 0.5秒待機
             }
           }, 16); // 約60FPS
         }
 
+        // 起動完了後：Xボタンで終了シーケンス
+        if (isXPressed && !leftXButtonPressed && isStartupComplete && !isShuttingDown) {
+          // 終了シーケンス開始
+          isShuttingDown = true;
+          descentStartTime = Date.now();
+          isStartupComplete = false; // 起動完了状態を解除
+          console.log('=== 終了シーケンス開始 - 降下を開始 ===');
+          console.log('speedLevel:', speedLevel, 'currentDroneScale:', currentDroneScale.toFixed(3), 'maxSpeed:', maxSpeed.toFixed(4), 'acceleration:', acceleration.toFixed(6));
+          updateInfo('Shutting Down...');
+          createSequenceStatusText('SHUTTING DOWN');
+        }
+
         leftXButtonPressed = isXPressed;
 
         // 起動完了後のみ他のボタンを受け付ける
-        if (isStartupComplete) {
+        if (isStartupComplete && !isShuttingDown) {
           // Yボタン（通常buttons[4]）で音量オンオフ
           const yButton = buttons[4];
           const isYPressed = yButton && yButton.pressed;
@@ -2246,30 +2382,53 @@ function render() {
           }
 
           leftYButtonPressed = isYPressed;
-
-          // 左スティック押し込み（buttons[3]）で当たり判定オンオフ
-          const leftStickButton = buttons[3];
-          const isLeftStickPressed = leftStickButton && leftStickButton.pressed;
-
-          if (isLeftStickPressed && !rightStickButtonPressed) {
-            // 当たり判定をトグル
-            isCollisionEnabled = !isCollisionEnabled;
-
-            // 表示を作成
-            createCollisionText(isCollisionEnabled);
-
-            updateInfo(isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
-            console.log(isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
-          }
-
-          rightStickButtonPressed = isLeftStickPressed;
         }
       }
     }
   }
 
-  // ゲームパッド入力でドローンを操作（物理演算）※起動完了後または上昇中
-  if (xrSession && drone && dronePositioned && (isStartupComplete || liftStartTime !== null) && !isGrabbedByController && !isGrabbedByHand && !isReturningToHover && !isAutoReturning && !bothGripsPressed) {
+  // プロペラ減速シーケンス（着地後2秒間）※ゲームパッド入力ブロックの外で実行
+  if (decelerationStartTime !== null && drone && dronePositioned) {
+    const elapsed = Date.now() - decelerationStartTime;
+    const decelerationDuration = 2000; // 2秒
+    const progress = Math.min(elapsed / decelerationDuration, 1.0);
+
+    // 速度とピッチと音量を逆方向に変化
+    propellerSpeedMultiplier = 1.0 - progress;
+    console.log('減速中 - progress:', progress.toFixed(2), 'propellerSpeed:', propellerSpeedMultiplier.toFixed(2));
+
+    if (droneSound && droneSound.isPlaying) {
+      const normalPitch = Math.pow(0.3 / currentDroneScale, 0.5);
+      const clampedNormalPitch = Math.max(0.2, Math.min(2.7, normalPitch));
+      const endPitch = Math.max(clampedNormalPitch / 2.0, 0.2); // 2倍低いピッチ
+
+      const currentPitch = clampedNormalPitch - (clampedNormalPitch - endPitch) * progress;
+      droneSound.setPlaybackRate(currentPitch);
+
+      if (!isSoundMuted) {
+        droneSound.setVolume(0.7 * (1.0 - progress));
+      }
+    }
+
+    if (progress >= 1.0) {
+      // 減速完了 - 音停止、終了シーケンス完了
+      decelerationStartTime = null;
+      landingHeight = null;
+      isShuttingDown = false;
+      propellerSpeedMultiplier = 0;
+
+      if (droneSound && droneSound.isPlaying) {
+        droneSound.stop();
+      }
+
+      console.log('終了シーケンス完了');
+      updateInfo('ドローン停止 - Xボタンで再起動');
+      removeSequenceStatusText();
+    }
+  }
+
+  // ゲームパッド入力でドローンを操作（物理演算）※起動完了後、上昇中、または降下中
+  if (xrSession && drone && dronePositioned && (isStartupComplete || liftStartTime !== null || descentStartTime !== null) && !isGrabbedByController && !isGrabbedByHand && !isReturningToHover && !isAutoReturning && !bothGripsPressed) {
     const inputSources = xrSession.inputSources;
     let inputX = 0, inputY = 0, inputZ = 0; // 入力値
     let inputRotation = 0;
@@ -2278,20 +2437,36 @@ function render() {
     // 上昇中は自動的に上昇入力をシミュレート
     if (liftStartTime !== null && liftStartPos !== null && liftTargetHeight !== null) {
       const currentY = drone.userData.basePosition ? drone.userData.basePosition.y : drone.position.y;
-      const yDiff = liftTargetHeight - currentY;
 
-      console.log('上昇チェック - currentY:', currentY.toFixed(3), 'targetY:', liftTargetHeight.toFixed(3), 'diff:', yDiff.toFixed(3), 'basePos:', drone.userData.basePosition ? 'あり' : 'なし');
+      // スタック検出（衝突判定オンの場合のみ）
+      let isStuck = false;
+      if (isCollisionEnabled) {
+        if (liftLastY === null) {
+          liftLastY = currentY;
+          liftStuckStartTime = Date.now();
+        } else {
+          const yDiff = Math.abs(currentY - liftLastY);
+          if (yDiff < 0.005) { // 0.5cm未満しか動いていない
+            const stuckDuration = Date.now() - liftStuckStartTime;
+            if (stuckDuration > 500) { // 0.5秒以上動いていない
+              isStuck = true;
+              console.log('上昇中にスタック検出 - 0.5秒間動いていない');
+            }
+          } else {
+            // 動いているのでリセット
+            liftLastY = currentY;
+            liftStuckStartTime = Date.now();
+          }
+        }
+      }
 
-      if (Math.abs(yDiff) > 0.02) {
-        // 目標まで0.02m以上離れている場合は差分に応じた上昇入力
-        // 差分が大きいほど強い入力（最大1.0）
-        inputY = Math.min(Math.max(yDiff * 2.0, 0.3), 1.0);
-        console.log('上昇入力設定:', inputY.toFixed(2));
-      } else {
-        // 目標に到達したら上昇完了
+      if (isStuck) {
+        // スタック検出 - その場で上昇を中断して起動完了
         liftStartTime = null;
         liftStartPos = null;
         liftTargetHeight = null;
+        liftLastY = null;
+        liftStuckStartTime = null;
         isStartupComplete = true;
         isStartingUp = false;
         propellerSpeedMultiplier = 1.0;
@@ -2302,8 +2477,109 @@ function render() {
         }
         hoverTime = 0;
 
-        console.log('起動シーケンス完了 - 最終高さ:', drone.position.y, '目標高さ:', liftTargetHeight);
-        updateInfo('Drone Ready');
+        console.log('上昇中に衝突検出 - その場で起動完了');
+        updateInfo('Collision Detected - Ready');
+        removeSequenceStatusText();
+      } else {
+        const yDiff = liftTargetHeight - currentY;
+
+        console.log('上昇チェック - currentY:', currentY.toFixed(3), 'targetY:', liftTargetHeight.toFixed(3), 'diff:', yDiff.toFixed(3), 'basePos:', drone.userData.basePosition ? 'あり' : 'なし');
+
+        if (Math.abs(yDiff) > 0.02) {
+          // 目標まで0.02m以上離れている場合は差分に応じた上昇入力
+          // 差分が大きいほど強い入力（最大1.0）
+          inputY = Math.min(Math.max(yDiff * 2.0, 0.3), 1.0);
+          console.log('上昇入力設定:', inputY.toFixed(2), 'speedLevel:', speedLevel, 'currentDroneScale:', currentDroneScale.toFixed(3), 'acceleration:', acceleration.toFixed(6), 'maxSpeed:', maxSpeed.toFixed(4), 'velocity.y:', velocity.y.toFixed(4));
+        } else {
+          // 目標に到達したら上昇完了
+          liftStartTime = null;
+          liftStartPos = null;
+          liftTargetHeight = null;
+          liftLastY = null;
+          liftStuckStartTime = null;
+          isStartupComplete = true;
+          isStartingUp = false;
+          propellerSpeedMultiplier = 1.0;
+
+          // 浮遊感の基準位置を更新
+          if (drone.userData.basePosition) {
+            drone.userData.basePosition = drone.position.clone();
+          }
+          hoverTime = 0;
+
+          console.log('起動シーケンス完了 - 最終高さ:', drone.position.y, '目標高さ:', liftTargetHeight);
+          updateInfo('Drone Ready');
+          removeSequenceStatusText();
+        }
+      }
+    }
+
+    // 降下中は自動的に下降入力をシミュレート（右スティック下入力と同じ処理）
+    if (descentStartTime !== null && decelerationStartTime === null) {
+      const floorHeight = 0.05; // 地面から5cm
+      const currentY = drone.userData.basePosition ? drone.userData.basePosition.y : drone.position.y;
+
+      // スタック検出（衝突判定オンの場合のみ）
+      let isStuck = false;
+      if (isCollisionEnabled) {
+        if (descentLastY === null) {
+          descentLastY = currentY;
+          descentStuckStartTime = Date.now();
+        } else {
+          const yDiff = Math.abs(currentY - descentLastY);
+          if (yDiff < 0.005) { // 0.5cm未満しか動いていない
+            const stuckDuration = Date.now() - descentStuckStartTime;
+            if (stuckDuration > 500) { // 0.5秒以上動いていない
+              isStuck = true;
+              console.log('降下中にスタック検出 - 0.5秒間動いていない');
+            }
+          } else {
+            // 動いているのでリセット
+            descentLastY = currentY;
+            descentStuckStartTime = Date.now();
+          }
+        }
+      }
+
+      if (isStuck) {
+        // スタック検出 - その場で降下を中断して減速シーケンスに移行
+        descentStartTime = null;
+        descentLastY = null;
+        descentStuckStartTime = null;
+        decelerationStartTime = Date.now();
+        landingHeight = currentY; // 着地高さを保存
+
+        // ぶつかった位置を着地地点として固定
+        if (drone.userData.basePosition) {
+          drone.userData.basePosition.copy(drone.position);
+        }
+        // 速度をリセット
+        velocity.set(0, 0, 0);
+
+        console.log('降下中に衝突検出 - その高さで減速シーケンス開始, 着地高さ:', landingHeight.toFixed(3));
+        updateInfo('Collision Detected - Landing...');
+      } else {
+        const yDiff = currentY - floorHeight;
+
+        // 降下中はプロペラフル回転を維持
+        propellerSpeedMultiplier = 1.0;
+
+        console.log('降下チェック - currentY:', currentY.toFixed(3), 'targetY:', floorHeight.toFixed(3), 'diff:', yDiff.toFixed(3));
+
+        if (yDiff > 0.02) {
+          // 地面まで0.02m以上ある場合は下降入力（上昇と同じ係数・最大値）
+          inputY = -Math.min(Math.max(yDiff * 2.0, 0.3), 1.0);
+          console.log('降下入力設定:', inputY.toFixed(2), 'speedLevel:', speedLevel, 'currentDroneScale:', currentDroneScale.toFixed(3), 'acceleration:', acceleration.toFixed(6), 'maxSpeed:', maxSpeed.toFixed(4), 'velocity.y:', velocity.y.toFixed(4));
+        } else {
+          // 地面に到達したら降下完了、プロペラ減速開始
+          descentStartTime = null;
+          descentLastY = null;
+          descentStuckStartTime = null;
+          decelerationStartTime = Date.now();
+          landingHeight = floorHeight; // 着地高さを保存（地面）
+          console.log('着地完了 - プロペラ減速開始, 着地高さ:', landingHeight.toFixed(3));
+          updateInfo('Landing...');
+        }
       }
     }
 
@@ -2313,8 +2589,8 @@ function render() {
         const axes = gp.axes;
         const buttons = gp.buttons;
 
-        // 上昇中はスティック入力を無視
-        if (liftStartTime === null) {
+        // 上昇中、降下中、減速中はスティック入力を無視
+        if (liftStartTime === null && descentStartTime === null && decelerationStartTime === null) {
           // 右コントローラー（handedness: 'right'）
           // axes[2]: 右スティック左右 → 左右移動
           // axes[3]: 右スティック上下 → 上昇・下降
@@ -2371,7 +2647,13 @@ function render() {
 
     // 速度制限
     if (velocity.length() > maxSpeed) {
+      if (liftStartTime !== null || descentStartTime !== null) {
+        console.log('速度制限発動前: velocity:', velocity.x.toFixed(4), velocity.y.toFixed(4), velocity.z.toFixed(4), 'length:', velocity.length().toFixed(4), 'maxSpeed:', maxSpeed.toFixed(4));
+      }
       velocity.normalize().multiplyScalar(maxSpeed);
+      if (liftStartTime !== null || descentStartTime !== null) {
+        console.log('速度制限発動後: velocity:', velocity.x.toFixed(4), velocity.y.toFixed(4), velocity.z.toFixed(4), 'length:', velocity.length().toFixed(4));
+      }
     }
 
     // デバッグ: 速度を表示（コメントアウト）
@@ -2388,9 +2670,35 @@ function render() {
     }
 
     // 速度を位置に反映
-    // 上昇中は直接drone.positionを更新（浮遊感が適用されないため）
-    if (liftStartTime !== null) {
+    // 上昇中または降下中は直接drone.positionを更新（浮遊感が適用されないため）
+    // 減速中は速度を適用しない（着地高さに固定）
+    if (decelerationStartTime !== null) {
+      // 減速中は動かさない（着地高さに固定）
+      velocity.set(0, 0, 0);
+      if (landingHeight !== null) {
+        drone.position.y = landingHeight;
+        // basePositionも同期して落下を防ぐ
+        if (drone.userData.basePosition) {
+          drone.userData.basePosition.y = landingHeight;
+        }
+      } else {
+        // フォールバック：landingHeightが設定されていない場合は地面
+        const floorHeight = 0.05;
+        drone.position.y = floorHeight;
+        if (drone.userData.basePosition) {
+          drone.userData.basePosition.y = floorHeight;
+        }
+      }
+    } else if (liftStartTime !== null || descentStartTime !== null) {
+      const beforeY = drone.position.y;
       drone.position.add(velocity);
+      const afterY = drone.position.y;
+      const actualMove = afterY - beforeY;
+      if (liftStartTime !== null) {
+        console.log('上昇: velocity.y:', velocity.y.toFixed(4), 'beforeY:', beforeY.toFixed(4), 'afterY:', afterY.toFixed(4), 'actualMove:', actualMove.toFixed(4));
+      } else {
+        console.log('降下: velocity.y:', velocity.y.toFixed(4), 'beforeY:', beforeY.toFixed(4), 'afterY:', afterY.toFixed(4), 'actualMove:', actualMove.toFixed(4));
+      }
       // basePositionも同期
       drone.userData.basePosition.copy(drone.position);
     } else {
@@ -2424,8 +2732,8 @@ function render() {
     }
   }
 
-  // ハンドトラッキングでドローンを掴む処理
-  if (xrSession && drone && dronePositioned && !isGrabbedByController && !bothGripsPressed) {
+  // ハンドトラッキングでドローンを掴む処理（起動・終了シーケンス中は掴めない）
+  if (xrSession && drone && dronePositioned && !isGrabbedByController && !bothGripsPressed && !isStartingUp && !isShuttingDown) {
     const frame = renderer.xr.getFrame();
     if (frame) {
       const hands = [hand1, hand2];
