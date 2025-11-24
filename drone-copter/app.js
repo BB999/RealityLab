@@ -32,6 +32,12 @@ let autoReturnText = null; // 自動帰還中のテキスト表示（ドロー�
 let autoReturnRightControllerText = null; // 自動帰還中のテキスト表示（右コントローラー上）
 let autoReturnLeftControllerText = null; // 自動帰還中のテキスト表示（左コントローラー上）
 let volumeText = null; // 音量オンオフのテキスト表示（カメラ右下）
+let collisionText = null; // 当たり判定オンオフのテキスト表示（カメラ左下）
+let isCollisionEnabled = true; // 当たり判定のオンオフ状態
+let rightStickButtonPressed = false; // 右スティックボタンの押下状態
+let trackingLostText = null; // トラッキングロスト表示（画面下中央）
+let isLeftControllerTracked = true; // 左コントローラーのトラッキング状態
+let isRightControllerTracked = true; // 右コントローラーのトラッキング状態
 
 // HUDモード用変数
 let isHUDMode = false; // HUDモードの状態
@@ -542,7 +548,7 @@ function createSpeedText() {
   context.font = 'bold 60px Arial';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.fillText('スピード' + speedLevel, canvas.width / 2, canvas.height / 2);
+  context.fillText('Speed ' + speedLevel, canvas.width / 2, canvas.height / 2);
 
   // テクスチャを作成
   const texture = new THREE.CanvasTexture(canvas);
@@ -674,7 +680,7 @@ function createVolumeText(isOn) {
   context.font = 'bold 60px Arial';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  const text = isOn ? '音量オン' : '音量オフ';
+  const text = isOn ? 'Volume On' : 'Volume Off';
   context.fillText(text, canvas.width / 2, canvas.height / 2);
 
   const texture = new THREE.CanvasTexture(canvas);
@@ -725,6 +731,158 @@ function updateVolumeText() {
   }
 }
 
+// 当たり判定オンオフ表示を作成
+function createCollisionText(isOn) {
+  // 既に存在する場合は削除
+  if (collisionText) {
+    scene.remove(collisionText);
+    collisionText.geometry.dispose();
+    collisionText.material.dispose();
+    collisionText.material.map.dispose();
+    collisionText = null;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+
+  // 背景は透明
+  context.fillStyle = '#00ff00';
+  context.font = 'bold 60px Arial';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  const text = isOn ? 'Collision On' : 'Collision Off';
+  context.fillText(text, canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const geometry = new THREE.PlaneGeometry(0.2, 0.05);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  collisionText = new THREE.Mesh(geometry, material);
+  scene.add(collisionText);
+
+  // HUDモードでない場合のみ3秒後に自動で消す
+  if (!isHUDMode) {
+    setTimeout(() => {
+      if (collisionText) {
+        scene.remove(collisionText);
+        collisionText.geometry.dispose();
+        collisionText.material.dispose();
+        collisionText.material.map.dispose();
+        collisionText = null;
+      }
+    }, 3000);
+  }
+}
+
+// 当たり判定オンオフ表示の位置を更新
+function updateCollisionText() {
+  if (collisionText) {
+    // カメラの左下に固定配置（音量表示と対称の位置）
+    const cameraPos = new THREE.Vector3();
+    camera.getWorldPosition(cameraPos);
+
+    // カメラの向きベクトルを取得
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const left = new THREE.Vector3(-1, 0, 0).applyQuaternion(camera.quaternion);
+    const down = new THREE.Vector3(0, -1, 0).applyQuaternion(camera.quaternion);
+
+    // カメラの前方50cm、左20cm、下25cmの位置
+    const textPos = cameraPos.clone()
+      .add(forward.multiplyScalar(0.5))
+      .add(left.multiplyScalar(0.2))
+      .add(down.multiplyScalar(0.25));
+
+    collisionText.position.copy(textPos);
+    collisionText.lookAt(camera.position);
+  }
+}
+
+// トラッキングロスト表示を作成
+function createTrackingLostText() {
+  // 既に存在する場合は削除
+  if (trackingLostText) {
+    scene.remove(trackingLostText);
+    trackingLostText.geometry.dispose();
+    trackingLostText.material.dispose();
+    trackingLostText.material.map.dispose();
+    trackingLostText = null;
+  }
+
+  // どのコントローラーがロストしているか確認
+  let message = '';
+  if (!isLeftControllerTracked && !isRightControllerTracked) {
+    message = 'Controllers Tracking Lost';
+  } else if (!isLeftControllerTracked) {
+    message = 'Left Controller Tracking Lost';
+  } else if (!isRightControllerTracked) {
+    message = 'Right Controller Tracking Lost';
+  } else {
+    // 両方トラッキング中なら表示を削除
+    return;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 128;
+  const context = canvas.getContext('2d');
+
+  // 赤い文字で表示
+  context.fillStyle = '#ff0000';
+  context.font = 'bold 60px Arial';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(message, canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const geometry = new THREE.PlaneGeometry(0.4, 0.05);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  trackingLostText = new THREE.Mesh(geometry, material);
+  scene.add(trackingLostText);
+}
+
+// トラッキングロスト表示を削除
+function removeTrackingLostText() {
+  if (trackingLostText) {
+    scene.remove(trackingLostText);
+    trackingLostText.geometry.dispose();
+    trackingLostText.material.dispose();
+    trackingLostText.material.map.dispose();
+    trackingLostText = null;
+  }
+}
+
+// トラッキングロスト表示の位置を更新
+function updateTrackingLostText() {
+  if (trackingLostText) {
+    // カメラの下中央に固定配置
+    const cameraPos = new THREE.Vector3();
+    camera.getWorldPosition(cameraPos);
+
+    // カメラの向きベクトルを取得
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    const down = new THREE.Vector3(0, -1, 0).applyQuaternion(camera.quaternion);
+
+    // カメラの前方50cm、下30cmの位置（画面下中央）
+    const textPos = cameraPos.clone()
+      .add(forward.multiplyScalar(0.5))
+      .add(down.multiplyScalar(0.3));
+
+    trackingLostText.position.copy(textPos);
+    trackingLostText.lookAt(camera.position);
+  }
+}
+
 // HUDモードテキストを作成
 function createHUDModeText() {
   // 既に存在する場合は削除
@@ -745,7 +903,7 @@ function createHUDModeText() {
   context.font = 'bold 50px Arial';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.fillText('HUDモード', canvas.width / 2, canvas.height / 2);
+  context.fillText('HUD Mode', canvas.width / 2, canvas.height / 2);
 
   const texture = new THREE.CanvasTexture(canvas);
   const geometry = new THREE.PlaneGeometry(0.25, 0.06);
@@ -1130,6 +1288,12 @@ function render() {
   // 音量オンオフ表示の位置を更新
   updateVolumeText();
 
+  // 当たり判定オンオフ表示の位置を更新
+  updateCollisionText();
+
+  // トラッキングロスト表示の位置を更新
+  updateTrackingLostText();
+
   // HUDモード時の表示更新
   if (isHUDMode) {
     updateHUDModeText();
@@ -1152,6 +1316,35 @@ function render() {
     }
     if (depthMesh) {
       depthMesh.visible = showDepthVisualization;
+    }
+
+    // コントローラーのトラッキング状態を監視
+    const inputSources = xrSession.inputSources;
+    let leftFound = false;
+    let rightFound = false;
+
+    for (const source of inputSources) {
+      if (source.handedness === 'left' && source.gripSpace) {
+        leftFound = true;
+      } else if (source.handedness === 'right' && source.gripSpace) {
+        rightFound = true;
+      }
+    }
+
+    // トラッキング状態が変わった場合のみ更新
+    const prevLeftTracked = isLeftControllerTracked;
+    const prevRightTracked = isRightControllerTracked;
+
+    isLeftControllerTracked = leftFound;
+    isRightControllerTracked = rightFound;
+
+    // トラッキング状態が変わったら表示を更新
+    if (prevLeftTracked !== isLeftControllerTracked || prevRightTracked !== isRightControllerTracked) {
+      if (!isLeftControllerTracked || !isRightControllerTracked) {
+        createTrackingLostText();
+      } else {
+        removeTrackingLostText();
+      }
     }
   }
 
@@ -1710,9 +1903,14 @@ function render() {
             // HUDモード開始
             createHUDModeText();
             createDirectionArrow();
-            // スピード表示と音量表示を作成
+            // スピード表示、音量表示、当たり判定表示を作成
             createSpeedText();
             createVolumeText(!isSoundMuted);
+            createCollisionText(isCollisionEnabled);
+            // トラッキングロストしている場合は表示を作成
+            if (!isLeftControllerTracked || !isRightControllerTracked) {
+              createTrackingLostText();
+            }
             updateInfo('HUDモード開始');
             console.log('HUDモード開始');
           } else {
@@ -1736,7 +1934,7 @@ function render() {
               hudDroneLocationArrow.material.dispose();
               hudDroneLocationArrow = null;
             }
-            // スピード表示と音量表示も削除
+            // スピード表示、音量表示、当たり判定表示も削除
             if (speedText) {
               scene.remove(speedText);
               speedText.geometry.dispose();
@@ -1758,6 +1956,13 @@ function render() {
               volumeText.material.map.dispose();
               volumeText = null;
             }
+            if (collisionText) {
+              scene.remove(collisionText);
+              collisionText.geometry.dispose();
+              collisionText.material.dispose();
+              collisionText.material.map.dispose();
+              collisionText = null;
+            }
             updateInfo('HUDモード解除');
             console.log('HUDモード解除');
           }
@@ -1768,14 +1973,15 @@ function render() {
     }
   }
 
-  // 左コントローラーのYボタンで音量オンオフ
+  // 左コントローラーのYボタンで音量オンオフ、左スティック押し込みで当たり判定オンオフ
   if (xrSession && droneSound) {
     const inputSources = xrSession.inputSources;
 
     for (const source of inputSources) {
       if (source.handedness === 'left' && source.gamepad) {
         const buttons = source.gamepad.buttons;
-        // Yボタン（通常buttons[4]）
+
+        // Yボタン（通常buttons[4]）で音量オンオフ
         const yButton = buttons[4];
         const isYPressed = yButton && yButton.pressed;
 
@@ -1798,6 +2004,23 @@ function render() {
         }
 
         leftYButtonPressed = isYPressed;
+
+        // 左スティック押し込み（buttons[3]）で当たり判定オンオフ
+        const leftStickButton = buttons[3];
+        const isLeftStickPressed = leftStickButton && leftStickButton.pressed;
+
+        if (isLeftStickPressed && !rightStickButtonPressed) {
+          // 当たり判定をトグル
+          isCollisionEnabled = !isCollisionEnabled;
+
+          // 表示を作成
+          createCollisionText(isCollisionEnabled);
+
+          updateInfo(isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
+          console.log(isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
+        }
+
+        rightStickButtonPressed = isLeftStickPressed;
       }
     }
   }
@@ -1904,8 +2127,10 @@ function render() {
     drone.userData.physicsTilt.x += (targetTiltX - drone.userData.physicsTilt.x) * tiltSmoothing;
     drone.userData.physicsTilt.z += (targetTiltZ - drone.userData.physicsTilt.z) * tiltSmoothing;
 
-    // 平面との衝突判定
-    checkPlaneCollision();
+    // 平面との衝突判定（オンの場合のみ）
+    if (isCollisionEnabled) {
+      checkPlaneCollision();
+    }
   }
 
   // ハンドトラッキングでドローンを掴む処理
