@@ -1698,11 +1698,11 @@ function render() {
 
         rightBButtonPressed = isBPressed;
 
-        // Aボタン（通常buttons[4]）でHUDモードトグル
-        const aButton = buttons[4];
-        const isAPressed = aButton && aButton.pressed;
+        // 右スティック押し込み（buttons[3]）でHUDモードトグル
+        const rightStickButton = buttons[3];
+        const isRightStickPressed = rightStickButton && rightStickButton.pressed;
 
-        if (isAPressed && !rightAButtonPressed) {
+        if (isRightStickPressed && !rightAButtonPressed) {
           // HUDモードをトグル
           isHUDMode = !isHUDMode;
 
@@ -1763,7 +1763,7 @@ function render() {
           }
         }
 
-        rightAButtonPressed = isAPressed;
+        rightAButtonPressed = isRightStickPressed;
       }
     }
   }
