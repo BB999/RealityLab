@@ -65,7 +65,6 @@ export function createStarField() {
     },
     vertexShader: `
       attribute float size;
-      attribute vec3 color;
       varying vec3 vColor;
 
       void main() {

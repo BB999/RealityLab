@@ -10,7 +10,7 @@ export default defineConfig({
     mkcert(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.png', 'app_icon_192x192.png', 'app_icon_512x512.png'],
+      includeAssets: [],
       manifest: {
         name: 'MR Car Physics',
         short_name: 'MR Car',
@@ -19,18 +19,7 @@ export default defineConfig({
         background_color: '#1e293b',
         display: 'standalone',
         orientation: 'landscape',
-        icons: [
-          {
-            src: 'app_icon_192x192.png',
-            sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: 'app_icon_512x512.png',
-            sizes: '512x512',
-            type: 'image/png'
-          }
-        ]
+        icons: []
       }
     })
   ],

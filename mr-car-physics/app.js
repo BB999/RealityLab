@@ -66,7 +66,7 @@ function init() {
     // 3Dモデルの読み込み
     const loader = new GLTFLoader();
     loader.load(
-        '/classic_car_model.glb',
+        './classic_car_model.glb',
         (gltf) => {
             // グループを作成して、その中にモデルを配置
             carModel = new THREE.Group();
