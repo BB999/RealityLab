@@ -179,7 +179,7 @@ function init() {
   // ドローンモデルの読み込み
   const loader = new GLTFLoader();
   loader.load(
-    '/doron.glb',
+    './doron.glb',
     (gltf) => {
       drone = gltf.scene;
       drone.scale.set(0.3, 0.3, 0.3);
@@ -365,7 +365,7 @@ function setupDroneSound() {
   // オーディオローダーで音声ファイル読み込み
   const audioLoader = new THREE.AudioLoader();
   audioLoader.load(
-    '/OTO.mp3',
+    './OTO.mp3',
     (buffer) => {
       droneSound.setBuffer(buffer);
       droneSound.setLoop(true); // ループ再生
