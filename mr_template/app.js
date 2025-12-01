@@ -33,6 +33,9 @@ let shieldRadius = 0.5625; // 手の前に表示（2.25倍サイズ）
 let impactTime = -10;
 let impactPoint = new THREE.Vector3();
 let shieldCollisionMesh = null; // 衝突判定用の不可視メッシュ
+let isBeamHittingShield = false; // ビームがシールドに当たっているか
+let lastShieldImpactTime = 0; // 最後に衝撃波を発生させた時間
+let shieldImpactInterval = 0.15; // 衝撃波の発生間隔（秒）
 
 // ゾルトラーク用変数
 let isRightHandOpen = false;
@@ -312,14 +315,31 @@ function createHexFillMaterial() {
         float fresnel = 1.0 - abs(dot(viewDir, vNormal));
         fresnel = pow(fresnel, 2.0) * 0.5;
 
+        // 衝撃波エフェクト - 衝撃点から外側に広がる波紋
         float impactAge = time - impactTime;
         float impactDist = distance(vWorldPosition, impactPoint);
-        float impactWave = sin(impactDist * 12.0 - impactAge * 18.0) * 0.5 + 0.5;
-        float impactFade = exp(-impactAge * 2.5) * exp(-impactDist * 1.5);
-        float impact = impactWave * impactFade * step(0.0, impactAge) * step(impactAge, 3.0);
 
-        float alpha = (pulse + fresnel + impact * 0.9) * shieldProgress;
-        vec3 color = baseColor + vec3(0.4, 0.6, 0.2) * impact;
+        // 波の速度と幅
+        float waveSpeed = 2.5;
+        float waveWidth = 0.08;
+        float waveRadius = impactAge * waveSpeed;
+
+        // リング状の波紋（距離が波の半径に近いほど明るい）
+        float ringDist = abs(impactDist - waveRadius);
+        float ring = smoothstep(waveWidth, 0.0, ringDist);
+
+        // 波の減衰（時間と共に薄くなる）
+        float waveFade = exp(-impactAge * 3.0);
+
+        // 2つ目の波（少し遅れて追従）
+        float waveRadius2 = max(0.0, impactAge * waveSpeed - 0.15);
+        float ringDist2 = abs(impactDist - waveRadius2);
+        float ring2 = smoothstep(waveWidth * 0.7, 0.0, ringDist2) * 0.6;
+
+        float impact = (ring + ring2) * waveFade * step(0.0, impactAge) * step(impactAge, 1.5);
+
+        float alpha = (pulse + fresnel + impact * 1.5) * shieldProgress;
+        vec3 color = baseColor + vec3(0.5, 0.7, 0.3) * impact;
 
         gl_FragColor = vec4(color, alpha);
       }
@@ -361,14 +381,31 @@ function createHexLineMaterial() {
       void main() {
         float brightness = 0.9 + 0.1 * sin(time * 1.5 + pulseOffset);
 
+        // 衝撃波エフェクト - 衝撃点から外側に広がる波紋
         float impactAge = time - impactTime;
         float impactDist = distance(vWorldPosition, impactPoint);
-        float impactWave = sin(impactDist * 12.0 - impactAge * 18.0) * 0.5 + 0.5;
-        float impactFade = exp(-impactAge * 2.5) * exp(-impactDist * 1.2);
-        float impact = impactWave * impactFade * step(0.0, impactAge) * step(impactAge, 3.0);
 
-        float alpha = (brightness + impact * 2.5) * shieldProgress;
-        vec3 color = baseColor + vec3(0.6, 0.4, 0.0) * impact;
+        // 波の速度と幅
+        float waveSpeed = 2.5;
+        float waveWidth = 0.08;
+        float waveRadius = impactAge * waveSpeed;
+
+        // リング状の波紋
+        float ringDist = abs(impactDist - waveRadius);
+        float ring = smoothstep(waveWidth, 0.0, ringDist);
+
+        // 波の減衰
+        float waveFade = exp(-impactAge * 3.0);
+
+        // 2つ目の波
+        float waveRadius2 = max(0.0, impactAge * waveSpeed - 0.15);
+        float ringDist2 = abs(impactDist - waveRadius2);
+        float ring2 = smoothstep(waveWidth * 0.7, 0.0, ringDist2) * 0.6;
+
+        float impact = (ring + ring2) * waveFade * step(0.0, impactAge) * step(impactAge, 1.5);
+
+        float alpha = (brightness + impact * 3.0) * shieldProgress;
+        vec3 color = baseColor + vec3(0.6, 0.5, 0.1) * impact;
 
         gl_FragColor = vec4(color, alpha);
       }
@@ -499,6 +536,16 @@ function updateShield(time) {
   // シールドの表示/非表示
   shieldGroup.visible = shieldProgress > 0.01;
 
+  // ビームがシールドに当たっている場合、断続的に衝撃波を発生
+  if (isBeamHittingShield && isFiring && shieldProgress > 0.3) {
+    if (time - lastShieldImpactTime > shieldImpactInterval) {
+      lastShieldImpactTime = time;
+      impactTime = time;
+      // 衝撃波の発生間隔をランダムに変化させる
+      shieldImpactInterval = 0.08 + Math.random() * 0.12;
+    }
+  }
+
   hexagonMeshes.forEach((hex) => {
     const randomDelay = hex.fill.userData.randomDelay;
 
@@ -534,8 +581,12 @@ function updateShield(time) {
 
     hex.fill.material.uniforms.time.value = time;
     hex.fill.material.uniforms.shieldProgress.value = localProgress;
+    hex.fill.material.uniforms.impactTime.value = impactTime;
+    hex.fill.material.uniforms.impactPoint.value.copy(impactPoint);
     hex.line.material.uniforms.time.value = time;
     hex.line.material.uniforms.shieldProgress.value = localProgress;
+    hex.line.material.uniforms.impactTime.value = impactTime;
+    hex.line.material.uniforms.impactPoint.value.copy(impactPoint);
 
     hex.fill.visible = localProgress > 0.01;
     hex.line.visible = localProgress > 0.01;
@@ -2223,12 +2274,16 @@ function getBeamHitDistance(beamOrigin, beamDirection) {
   raycaster.far = beamMaxLength;
 
   let closestDistance = beamMaxLength;
+  let hitType = null;
+  let hitPoint = null;
 
   // 壁・テーブルとの衝突をチェック
   if (planeMeshes.length > 0) {
     const planeIntersects = raycaster.intersectObjects(planeMeshes, false);
-    if (planeIntersects.length > 0) {
-      closestDistance = Math.min(closestDistance, planeIntersects[0].distance);
+    if (planeIntersects.length > 0 && planeIntersects[0].distance < closestDistance) {
+      closestDistance = planeIntersects[0].distance;
+      hitType = 'plane';
+      hitPoint = planeIntersects[0].point.clone();
     }
   }
 
@@ -2237,9 +2292,20 @@ function getBeamHitDistance(beamOrigin, beamDirection) {
     // ワールド座標でレイキャスト
     shieldCollisionMesh.updateMatrixWorld(true);
     const shieldIntersects = raycaster.intersectObject(shieldCollisionMesh, false);
-    if (shieldIntersects.length > 0) {
-      closestDistance = Math.min(closestDistance, shieldIntersects[0].distance);
+    if (shieldIntersects.length > 0 && shieldIntersects[0].distance < closestDistance) {
+      closestDistance = shieldIntersects[0].distance;
+      hitType = 'shield';
+      hitPoint = shieldIntersects[0].point.clone();
     }
+  }
+
+  // シールドに当たっている場合のフラグと衝撃点を更新
+  isBeamHittingShield = (hitType === 'shield');
+  if (isBeamHittingShield && hitPoint) {
+    // 衝撃点をシールドのローカル座標に変換して保存
+    const localHitPoint = hitPoint.clone();
+    shieldGroup.worldToLocal(localHitPoint);
+    impactPoint.copy(hitPoint);
   }
 
   return closestDistance;
