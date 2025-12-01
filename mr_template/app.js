@@ -44,6 +44,8 @@ let magicCircleGroup = null;
 let beamGroup = null;
 let isCharging = false;
 let isFiring = false;
+let isCancelling = false;
+let cancelProgress = 0;
 let chargeProgress = 0;
 let fireProgress = 0;
 let zoltraakTime = 0;
@@ -1828,17 +1830,63 @@ function updateZoltraak(time) {
       resetZoltraak();
     }
   }
+
+  // キャンセル中のフェードアウト処理
+  if (isCancelling) {
+    cancelProgress += 0.05; // フェードアウト速度
+
+    const fadeOut = Math.max(1 - cancelProgress, 0);
+    const currentMagicScale = magicCircleGroup.scale.x;
+    const currentBeamScale = beamGroup.scale.x;
+
+    // スケールを縮小（魔法陣とビーム両方）
+    magicCircleGroup.scale.setScalar(currentMagicScale * fadeOut);
+    beamGroup.scale.setScalar(currentBeamScale * fadeOut);
+
+    // 全要素のopacityをフェードアウト
+    coreMaterial.opacity *= fadeOut;
+    glowMaterial.opacity *= fadeOut;
+    chargeParticleMaterial.uniforms.opacity.value *= fadeOut;
+    beamMaterial.uniforms.opacity.value *= fadeOut;
+
+    beamElements.coreBeam.material.opacity *= fadeOut;
+    beamElements.innerBeam.material.opacity *= fadeOut;
+    beamElements.outerBeam.material.opacity *= fadeOut;
+    beamElements.glowBeam.material.opacity *= fadeOut;
+    beamElements.beamHead.material.opacity *= fadeOut;
+    beamElements.beamHeadGlow.material.opacity *= fadeOut;
+    beamElements.spiralRings.forEach(ring => ring.material.opacity *= fadeOut);
+    beamElements.shockwaves.forEach(shock => shock.material.opacity *= fadeOut);
+    beamElements.sparkTrail.material.uniforms.opacity.value *= fadeOut;
+
+    // キャンセル完了
+    if (cancelProgress >= 1) {
+      resetZoltraak();
+      zoltraakGroup.visible = false;
+    }
+  }
+}
+
+// ゾルトラークをキャンセル（フェードアウト開始）
+function cancelZoltraak() {
+  isCharging = false;
+  isFiring = false;
+  isCancelling = true;
+  cancelProgress = 0;
 }
 
 // ゾルトラークをリセット
 function resetZoltraak() {
   isCharging = false;
   isFiring = false;
+  isCancelling = false;
+  cancelProgress = 0;
   chargeProgress = 0;
   fireProgress = 0;
 
   // 全ての要素をリセット
   magicCircleGroup.scale.setScalar(0);
+  beamGroup.scale.setScalar(1); // ビームグループのスケールを元に戻す
 
   coreMaterial.opacity = 0;
   glowMaterial.opacity = 0;
@@ -2415,11 +2463,14 @@ function animate(timestamp, frame) {
           // 右手がパーになったらゾルトラーク発動
           zoltraakGroup.visible = true;
           castZoltraak();
+        } else if (!handOpen && zoltraakGroup && (isCharging || isFiring) && !isCancelling) {
+          // 右手を閉じたら魔法をキャンセル（フェードアウト）
+          cancelZoltraak();
         }
       }
 
       // ゾルトラークの位置を右手の前に更新
-      if (zoltraakGroup && (isCharging || isFiring)) {
+      if (zoltraakGroup && (isCharging || isFiring || isCancelling)) {
         const handTransform = getRightHandTransform(rightHand, frame, referenceSpace);
         if (handTransform) {
           zoltraakGroup.position.copy(handTransform.position);
@@ -2429,7 +2480,7 @@ function animate(timestamp, frame) {
     }
 
     // ゾルトラークが終了したら非表示に
-    if (zoltraakGroup && !isCharging && !isFiring && !isRightHandOpen) {
+    if (zoltraakGroup && !isCharging && !isFiring && !isCancelling && !isRightHandOpen) {
       zoltraakGroup.visible = false;
     }
   }
