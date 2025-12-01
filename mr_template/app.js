@@ -29,7 +29,7 @@ let particleSpeeds = [];
 let shieldProgress = 0;
 let targetShieldProgress = 0;
 let isLeftHandOpen = false;
-let shieldRadius = 0.25; // 手の前に表示するので小さめに
+let shieldRadius = 0.5625; // 手の前に表示（2.25倍サイズ）
 let impactTime = -10;
 let impactPoint = new THREE.Vector3();
 
@@ -65,8 +65,6 @@ function init() {
   directionalLight.position.set(1, 1, 1);
   scene.add(directionalLight);
 
-  // ボックスを作成
-  createBox();
 
   // シールドを作成
   createShield();
@@ -186,9 +184,11 @@ function createGeodesicHexagons(radius, subdivisions) {
     const randomDelay = Math.random();
     const pulseOffset = Math.random() * Math.PI * 2;
 
+    // シールドの中心をZ方向にオフセットして手のひらに近づける
+    const zOffset = new THREE.Vector3(0, 0, -shieldRadius * 0.7);
     hexagons.push({
-      center: vertex.clone().multiplyScalar(radius),
-      vertices: centers.map(c => c.clone().multiplyScalar(radius)),
+      center: vertex.clone().multiplyScalar(radius).add(zOffset),
+      vertices: centers.map(c => c.clone().multiplyScalar(radius).add(zOffset)),
       normal: vertex.clone(),
       randomDelay: randomDelay,
       pulseOffset: pulseOffset
@@ -260,11 +260,11 @@ function createHexFillMaterial() {
       varying vec3 vNormal;
 
       void main() {
-        float pulse = 0.12 + 0.03 * sin(time * 1.5 + pulseOffset);
+        float pulse = 0.35 + 0.1 * sin(time * 1.5 + pulseOffset);
 
         vec3 viewDir = normalize(cameraPosition - vWorldPosition);
         float fresnel = 1.0 - abs(dot(viewDir, vNormal));
-        fresnel = pow(fresnel, 2.5) * 0.35;
+        fresnel = pow(fresnel, 2.0) * 0.5;
 
         float impactAge = time - impactTime;
         float impactDist = distance(vWorldPosition, impactPoint);
@@ -275,7 +275,7 @@ function createHexFillMaterial() {
         float alpha = (pulse + fresnel + impact * 0.9) * shieldProgress;
         vec3 color = baseColor + vec3(0.4, 0.6, 0.2) * impact;
 
-        gl_FragColor = vec4(color, alpha * 0.7);
+        gl_FragColor = vec4(color, alpha);
       }
     `,
     transparent: true,
@@ -313,7 +313,7 @@ function createHexLineMaterial() {
       varying vec3 vWorldPosition;
 
       void main() {
-        float brightness = 0.7 + 0.15 * sin(time * 1.5 + pulseOffset);
+        float brightness = 0.9 + 0.1 * sin(time * 1.5 + pulseOffset);
 
         float impactAge = time - impactTime;
         float impactDist = distance(vWorldPosition, impactPoint);
@@ -370,11 +370,12 @@ function createShield() {
     hexagonMeshes.push(meshes);
   });
 
-  // パーティクル
+  // パーティクル（ハニカムと同じZオフセットを適用）
   const particleCount = 30;
   particleGeometry = new THREE.BufferGeometry();
   const particlePositions = new Float32Array(particleCount * 3);
   particleSpeeds = [];
+  const particleZOffset = -shieldRadius * 0.7;
 
   for (let i = 0; i < particleCount; i++) {
     const theta = Math.random() * Math.PI * 2;
@@ -383,7 +384,7 @@ function createShield() {
 
     particlePositions[i * 3] = Math.sin(phi) * Math.cos(theta) * r;
     particlePositions[i * 3 + 1] = Math.sin(phi) * Math.sin(theta) * r;
-    particlePositions[i * 3 + 2] = Math.cos(phi) * r;
+    particlePositions[i * 3 + 2] = Math.cos(phi) * r + particleZOffset;
 
     particleSpeeds.push({ theta: (Math.random() - 0.5) * 0.012 });
   }
@@ -530,17 +531,28 @@ function getLeftHandTransform(hand, frame, referenceSpace) {
   // 手のひらの中心（wrist）の位置を取得
   const wristSpace = hand.get('wrist');
   const middleMetacarpal = hand.get('middle-finger-metacarpal');
+  const middleTip = hand.get('middle-finger-tip');
 
-  if (!wristSpace) return null;
+  if (!wristSpace || !middleTip) return null;
 
   const wristPose = frame.getJointPose(wristSpace, referenceSpace);
-  if (!wristPose) return null;
+  const middleTipPose = frame.getJointPose(middleTip, referenceSpace);
+  if (!wristPose || !middleTipPose) return null;
 
-  const position = new THREE.Vector3(
+  const wristPosition = new THREE.Vector3(
     wristPose.transform.position.x,
     wristPose.transform.position.y,
     wristPose.transform.position.z
   );
+
+  const middleTipPosition = new THREE.Vector3(
+    middleTipPose.transform.position.x,
+    middleTipPose.transform.position.y,
+    middleTipPose.transform.position.z
+  );
+
+  // 手のひらの中心を計算（手首と中指先端の中間点）
+  const palmCenter = new THREE.Vector3().addVectors(wristPosition, middleTipPosition).multiplyScalar(0.5);
 
   const quaternion = new THREE.Quaternion(
     wristPose.transform.orientation.x,
@@ -549,13 +561,26 @@ function getLeftHandTransform(hand, frame, referenceSpace) {
     wristPose.transform.orientation.w
   );
 
-  // 手の前方向（手のひらの向き）
-  const forward = new THREE.Vector3(0, 0, -0.15);
-  forward.applyQuaternion(quaternion);
+  // 手のひらの法線方向（手のひらが向いている方向）を計算
+  // 左手の場合、手のひらの法線は-Y方向（ローカル座標）で手のひら側を向く
+  const palmNormal = new THREE.Vector3(0, -1, 0);
+  palmNormal.applyQuaternion(quaternion);
+
+  // シールドを手のひらの前に配置（手のひらの法線方向に少しオフセット）
+  const offset = palmNormal.clone().multiplyScalar(0.001);
+  const shieldPosition = palmCenter.clone().add(offset);
+
+  // シールドが手のひらを向くように回転を計算
+  // 手のひらの法線方向を向くクォータニオンを計算
+  const shieldQuaternion = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const lookMatrix = new THREE.Matrix4();
+  lookMatrix.lookAt(shieldPosition, palmCenter, up);
+  shieldQuaternion.setFromRotationMatrix(lookMatrix);
 
   return {
-    position: position.add(forward),
-    quaternion: quaternion
+    position: shieldPosition,
+    quaternion: shieldQuaternion
   };
 }
 
@@ -641,8 +666,8 @@ function updateDepthInfo(frame, referenceSpace) {
 
         const depthData = new Uint8Array(depthInfo.data);
         if (!depthDataTexture ||
-            depthDataTexture.image.width !== depthInfo.width ||
-            depthDataTexture.image.height !== depthInfo.height) {
+          depthDataTexture.image.width !== depthInfo.width ||
+          depthDataTexture.image.height !== depthInfo.height) {
           depthDataTexture = new THREE.DataTexture(
             depthData,
             depthInfo.width,
