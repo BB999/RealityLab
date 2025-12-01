@@ -32,6 +32,7 @@ let isLeftHandOpen = false;
 let shieldRadius = 0.5625; // 手の前に表示（2.25倍サイズ）
 let impactTime = -10;
 let impactPoint = new THREE.Vector3();
+let shieldCollisionMesh = null; // 衝突判定用の不可視メッシュ
 
 // ゾルトラーク用変数
 let isRightHandOpen = false;
@@ -472,6 +473,17 @@ function createShield() {
 
   shieldParticles = new THREE.Points(particleGeometry, particleMaterial);
   shieldGroup.add(shieldParticles);
+
+  // 衝突判定用の不可視メッシュ（半球）
+  const collisionGeometry = new THREE.SphereGeometry(shieldRadius, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+  const collisionMaterial = new THREE.MeshBasicMaterial({
+    visible: false,
+    side: THREE.DoubleSide
+  });
+  shieldCollisionMesh = new THREE.Mesh(collisionGeometry, collisionMaterial);
+  shieldCollisionMesh.position.z = -shieldRadius * 0.7; // シールドと同じZオフセット
+  shieldCollisionMesh.rotation.x = Math.PI / 2; // 前方を向くように回転
+  shieldGroup.add(shieldCollisionMesh);
 
   shieldGroup.visible = false;
   scene.add(shieldGroup);
@@ -2205,22 +2217,32 @@ function updatePlaneMeshes(frame, referenceSpace) {
   });
 }
 
-// ビームのレイキャストで壁・テーブルとの衝突を検出
+// ビームのレイキャストで壁・テーブル・シールドとの衝突を検出
 function getBeamHitDistance(beamOrigin, beamDirection) {
-  if (planeMeshes.length === 0) {
-    return beamMaxLength;
-  }
-
   raycaster.set(beamOrigin, beamDirection);
   raycaster.far = beamMaxLength;
 
-  const intersects = raycaster.intersectObjects(planeMeshes, false);
+  let closestDistance = beamMaxLength;
 
-  if (intersects.length > 0) {
-    return intersects[0].distance;
+  // 壁・テーブルとの衝突をチェック
+  if (planeMeshes.length > 0) {
+    const planeIntersects = raycaster.intersectObjects(planeMeshes, false);
+    if (planeIntersects.length > 0) {
+      closestDistance = Math.min(closestDistance, planeIntersects[0].distance);
+    }
   }
 
-  return beamMaxLength;
+  // シールドとの衝突をチェック（左手が開いてシールドが展開中の場合）
+  if (shieldCollisionMesh && shieldGroup && shieldGroup.visible && isLeftHandOpen && shieldProgress > 0.3) {
+    // ワールド座標でレイキャスト
+    shieldCollisionMesh.updateMatrixWorld(true);
+    const shieldIntersects = raycaster.intersectObject(shieldCollisionMesh, false);
+    if (shieldIntersects.length > 0) {
+      closestDistance = Math.min(closestDistance, shieldIntersects[0].distance);
+    }
+  }
+
+  return closestDistance;
 }
 
 // アニメーションループ
