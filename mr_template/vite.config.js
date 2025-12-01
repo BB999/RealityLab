@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 export default defineConfig({
-  base: '/',
+  base: './',
   server: {
     https: {
       key: fs.readFileSync(path.resolve(__dirname, '.cert/key.pem')),
