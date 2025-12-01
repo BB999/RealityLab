@@ -419,6 +419,7 @@ function createShield() {
   const particleCount = 30;
   particleGeometry = new THREE.BufferGeometry();
   const particlePositions = new Float32Array(particleCount * 3);
+  const particleSizes = new Float32Array(particleCount);
   particleSpeeds = [];
   const particleZOffset = -shieldRadius * 0.7;
 
@@ -431,16 +432,40 @@ function createShield() {
     particlePositions[i * 3 + 1] = Math.sin(phi) * Math.sin(theta) * r;
     particlePositions[i * 3 + 2] = Math.cos(phi) * r + particleZOffset;
 
+    particleSizes[i] = 0.003 + Math.random() * 0.006;
     particleSpeeds.push({ theta: (Math.random() - 0.5) * 0.012 });
   }
 
   particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+  particleGeometry.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
 
-  particleMaterial = new THREE.PointsMaterial({
-    color: 0x88ddff,
-    size: 0.005,
+  particleMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      color: { value: new THREE.Color(0x88ddff) },
+      opacity: { value: 0.4 }
+    },
+    vertexShader: `
+      attribute float size;
+      varying float vOpacity;
+      void main() {
+        vOpacity = 1.0;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (500.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 color;
+      uniform float opacity;
+      varying float vOpacity;
+      void main() {
+        float dist = length(gl_PointCoord - vec2(0.5));
+        if (dist > 0.5) discard;
+        float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+        gl_FragColor = vec4(color, opacity * alpha * vOpacity);
+      }
+    `,
     transparent: true,
-    opacity: 0.4,
     blending: THREE.AdditiveBlending,
     depthWrite: false
   });
@@ -515,7 +540,7 @@ function updateShield(time) {
       positions[i * 3 + 1] = x * Math.sin(angle) + y * Math.cos(angle);
     }
     particleGeometry.attributes.position.needsUpdate = true;
-    particleMaterial.opacity = 0.4 * shieldProgress;
+    particleMaterial.uniforms.opacity.value = 0.4 * shieldProgress;
   }
 }
 
@@ -900,6 +925,7 @@ function createZoltraak() {
   const sparkCount = 50;
   const sparkGeometry = new THREE.BufferGeometry();
   const sparkPositions = new Float32Array(sparkCount * 3);
+  const sparkSizes = new Float32Array(sparkCount);
   const sparkData = [];
 
   for (let i = 0; i < sparkCount; i++) {
@@ -908,6 +934,7 @@ function createZoltraak() {
     sparkPositions[i * 3] = Math.cos(angle) * radius;
     sparkPositions[i * 3 + 1] = Math.sin(angle) * radius;
     sparkPositions[i * 3 + 2] = 0;
+    sparkSizes[i] = 0.006 + Math.random() * 0.008;
     sparkData.push({
       angle: angle,
       radius: radius,
@@ -917,13 +944,34 @@ function createZoltraak() {
   }
 
   sparkGeometry.setAttribute('position', new THREE.BufferAttribute(sparkPositions, 3));
+  sparkGeometry.setAttribute('size', new THREE.BufferAttribute(sparkSizes, 1));
 
-  const sparkMaterial = new THREE.PointsMaterial({
-    color: 0xaaccff,
-    size: 0.01,
+  const sparkMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      color: { value: new THREE.Color(0xaaccff) },
+      opacity: { value: 0 }
+    },
+    vertexShader: `
+      attribute float size;
+      void main() {
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (500.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 color;
+      uniform float opacity;
+      void main() {
+        float dist = length(gl_PointCoord - vec2(0.5));
+        if (dist > 0.5) discard;
+        float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+        gl_FragColor = vec4(color, opacity * alpha);
+      }
+    `,
     transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
   });
 
   const sparks = new THREE.Points(sparkGeometry, sparkMaterial);
@@ -970,6 +1018,7 @@ function createZoltraak() {
   const chargeParticleCount = 200;
   const chargeGeometry = new THREE.BufferGeometry();
   const chargePositions = new Float32Array(chargeParticleCount * 3);
+  const chargeSizes = new Float32Array(chargeParticleCount);
   chargeParticleOriginalPositions = [];
 
   for (let i = 0; i < chargeParticleCount; i++) {
@@ -985,17 +1034,39 @@ function createZoltraak() {
     chargePositions[i * 3 + 1] = y;
     chargePositions[i * 3 + 2] = z;
 
+    chargeSizes[i] = 0.003 + Math.random() * 0.007;
     chargeParticleOriginalPositions.push({ x, y, z });
   }
 
   chargeGeometry.setAttribute('position', new THREE.BufferAttribute(chargePositions, 3));
+  chargeGeometry.setAttribute('size', new THREE.BufferAttribute(chargeSizes, 1));
 
-  chargeParticleMaterial = new THREE.PointsMaterial({
-    color: 0x88aaff,
-    size: 0.005,
+  chargeParticleMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      color: { value: new THREE.Color(0x88aaff) },
+      opacity: { value: 0 }
+    },
+    vertexShader: `
+      attribute float size;
+      void main() {
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (500.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 color;
+      uniform float opacity;
+      void main() {
+        float dist = length(gl_PointCoord - vec2(0.5));
+        if (dist > 0.5) discard;
+        float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+        gl_FragColor = vec4(color, opacity * alpha);
+      }
+    `,
     transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
   });
 
   chargeParticles = new THREE.Points(chargeGeometry, chargeParticleMaterial);
@@ -1127,12 +1198,14 @@ function createZoltraak() {
   const sparkTrailCount = 150;
   const sparkTrailGeometry = new THREE.BufferGeometry();
   const sparkTrailPositions = new Float32Array(sparkTrailCount * 3);
+  const sparkTrailSizes = new Float32Array(sparkTrailCount);
   const sparkTrailData = [];
 
   for (let i = 0; i < sparkTrailCount; i++) {
     sparkTrailPositions[i * 3] = 0;
     sparkTrailPositions[i * 3 + 1] = 0;
     sparkTrailPositions[i * 3 + 2] = 0;
+    sparkTrailSizes[i] = 0.005 + Math.random() * 0.006;
     sparkTrailData.push({
       angle: Math.random() * Math.PI * 2,
       radius: 0.03 + Math.random() * 0.07,
@@ -1144,13 +1217,34 @@ function createZoltraak() {
   }
 
   sparkTrailGeometry.setAttribute('position', new THREE.BufferAttribute(sparkTrailPositions, 3));
+  sparkTrailGeometry.setAttribute('size', new THREE.BufferAttribute(sparkTrailSizes, 1));
 
-  const sparkTrailMaterial = new THREE.PointsMaterial({
-    color: 0xccddff,
-    size: 0.008,
+  const sparkTrailMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      color: { value: new THREE.Color(0xccddff) },
+      opacity: { value: 0 }
+    },
+    vertexShader: `
+      attribute float size;
+      void main() {
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (500.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 color;
+      uniform float opacity;
+      void main() {
+        float dist = length(gl_PointCoord - vec2(0.5));
+        if (dist > 0.5) discard;
+        float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+        gl_FragColor = vec4(color, opacity * alpha);
+      }
+    `,
     transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
   });
 
   const sparkTrail = new THREE.Points(sparkTrailGeometry, sparkTrailMaterial);
@@ -1159,12 +1253,14 @@ function createZoltraak() {
   // ビームパーティクル
   const beamGeometry = new THREE.BufferGeometry();
   const beamPositions = new Float32Array(beamParticleCount * 3);
+  const beamSizes = new Float32Array(beamParticleCount);
   beamVelocities = [];
 
   for (let i = 0; i < beamParticleCount; i++) {
     beamPositions[i * 3] = 0;
     beamPositions[i * 3 + 1] = 0;
     beamPositions[i * 3 + 2] = 0;
+    beamSizes[i] = 0.008 + Math.random() * 0.014;
     beamVelocities.push({
       x: (Math.random() - 0.5) * 0.03,
       y: (Math.random() - 0.5) * 0.03,
@@ -1174,13 +1270,34 @@ function createZoltraak() {
   }
 
   beamGeometry.setAttribute('position', new THREE.BufferAttribute(beamPositions, 3));
+  beamGeometry.setAttribute('size', new THREE.BufferAttribute(beamSizes, 1));
 
-  beamMaterial = new THREE.PointsMaterial({
-    color: 0xaaccff,
-    size: 0.015,
+  beamMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      color: { value: new THREE.Color(0xaaccff) },
+      opacity: { value: 0 }
+    },
+    vertexShader: `
+      attribute float size;
+      void main() {
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (500.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 color;
+      uniform float opacity;
+      void main() {
+        float dist = length(gl_PointCoord - vec2(0.5));
+        if (dist > 0.5) discard;
+        float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+        gl_FragColor = vec4(color, opacity * alpha);
+      }
+    `,
     transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
   });
 
   beamParticles = new THREE.Points(beamGeometry, beamMaterial);
@@ -1339,10 +1456,10 @@ function updateZoltraak(time) {
       sparkPositions[i * 3 + 1] = Math.sin(spark.angle) * (spark.radius + wobble);
     });
     allMagicCircleElements.sparks.mesh.geometry.attributes.position.needsUpdate = true;
-    allMagicCircleElements.sparks.mesh.material.opacity = fadeIn * 0.8;
+    allMagicCircleElements.sparks.mesh.material.uniforms.opacity.value = fadeIn * 0.8;
 
     // チャージパーティクルの収束
-    chargeParticleMaterial.opacity = Math.min(chargeProgress * 2, 0.8);
+    chargeParticleMaterial.uniforms.opacity.value = Math.min(chargeProgress * 2, 0.8);
     const positions = chargeParticles.geometry.attributes.position.array;
 
     for (let i = 0; i < chargeParticleOriginalPositions.length; i++) {
@@ -1480,11 +1597,11 @@ function updateZoltraak(time) {
         }
       });
       beamElements.sparkTrail.geometry.attributes.position.needsUpdate = true;
-      beamElements.sparkTrail.material.opacity = 0.7 * beamPulse;
+      beamElements.sparkTrail.material.uniforms.opacity.value = 0.7 * beamPulse;
     }
 
     // ビームパーティクル
-    beamMaterial.opacity = 0.8 * beamPulse;
+    beamMaterial.uniforms.opacity.value = 0.8 * beamPulse;
     const beamPos = beamParticles.geometry.attributes.position.array;
 
     for (let i = 0; i < beamParticleCount; i++) {
@@ -1508,7 +1625,7 @@ function updateZoltraak(time) {
     beamParticles.geometry.attributes.position.needsUpdate = true;
 
     // チャージパーティクルのフェードアウト
-    chargeParticleMaterial.opacity = Math.max(0.8 - fireProgress * 2, 0);
+    chargeParticleMaterial.uniforms.opacity.value = Math.max(0.8 - fireProgress * 2, 0);
 
     // 魔法陣のアニメーション継続
     const firePulse = Math.sin(time * 15) * 0.3 + 0.7;
@@ -1584,7 +1701,7 @@ function updateZoltraak(time) {
       sparkPositions[i * 3 + 1] = Math.sin(spark.angle) * (spark.radius + wobble);
     });
     allMagicCircleElements.sparks.mesh.geometry.attributes.position.needsUpdate = true;
-    allMagicCircleElements.sparks.mesh.material.opacity = 0.9 * firePulse;
+    allMagicCircleElements.sparks.mesh.material.uniforms.opacity.value = 0.9 * firePulse;
 
     // フェードアウト
     if (fireProgress > 2) {
@@ -1623,7 +1740,7 @@ function updateZoltraak(time) {
       allMagicCircleElements.glowLayers.forEach(glow => {
         glow.material.opacity *= fadeOut;
       });
-      allMagicCircleElements.sparks.mesh.material.opacity *= fadeOut;
+      allMagicCircleElements.sparks.mesh.material.uniforms.opacity.value *= fadeOut;
 
       magicCircleGroup.scale.setScalar(fadeOut);
 
@@ -1636,8 +1753,8 @@ function updateZoltraak(time) {
       beamElements.beamHeadGlow.material.opacity *= fadeOut;
       beamElements.spiralRings.forEach(ring => ring.material.opacity *= fadeOut);
       beamElements.shockwaves.forEach(shock => shock.material.opacity *= fadeOut);
-      beamElements.sparkTrail.material.opacity *= fadeOut;
-      beamMaterial.opacity *= fadeOut;
+      beamElements.sparkTrail.material.uniforms.opacity.value *= fadeOut;
+      beamMaterial.uniforms.opacity.value *= fadeOut;
 
       coreMaterial.opacity *= fadeOut;
       glowMaterial.opacity *= fadeOut;
@@ -1662,8 +1779,8 @@ function resetZoltraak() {
 
   coreMaterial.opacity = 0;
   glowMaterial.opacity = 0;
-  chargeParticleMaterial.opacity = 0;
-  beamMaterial.opacity = 0;
+  chargeParticleMaterial.uniforms.opacity.value = 0;
+  beamMaterial.uniforms.opacity.value = 0;
 
   beamElements.coreBeam.material.opacity = 0;
   beamElements.innerBeam.material.opacity = 0;
@@ -1673,7 +1790,7 @@ function resetZoltraak() {
   beamElements.beamHeadGlow.material.opacity = 0;
   beamElements.spiralRings.forEach(ring => ring.material.opacity = 0);
   beamElements.shockwaves.forEach(shock => shock.material.opacity = 0);
-  beamElements.sparkTrail.material.opacity = 0;
+  beamElements.sparkTrail.material.uniforms.opacity.value = 0;
 
   // スパークトレイルのリセット
   beamElements.sparkTrailData.forEach((spark, i) => {
