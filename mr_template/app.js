@@ -58,6 +58,12 @@ let beamMaterial = null;
 let beamVelocities = [];
 let beamParticleCount = 500;
 
+// レイキャスト用（壁・テーブル衝突判定）
+let raycaster = new THREE.Raycaster();
+let planeMeshes = [];
+let beamMaxLength = 10; // 最大ビーム長
+let currentBeamHitDistance = null; // 衝突点までの距離
+
 // チャージパーティクル
 let chargeParticles = null;
 let chargeParticleMaterial = null;
@@ -1381,7 +1387,27 @@ function updateZoltraak(time) {
   if (isFiring) {
     fireProgress += 0.015;
 
-    const beamLength = Math.max(fireProgress * 10, 0.01);
+    // ビームの理想的な長さを計算
+    const idealBeamLength = Math.max(fireProgress * 10, 0.01);
+
+    // 壁・テーブルとの衝突判定
+    let beamLength = idealBeamLength;
+    if (zoltraakGroup && zoltraakGroup.visible) {
+      // ビームの起点と方向をワールド座標で取得
+      const beamOrigin = new THREE.Vector3();
+      const beamDirection = new THREE.Vector3(0, 0, 1); // ローカルのZ方向
+      zoltraakGroup.getWorldPosition(beamOrigin);
+      beamDirection.applyQuaternion(zoltraakGroup.quaternion);
+      beamDirection.normalize();
+
+      // レイキャストで衝突距離を取得
+      const hitDistance = getBeamHitDistance(beamOrigin, beamDirection);
+      currentBeamHitDistance = hitDistance;
+
+      // 衝突点でビームの長さを制限
+      beamLength = Math.min(idealBeamLength, hitDistance);
+    }
+
     const beamHeadZ = beamLength;
 
     const beamPulse = Math.sin(time * 30) * 0.2 + 0.8;
@@ -1981,6 +2007,105 @@ function removeVREnvironment() {
   vrBackground = null;
 }
 
+// 検出されたプレーン（壁・テーブル）からメッシュを更新
+function updatePlaneMeshes(frame, referenceSpace) {
+  if (!frame.detectedPlanes) return;
+
+  const detectedPlanes = frame.detectedPlanes;
+  const existingPlaneIds = new Set();
+
+  for (const plane of detectedPlanes) {
+    existingPlaneIds.add(plane);
+
+    // 既存のメッシュを探す
+    let existingMesh = planeMeshes.find(m => m.userData.plane === plane);
+
+    if (!existingMesh) {
+      // 新しいプレーンのメッシュを作成（透明で見えない）
+      const geometry = new THREE.BufferGeometry();
+      const material = new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.userData.plane = plane;
+      mesh.userData.lastUpdated = 0;
+      scene.add(mesh);
+      planeMeshes.push(mesh);
+      existingMesh = mesh;
+    }
+
+    // プレーンのポーズを取得
+    const planePose = frame.getPose(plane.planeSpace, referenceSpace);
+    if (planePose) {
+      existingMesh.position.set(
+        planePose.transform.position.x,
+        planePose.transform.position.y,
+        planePose.transform.position.z
+      );
+      existingMesh.quaternion.set(
+        planePose.transform.orientation.x,
+        planePose.transform.orientation.y,
+        planePose.transform.orientation.z,
+        planePose.transform.orientation.w
+      );
+
+      // ポリゴンの頂点からジオメトリを更新
+      const polygon = plane.polygon;
+      if (polygon && polygon.length >= 3) {
+        const vertices = [];
+        const indices = [];
+
+        // 頂点を追加
+        for (const point of polygon) {
+          vertices.push(point.x, 0, point.z);
+        }
+
+        // 三角形化（ファンメソッド）
+        for (let i = 1; i < polygon.length - 1; i++) {
+          indices.push(0, i, i + 1);
+        }
+
+        existingMesh.geometry.dispose();
+        existingMesh.geometry = new THREE.BufferGeometry();
+        existingMesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        existingMesh.geometry.setIndex(indices);
+        existingMesh.geometry.computeVertexNormals();
+      }
+    }
+  }
+
+  // 削除されたプレーンのメッシュを削除
+  planeMeshes = planeMeshes.filter(mesh => {
+    if (!existingPlaneIds.has(mesh.userData.plane)) {
+      scene.remove(mesh);
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+      return false;
+    }
+    return true;
+  });
+}
+
+// ビームのレイキャストで壁・テーブルとの衝突を検出
+function getBeamHitDistance(beamOrigin, beamDirection) {
+  if (planeMeshes.length === 0) {
+    return beamMaxLength;
+  }
+
+  raycaster.set(beamOrigin, beamDirection);
+  raycaster.far = beamMaxLength;
+
+  const intersects = raycaster.intersectObjects(planeMeshes, false);
+
+  if (intersects.length > 0) {
+    return intersects[0].distance;
+  }
+
+  return beamMaxLength;
+}
+
 // アニメーションループ
 function animate(timestamp, frame) {
   const time = timestamp ? timestamp / 1000 : performance.now() / 1000;
@@ -1991,6 +2116,9 @@ function animate(timestamp, frame) {
 
     // 深度情報を更新
     updateDepthInfo(frame, referenceSpace, timestamp);
+
+    // プレーンメッシュを更新（壁・テーブル検出）
+    updatePlaneMeshes(frame, referenceSpace);
 
     // ボックスを右コントローラーの前に配置
     if (!boxPositioned && box && rightController) {
