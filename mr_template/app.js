@@ -1708,16 +1708,21 @@ function getRightHandTransform(hand, frame, referenceSpace) {
   const palmNormal = new THREE.Vector3(0, -1, 0);
   palmNormal.applyQuaternion(quaternion);
 
+  // 上向きに角度を調整（palmNormalに上方向を加える）
+  const adjustedNormal = palmNormal.clone();
+  adjustedNormal.y += 0.4; // 上向きに調整
+  adjustedNormal.normalize();
+
   // エフェクトを手のひらの前に配置（少し離す）
-  const offset = palmNormal.clone().multiplyScalar(0.08);
+  const offset = adjustedNormal.clone().multiplyScalar(0.15);
   const effectPosition = palmCenter.clone().add(offset);
 
   // エフェクトが手のひらから外向きに出るように回転（逆方向を向く）
   const effectQuaternion = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const lookMatrix = new THREE.Matrix4();
-  // ビームが手のひらから離れる方向に飛ぶよう、palmNormalの逆方向からlookAt
-  const lookFrom = effectPosition.clone().add(palmNormal);
+  // ビームが手のひらから離れる方向に飛ぶよう、adjustedNormalの逆方向からlookAt
+  const lookFrom = effectPosition.clone().add(adjustedNormal);
   lookMatrix.lookAt(lookFrom, effectPosition, up);
   effectQuaternion.setFromRotationMatrix(lookMatrix);
 
@@ -1820,16 +1825,22 @@ function getLeftHandTransform(hand, frame, referenceSpace) {
   const palmNormal = new THREE.Vector3(0, -1, 0);
   palmNormal.applyQuaternion(quaternion);
 
-  // シールドを手のひらの前に配置（手のひらの法線方向に少しオフセット）
-  const offset = palmNormal.clone().multiplyScalar(0.001);
+  // 上向きに角度を調整（palmNormalに上方向を加える）
+  const adjustedNormal = palmNormal.clone();
+  adjustedNormal.y += 0.4; // 上向きに調整
+  adjustedNormal.normalize();
+
+  // シールドを手のひらの前に配置（調整した法線方向に少しオフセット）
+  const offset = adjustedNormal.clone().multiplyScalar(0.001);
   const shieldPosition = palmCenter.clone().add(offset);
 
   // シールドが手のひらを向くように回転を計算
-  // 手のひらの法線方向を向くクォータニオンを計算
+  // 調整した法線方向を向くクォータニオンを計算
   const shieldQuaternion = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const lookMatrix = new THREE.Matrix4();
-  lookMatrix.lookAt(shieldPosition, palmCenter, up);
+  const lookTarget = shieldPosition.clone().sub(adjustedNormal);
+  lookMatrix.lookAt(shieldPosition, lookTarget, up);
   shieldQuaternion.setFromRotationMatrix(lookMatrix);
 
   return {
