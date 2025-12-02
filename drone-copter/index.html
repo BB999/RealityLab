@@ -125,22 +125,21 @@
 
     /* Drone Icon */
     .drone-icon {
-      width: 120px;
-      height: 120px;
+      width: 200px;
+      height: 200px;
       margin: 20px auto;
       position: relative;
-      animation: float 3s ease-in-out infinite;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0, 200, 255, 0.1) 0%, transparent 70%);
+      box-shadow: 0 0 30px rgba(0, 200, 255, 0.3);
     }
 
-    @keyframes float {
-      0%, 100% { transform: translateY(0px); }
-      50% { transform: translateY(-15px); }
-    }
-
-    .drone-icon svg {
-      width: 100%;
-      height: 100%;
-      filter: drop-shadow(0 0 15px rgba(0, 200, 255, 0.6));
+    .drone-icon canvas {
+      border-radius: 50%;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
     }
 
     /* Controller Section */
@@ -469,42 +468,16 @@
 
     <!-- Title Section -->
     <div class="title-section">
-      <h1 class="main-title">Drone MR</h1>
+      <h1 class="main-title">DOROCON</h1>
       <p class="subtitle">Mixed Reality Drone Simulator</p>
 
-      <!-- Drone Icon -->
-      <div class="drone-icon">
-        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-          <!-- Drone Body -->
-          <ellipse cx="50" cy="50" rx="15" ry="8" fill="#00c8ff" opacity="0.9"/>
-          <ellipse cx="50" cy="50" rx="12" ry="6" fill="#0a0a1a"/>
+      <!-- 3D Drone Model -->
+      <div class="drone-icon" id="drone-3d-container"></div>
 
-          <!-- Arms -->
-          <line x1="50" y1="50" x2="20" y2="25" stroke="#00c8ff" stroke-width="3"/>
-          <line x1="50" y1="50" x2="80" y2="25" stroke="#00c8ff" stroke-width="3"/>
-          <line x1="50" y1="50" x2="20" y2="75" stroke="#00c8ff" stroke-width="3"/>
-          <line x1="50" y1="50" x2="80" y2="75" stroke="#00c8ff" stroke-width="3"/>
-
-          <!-- Propellers -->
-          <circle cx="20" cy="25" r="12" fill="none" stroke="#8a2be2" stroke-width="2" opacity="0.8">
-            <animateTransform attributeName="transform" type="rotate" from="0 20 25" to="360 20 25" dur="0.5s" repeatCount="indefinite"/>
-          </circle>
-          <circle cx="80" cy="25" r="12" fill="none" stroke="#8a2be2" stroke-width="2" opacity="0.8">
-            <animateTransform attributeName="transform" type="rotate" from="0 80 25" to="360 80 25" dur="0.5s" repeatCount="indefinite"/>
-          </circle>
-          <circle cx="20" cy="75" r="12" fill="none" stroke="#8a2be2" stroke-width="2" opacity="0.8">
-            <animateTransform attributeName="transform" type="rotate" from="0 20 75" to="360 20 75" dur="0.5s" repeatCount="indefinite"/>
-          </circle>
-          <circle cx="80" cy="75" r="12" fill="none" stroke="#8a2be2" stroke-width="2" opacity="0.8">
-            <animateTransform attributeName="transform" type="rotate" from="0 80 75" to="360 80 75" dur="0.5s" repeatCount="indefinite"/>
-          </circle>
-
-          <!-- Motor hubs -->
-          <circle cx="20" cy="25" r="4" fill="#00c8ff"/>
-          <circle cx="80" cy="25" r="4" fill="#00c8ff"/>
-          <circle cx="20" cy="75" r="4" fill="#00c8ff"/>
-          <circle cx="80" cy="75" r="4" fill="#00c8ff"/>
-        </svg>
+      <!-- Action Buttons (under drone icon) -->
+      <div class="action-buttons" style="margin-top: 20px;">
+        <button class="action-btn mr-btn" id="landing-mr-btn">MR を開始</button>
+        <button class="action-btn vr-btn" id="landing-vr-btn">VR を開始</button>
       </div>
     </div>
 
@@ -596,12 +569,6 @@
       <p>コントローラーなしでも操作可能。ピンチジェスチャーでドローンを掴んで移動・スケール変更ができます。</p>
     </div>
 
-    <!-- Action Buttons -->
-    <div class="action-buttons">
-      <button class="action-btn mr-btn" id="landing-mr-btn">MR を開始</button>
-      <button class="action-btn vr-btn" id="landing-vr-btn">VR を開始</button>
-    </div>
-
     <div class="footer-info">
       <p>Quest 3 / Quest Pro 対応 | WebXR Immersive Experience</p>
     </div>
@@ -612,7 +579,79 @@
   <button id="depth-toggle">深度表示 OFF</button>
   <div id="info">ドローンを表示するには「MRを開始」または「VRを開始」をタップしてください</div>
 
-  <script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+    // Landing page 3D drone
+    const container = document.getElementById('drone-3d-container');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+    camera.position.set(0, 0.5, 2);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(400, 400);
+    renderer.setClearColor(0x000000, 0);
+    container.appendChild(renderer.domElement);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0x00c8ff, 1);
+    directionalLight.position.set(2, 2, 2);
+    scene.add(directionalLight);
+    const backLight = new THREE.DirectionalLight(0x8a2be2, 0.5);
+    backLight.position.set(-2, 1, -2);
+    scene.add(backLight);
+
+    // Load drone model
+    let drone = null;
+    let propellers = [];
+    const loader = new GLTFLoader();
+    loader.load('./doron.glb', (gltf) => {
+      drone = gltf.scene;
+      drone.scale.set(0.8, 0.8, 0.8);
+      drone.position.set(0, 0, 0);
+      scene.add(drone);
+
+      // Find propellers
+      drone.traverse((child) => {
+        if (child.name === 'pera1' || child.name === 'pera2' ||
+            child.name === 'pera3' || child.name === 'pera4') {
+          if (child.geometry) {
+            child.geometry.computeBoundingBox();
+            const center = new THREE.Vector3();
+            child.geometry.boundingBox.getCenter(center);
+            child.geometry.translate(-center.x, -center.y, -center.z);
+            child.position.copy(center);
+          }
+          propellers.push(child);
+        }
+      });
+    });
+
+    // Animation loop
+    let hoverTime = 0;
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (drone) {
+        // Hover animation
+        hoverTime += 0.016;
+        drone.position.y = Math.sin(hoverTime * 1.2) * 0.05;
+        drone.rotation.y += 0.005;
+
+        // Rotate propellers
+        propellers.forEach(prop => {
+          prop.rotation.y += 0.5;
+        });
+      }
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
     // Landing page button handlers
     document.getElementById('landing-mr-btn').addEventListener('click', function() {
       document.getElementById('landing-page').style.display = 'none';
