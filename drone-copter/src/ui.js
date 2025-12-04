@@ -185,7 +185,12 @@ export function createSpeedText() {
   state.setSpeedRightControllerText(speedRightText);
 
   if (!state.isHUDMode) {
-    setTimeout(() => {
+    // 既存のタイマーをクリア
+    if (state.speedTextTimerId) {
+      clearTimeout(state.speedTextTimerId);
+    }
+
+    const timerId = setTimeout(() => {
       if (state.speedText) {
         state.scene.remove(state.speedText);
         state.speedText.geometry.dispose();
@@ -200,7 +205,10 @@ export function createSpeedText() {
         state.speedRightControllerText.material.map.dispose();
         state.setSpeedRightControllerText(null);
       }
+      state.setSpeedTextTimerId(null);
     }, 3000);
+
+    state.setSpeedTextTimerId(timerId);
   }
 }
 
