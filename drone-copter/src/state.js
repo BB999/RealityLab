@@ -62,6 +62,7 @@ export let decelerationStartTime = null;
 export let descentLastY = null;
 export let descentStuckStartTime = null;
 export let landingHeight = null;
+export let hasLanded = false;
 
 // 起動前の物理シミュレーション用変数
 export let dronePhysicsVelocity = new THREE.Vector3(0, 0, 0);
@@ -198,6 +199,7 @@ export function setDecelerationStartTime(value) { decelerationStartTime = value;
 export function setDescentLastY(value) { descentLastY = value; }
 export function setDescentStuckStartTime(value) { descentStuckStartTime = value; }
 export function setLandingHeight(value) { landingHeight = value; }
+export function setHasLanded(value) { hasLanded = value; }
 export function setDronePhysicsVelocity(value) { dronePhysicsVelocity = value; }
 export function setDroneAngularVelocity(value) { droneAngularVelocity = value; }
 export function setDronePreviousPosition(value) { dronePreviousPosition = value; }

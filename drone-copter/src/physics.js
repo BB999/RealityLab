@@ -73,8 +73,8 @@ export function checkPlaneCollision() {
     }
   });
 
-  // 固定の地面（floorHeight = 0.05）との衝突判定
-  const floorHeight = 0.05;
+  // 固定の地面（floorHeight = 0）との衝突判定
+  const floorHeight = 0;
   const floorDistance = dronePos.y - floorHeight;
 
   if (floorDistance < state.droneCollisionRadius.vertical) {
@@ -124,8 +124,9 @@ export function updatePreStartupPhysics() {
   if (state.propellerSpeedMultiplier > 0) return;
   if (state.isGrabbedByController || state.isGrabbedByHand) return;
   if (state.isReturningToHover || state.isAutoReturning) return;
+  if (state.hasLanded) return;
 
-  const floorHeight = 0.05;
+  const floorHeight = 0;
   const dt = 0.016;
 
   // まず着地可能な平面の高さを計算

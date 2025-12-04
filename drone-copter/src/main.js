@@ -246,6 +246,7 @@ function updateDecelerationSequence() {
     state.setLandingHeight(null);
     state.setIsShuttingDown(false);
     state.setPropellerSpeedMultiplier(0);
+    state.setHasLanded(true);
 
     if (state.droneSound && state.droneSound.isPlaying) {
       state.droneSound.stop();
@@ -340,7 +341,7 @@ function updateGamepadMovement() {
 
   // 降下中は自動的に下降入力をシミュレート
   if (state.descentStartTime !== null && state.decelerationStartTime === null) {
-    const floorHeight = 0.05;
+    const floorHeight = 0;
     const currentY = state.drone.userData.basePosition ? state.drone.userData.basePosition.y : state.drone.position.y;
 
     // スタック検出
@@ -472,7 +473,7 @@ function updateGamepadMovement() {
         state.drone.userData.basePosition.y = state.landingHeight;
       }
     } else {
-      const floorHeight = 0.05;
+      const floorHeight = 0;
       state.drone.position.y = floorHeight;
       if (state.drone.userData.basePosition) {
         state.drone.userData.basePosition.y = floorHeight;

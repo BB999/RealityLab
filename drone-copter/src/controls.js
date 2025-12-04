@@ -294,6 +294,7 @@ export function handleStartupSequence() {
       if (isXPressed && !state.leftXButtonPressed && !state.isStartupComplete && !state.isStartingUp && !state.isShuttingDown && state.dronePositioned) {
         // 起動シーケンスを開始
         state.setIsStartingUp(true);
+        state.setHasLanded(false);
         console.log('起動シーケンス開始');
         updateInfo('Drone Starting...');
         createSequenceStatusText('STARTING UP');
