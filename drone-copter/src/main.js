@@ -7,7 +7,7 @@ import {
   updateAutoReturnText, updateSpeedText, updateVolumeText, updateCollisionText,
   updateTrackingLostText, updateSequenceStatusText,
   updateDroneLocationArrow, createTrackingLostText, removeTrackingLostText,
-  removeSequenceStatusText
+  removeSequenceStatusText, updateControllerGuideMenu
 } from './ui.js';
 import { checkPlaneCollision, updatePreStartupPhysics, updateHoverAnimation, updateReturnToHover } from './physics.js';
 import { createVREnvironment, removeVREnvironment, processDepthInformation, updatePlanes, createDepthVisualization, positionDrone } from './vr.js';
@@ -75,6 +75,7 @@ function render() {
   updateCollisionText();
   updateTrackingLostText();
   updateSequenceStatusText();
+  updateControllerGuideMenu();
 
   // ドローンがカメラ外にいる時の方向ガイド（常に更新）
   updateDroneLocationArrow();

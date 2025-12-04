@@ -6,7 +6,7 @@ import { updateDroneSoundPitch } from './sound.js';
 import {
   createAutoReturnText, createAutoReturnRightControllerText, removeAutoReturnText,
   createSpeedText, createVolumeText, createCollisionText, createTrackingLostText,
-  createSequenceStatusText, removeSequenceStatusText
+  createSequenceStatusText, removeSequenceStatusText, toggleControllerGuideMenu
 } from './ui.js';
 
 // 自動帰還モードの処理
@@ -130,12 +130,31 @@ export function handleSpeedChange() {
   }
 }
 
-// 右コントローラーのボタン処理（自動帰還、音量オンオフ）
+// 右コントローラーのボタン処理（自動帰還、音量オンオフ、コントローラーガイド）
 export function handleRightControllerButtons() {
   if (!state.xrSession || !state.drone || !state.dronePositioned) return;
-  if (!state.isStartupComplete || state.isGrabbedByController || state.isGrabbedByHand || state.bothGripsPressed) return;
 
+  // コントローラーガイドは常に利用可能（開始シーケンス前でも）
   const inputSources = state.xrSession.inputSources;
+  for (const source of inputSources) {
+    if (source.handedness === 'right' && source.gamepad) {
+      const buttons = source.gamepad.buttons;
+
+      // Aボタンでコントローラーガイドメニュー（常に利用可能）
+      const aButton = buttons[4];
+      const isAPressed = aButton && aButton.pressed;
+
+      if (isAPressed && !state.rightAButtonPressedForGuide) {
+        toggleControllerGuideMenu();
+        console.log('コントローラーガイドメニュー:', state.isControllerGuideVisible ? '表示' : '非表示');
+      }
+
+      state.setRightAButtonPressedForGuide(isAPressed);
+    }
+  }
+
+  // 以下は起動完了後のみ
+  if (!state.isStartupComplete || state.isGrabbedByController || state.isGrabbedByHand || state.bothGripsPressed) return;
 
   for (const source of inputSources) {
     if (source.handedness === 'right' && source.gamepad) {
