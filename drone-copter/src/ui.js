@@ -520,7 +520,7 @@ export function createDroneLocationArrow() {
     state.setHudDroneLocationArrow(null);
   }
 
-  const geometry = new THREE.ConeGeometry(0.04, 0.12, 8);
+  const geometry = new THREE.ConeGeometry(0.02, 0.06, 8);
   const material = new THREE.MeshBasicMaterial({
     color: 0xffff00,
     transparent: true,
@@ -592,5 +592,8 @@ export function updateDroneLocationArrow() {
     state.hudDroneLocationArrow.position.copy(edgePos);
     state.hudDroneLocationArrow.lookAt(dronePos);
     state.hudDroneLocationArrow.rotateX(Math.PI / 2);
+
+    // 矢印自体をゆっくり自転させる
+    state.hudDroneLocationArrow.rotateY(Date.now() * 0.002);
   }
 }
