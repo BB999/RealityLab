@@ -50,7 +50,10 @@ export function checkPlaneCollision() {
         }
 
         const velocityAlongNormal = state.velocity.dot(planeNormal);
-        if (velocityAlongNormal < 0) {
+        // 平面に向かう速度成分を反転（床、天井、壁すべてに対応）
+        // distance > 0: 法線方向側にいる、distance < 0: 法線と逆方向側にいる
+        // velocityAlongNormal と distance の符号が逆 = 平面に向かっている
+        if ((distance > 0 && velocityAlongNormal < 0) || (distance < 0 && velocityAlongNormal > 0)) {
           state.velocity.sub(planeNormal.clone().multiplyScalar(velocityAlongNormal * 1.5));
         }
 
@@ -69,6 +72,42 @@ export function checkPlaneCollision() {
       }
     }
   });
+
+  // 固定の地面（floorHeight = 0.05）との衝突判定
+  const floorHeight = 0.05;
+  const floorDistance = dronePos.y - floorHeight;
+
+  if (floorDistance < state.droneCollisionRadius.vertical) {
+    hasCollision = true;
+
+    const pushDistance = state.droneCollisionRadius.vertical - floorDistance;
+    const floorNormal = new THREE.Vector3(0, 1, 0);
+
+    // 位置補正（押し戻し）
+    state.drone.position.y += pushDistance;
+    if (state.drone.userData.basePosition) {
+      state.drone.userData.basePosition.y += pushDistance;
+    }
+
+    // 速度反転（下向きの速度がある場合）
+    if (state.velocity.y < 0) {
+      state.velocity.y = -state.velocity.y * 0.5;
+    }
+
+    // 触覚フィードバック
+    if (pushDistance > 0.001 && !state.isColliding) {
+      state.setIsColliding(true);
+      if (state.xrSession) {
+        const inputSources = state.xrSession.inputSources;
+        for (const source of inputSources) {
+          if (source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators.length > 0) {
+            const impactStrength = Math.min(Math.max(pushDistance * 20, 0.3), 1.0);
+            source.gamepad.hapticActuators[0].pulse(impactStrength, 33);
+          }
+        }
+      }
+    }
+  }
 
   if (!hasCollision) {
     state.setIsColliding(false);
