@@ -89,6 +89,70 @@ export function updatePreStartupPhysics() {
   const floorHeight = 0.05;
   const dt = 0.016;
 
+  // まず着地可能な平面の高さを計算
+  let landingPlaneHeight = floorHeight;
+
+  state.detectedPlanes.forEach((planeData) => {
+    const { position, quaternion, polygon } = planeData;
+
+    // 水平な平面のみ対象（法線がほぼ上向き）
+    const planeNormal = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion);
+    if (Math.abs(planeNormal.y) < 0.7) return;
+
+    const dronePos = state.drone.position.clone();
+
+    // ドローンが平面の範囲内にいるか確認
+    const inverseQuaternion = quaternion.clone().invert();
+    const localDronePos = dronePos.clone().sub(position).applyQuaternion(inverseQuaternion);
+
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].x, zi = polygon[i].z;
+      const xj = polygon[j].x, zj = polygon[j].z;
+
+      const intersect = ((zi > localDronePos.z) !== (zj > localDronePos.z))
+        && (localDronePos.x < (xj - xi) * (localDronePos.z - zi) / (zj - zi) + xi);
+      if (intersect) inside = !inside;
+    }
+
+    if (inside) {
+      // 平面の高さ + ドローンの半径
+      const planeHeight = position.y + state.droneCollisionRadius.vertical;
+      // ドローンより下にある平面のうち、最も高いものを選択
+      if (planeHeight <= dronePos.y + 0.01 && planeHeight > landingPlaneHeight) {
+        landingPlaneHeight = planeHeight;
+      }
+    }
+  });
+
+  // すでに着地している場合は静止状態を維持
+  const isOnGround = Math.abs(state.drone.position.y - landingPlaneHeight) < 0.01;
+  const isAlmostStopped = state.dronePhysicsVelocity.length() < 0.05;
+
+  if (isOnGround && isAlmostStopped) {
+    // 完全に静止
+    state.drone.position.y = landingPlaneHeight;
+    state.dronePhysicsVelocity.set(0, 0, 0);
+    state.droneAngularVelocity.set(0, 0, 0);
+
+    // 水平姿勢に固定
+    const targetQuat = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 1, 0),
+      state.drone.rotation.y
+    );
+    state.drone.quaternion.slerp(targetQuat, 0.3);
+
+    const euler = new THREE.Euler().setFromQuaternion(state.drone.quaternion);
+    if (Math.abs(euler.x) < 0.02 && Math.abs(euler.z) < 0.02) {
+      const finalQuat = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        state.drone.rotation.y
+      );
+      state.drone.quaternion.copy(finalQuat);
+    }
+    return;
+  }
+
   // 重力加速度を適用
   const gravity = -9.8;
   state.dronePhysicsVelocity.y += gravity * dt;
@@ -96,53 +160,44 @@ export function updatePreStartupPhysics() {
   // 速度から位置を更新
   state.drone.position.add(state.dronePhysicsVelocity.clone().multiplyScalar(dt));
 
-  // 地面との衝突判定
-  if (state.drone.position.y <= floorHeight) {
-    state.drone.position.y = floorHeight;
+  // 地面または平面との衝突判定
+  if (state.drone.position.y <= landingPlaneHeight) {
+    state.drone.position.y = landingPlaneHeight;
 
-    if (Math.abs(state.dronePhysicsVelocity.y) > 0.2) {
-      state.dronePhysicsVelocity.y = -state.dronePhysicsVelocity.y * 0.4;
-
-      state.droneAngularVelocity.x += (Math.random() - 0.5) * 1.5;
-      state.droneAngularVelocity.z += (Math.random() - 0.5) * 1.5;
+    if (Math.abs(state.dronePhysicsVelocity.y) > 0.3) {
+      // 強い衝突の場合のみバウンド
+      state.dronePhysicsVelocity.y = -state.dronePhysicsVelocity.y * 0.3;
+      state.droneAngularVelocity.x += (Math.random() - 0.5) * 1.0;
+      state.droneAngularVelocity.z += (Math.random() - 0.5) * 1.0;
     } else {
+      // 弱い衝突は即座に停止
       state.dronePhysicsVelocity.set(0, 0, 0);
     }
 
-    state.dronePhysicsVelocity.x *= 0.85;
-    state.dronePhysicsVelocity.z *= 0.85;
-    state.droneAngularVelocity.multiplyScalar(0.85);
+    state.dronePhysicsVelocity.x *= 0.7;
+    state.dronePhysicsVelocity.z *= 0.7;
+    state.droneAngularVelocity.multiplyScalar(0.7);
   }
 
   // 角速度を回転に適用
-  if (state.droneAngularVelocity.length() > 0.005) {
+  if (state.droneAngularVelocity.length() > 0.01) {
     const rotationAxis = state.droneAngularVelocity.clone().normalize();
     const rotationAngle = state.droneAngularVelocity.length() * dt;
     const rotationQuat = new THREE.Quaternion().setFromAxisAngle(rotationAxis, rotationAngle);
     state.drone.quaternion.multiply(rotationQuat);
 
-    state.droneAngularVelocity.multiplyScalar(0.92);
+    state.droneAngularVelocity.multiplyScalar(0.85);
   } else {
     state.droneAngularVelocity.set(0, 0, 0);
   }
 
-  // 水平姿勢に戻る力（ほぼ静止している時のみ）
-  if (state.dronePhysicsVelocity.length() < 0.1 && state.drone.position.y <= floorHeight + 0.01) {
+  // 着地中は水平姿勢に戻る
+  if (state.drone.position.y <= landingPlaneHeight + 0.02) {
     const targetQuat = new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(0, 1, 0),
       state.drone.rotation.y
     );
-    state.drone.quaternion.slerp(targetQuat, 0.15);
-
-    const euler = new THREE.Euler().setFromQuaternion(state.drone.quaternion);
-    if (Math.abs(euler.x) < 0.03 && Math.abs(euler.z) < 0.03) {
-      state.droneAngularVelocity.set(0, 0, 0);
-      const finalQuat = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(0, 1, 0),
-        state.drone.rotation.y
-      );
-      state.drone.quaternion.copy(finalQuat);
-    }
+    state.drone.quaternion.slerp(targetQuat, 0.2);
   }
 }
 
