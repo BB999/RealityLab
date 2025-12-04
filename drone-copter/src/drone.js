@@ -26,6 +26,14 @@ function createDirectionIndicator() {
   ];
 
   function blink() {
+    // 起動シーケンス開始前（isStartingUpがfalseでisStartupCompleteもfalse、プロペラも止まっている）はずっと点灯
+    if (!state.isStartingUp && !state.isStartupComplete && state.propellerSpeedMultiplier === 0) {
+      indicator.visible = true;
+      setTimeout(blink, 100);
+      return;
+    }
+
+    // それ以外は点滅
     indicator.visible = blinkPattern[blinkState].visible;
     setTimeout(() => {
       blinkState = (blinkState + 1) % blinkPattern.length;
