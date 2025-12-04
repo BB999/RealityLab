@@ -6,7 +6,8 @@ import { updateDroneSoundPitch } from './sound.js';
 import {
   createAutoReturnText, createAutoReturnRightControllerText, removeAutoReturnText,
   createSpeedText, createVolumeText, createCollisionText, createTrackingLostText,
-  createSequenceStatusText, removeSequenceStatusText, toggleControllerGuideMenu
+  createSequenceStatusText, removeSequenceStatusText, toggleControllerGuideMenu,
+  toggleSettingsMenu
 } from './ui.js';
 
 // 自動帰還モードの処理
@@ -88,6 +89,8 @@ export function updateAutoReturn() {
 export function handleSpeedChange() {
   if (!state.xrSession || !state.drone || !state.dronePositioned) return;
   if (!state.isStartupComplete || state.bothGripsPressed) return;
+  // 設定メニュー表示中は無効（レーザー操作用にトリガーを使うため）
+  if (state.isSettingsMenuVisible) return;
 
   const inputSources = state.xrSession.inputSources;
 
@@ -217,6 +220,30 @@ export function handleRightControllerButtons() {
       }
 
       state.setRightStickButtonPressed(isRightStickPressed);
+    }
+  }
+}
+
+// 左コントローラーの設定メニュー処理
+export function handleLeftControllerButtons() {
+  if (!state.xrSession || !state.drone || !state.dronePositioned) return;
+
+  // 設定メニューは常に利用可能（開始シーケンス前でも）
+  const inputSources = state.xrSession.inputSources;
+  for (const source of inputSources) {
+    if (source.handedness === 'left' && source.gamepad) {
+      const buttons = source.gamepad.buttons;
+
+      // Yボタンで設定メニュー（常に利用可能）
+      const yButton = buttons[4];
+      const isYPressed = yButton && yButton.pressed;
+
+      if (isYPressed && !state.leftYButtonPressedForSettings) {
+        toggleSettingsMenu();
+        console.log('設定メニュー:', state.isSettingsMenuVisible ? '表示' : '非表示');
+      }
+
+      state.setLeftYButtonPressedForSettings(isYPressed);
     }
   }
 }

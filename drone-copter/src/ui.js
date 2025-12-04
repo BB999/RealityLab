@@ -594,7 +594,8 @@ export function createControllerGuideMenu() {
   const leftControls = [
     { button: 'スティック↑↓', desc: '前進 / 後退' },
     { button: 'スティック←→', desc: '左旋回 / 右旋回' },
-    { button: 'X ボタン', desc: '起動 / 終了' },
+    { button: 'Y ボタン', desc: '起動 / 終了' },
+    { button: 'X ボタン', desc: '設定ウィンドウ' },
     { button: 'スティック押込', desc: '衝突 ON/OFF' },
     { button: 'トリガー', desc: '速度ダウン' },
     { button: 'グリップ', desc: 'ドローンを掴む' }
@@ -821,7 +822,8 @@ export function redrawControllerGuideMenu(pressedButtons) {
   const leftControls = [
     { button: 'スティック↑↓', desc: '前進 / 後退', key: 'leftStickY' },
     { button: 'スティック←→', desc: '左旋回 / 右旋回', key: 'leftStickX' },
-    { button: 'X ボタン', desc: '起動 / 終了', key: 'leftX' },
+    { button: 'Y ボタン', desc: '起動 / 終了', key: 'leftX' },
+    { button: 'X ボタン', desc: '設定ウィンドウ', key: 'leftY' },
     { button: 'スティック押込', desc: '衝突 ON/OFF', key: 'leftStickPress' },
     { button: 'トリガー', desc: '速度ダウン', key: 'leftTrigger' },
     { button: 'グリップ', desc: 'ドローンを掴む', key: 'leftGrip' }
@@ -1006,6 +1008,522 @@ export function toggleControllerGuideMenu() {
   }
 }
 
+// 設定メニュー用のキャンバスとテクスチャを保持
+let settingsMenuCanvas = null;
+let settingsMenuTexture = null;
+let settingsMenuWidth = 0;
+let settingsMenuHeight = 0;
+
+// ボタンの当たり判定領域を保存
+let settingsButtonAreas = [];
+
+// 設定項目の定義
+const settingsItems = [
+  {
+    name: 'デッドゾーン',
+    description: 'スティック入力の無効範囲',
+    key: 'deadzone',
+    type: 'value',
+    getValue: () => state.stickDeadzone,
+    setValue: (v) => state.setStickDeadzone(v),
+    defaultValue: 0.15,
+    min: 0.05,
+    max: 0.35,
+    step: 0.05,
+    format: (v) => (v * 100).toFixed(0) + '%'
+  },
+  {
+    name: '加速度',
+    description: 'ドローンの加速の強さ',
+    key: 'acceleration',
+    type: 'value',
+    getValue: () => state.acceleration,
+    setValue: (v) => state.setAcceleration(v),
+    defaultValue: 0.001,
+    min: 0.0005,
+    max: 0.003,
+    step: 0.0005,
+    format: (v) => (v * 1000).toFixed(1)
+  },
+  {
+    name: '摩擦',
+    description: '高いほど滑らかに止まる',
+    key: 'friction',
+    type: 'value',
+    getValue: () => state.friction,
+    setValue: (v) => {
+      state.setFriction(v);
+      state.setAngularFriction(v);
+    },
+    defaultValue: 0.965,
+    min: 0.90,
+    max: 0.99,
+    step: 0.01,
+    format: (v) => v.toFixed(2)
+  },
+  {
+    name: '傾き量',
+    description: '移動時のドローンの傾き',
+    key: 'tilt',
+    type: 'value',
+    getValue: () => state.tiltAmount,
+    setValue: (v) => state.setTiltAmount(v),
+    defaultValue: 0.6,
+    min: 0.0,
+    max: 1.0,
+    step: 0.1,
+    format: (v) => v.toFixed(1)
+  },
+];
+
+// 設定メニューを作成
+export function createSettingsMenu() {
+  if (state.settingsMenu) {
+    state.scene.remove(state.settingsMenu);
+    state.settingsMenu.traverse((child) => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
+    });
+    state.setSettingsMenu(null);
+  }
+
+  settingsMenuCanvas = document.createElement('canvas');
+  settingsMenuCanvas.width = 700;
+  settingsMenuCanvas.height = 550;
+
+  redrawSettingsMenu(null);
+
+  settingsMenuTexture = new THREE.CanvasTexture(settingsMenuCanvas);
+  settingsMenuTexture.needsUpdate = true;
+
+  const aspectRatio = settingsMenuCanvas.width / settingsMenuCanvas.height;
+  const menuHeight = 0.35;
+  const menuWidth = menuHeight * aspectRatio;
+  settingsMenuWidth = menuWidth;
+  settingsMenuHeight = menuHeight;
+  const geometry = new THREE.PlaneGeometry(menuWidth, menuHeight);
+  const material = new THREE.MeshBasicMaterial({
+    map: settingsMenuTexture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  const menuMesh = new THREE.Mesh(geometry, material);
+  state.scene.add(menuMesh);
+  state.setSettingsMenu(menuMesh);
+  state.setIsSettingsMenuVisible(true);
+  state.setSettingsMenuSelectedIndex(0);
+
+  // レーザーライン作成
+  createSettingsLaser();
+}
+
+// 設定メニューを再描画
+export function redrawSettingsMenu(hoveredButton) {
+  if (!settingsMenuCanvas) return;
+
+  const canvas = settingsMenuCanvas;
+  const ctx = canvas.getContext('2d');
+
+  // ボタン領域をクリア
+  settingsButtonAreas = [];
+
+  // 背景
+  ctx.fillStyle = 'rgba(10, 10, 26, 0.95)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 枠線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+
+  // 内側の光彩効果
+  const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  gradient.addColorStop(0, 'rgba(0, 200, 255, 0.1)');
+  gradient.addColorStop(0.5, 'rgba(255, 107, 107, 0.05)');
+  gradient.addColorStop(1, 'rgba(0, 200, 255, 0.1)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(4, 4, canvas.width - 8, canvas.height - 8);
+
+  // タイトル
+  ctx.font = 'bold 36px Arial';
+  ctx.fillStyle = '#00c8ff';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = 'rgba(0, 200, 255, 0.8)';
+  ctx.shadowBlur = 15;
+  ctx.fillText('SETTINGS', canvas.width / 2, 50);
+  ctx.shadowBlur = 0;
+
+  // 区切り線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(40, 70);
+  ctx.lineTo(canvas.width - 40, 70);
+  ctx.stroke();
+
+  // 設定項目
+  let y = 110;
+  const itemHeight = 100;
+
+  settingsItems.forEach((item, index) => {
+    const value = item.getValue();
+
+    // 項目の背景
+    ctx.fillStyle = 'rgba(30, 30, 50, 0.5)';
+    ctx.beginPath();
+    ctx.roundRect(25, y - 10, canvas.width - 50, itemHeight - 10, 8);
+    ctx.fill();
+
+    // 項目名
+    ctx.font = 'bold 22px Arial';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.fillText(item.name, 40, y + 20);
+
+    // 説明文
+    ctx.font = '14px Arial';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.fillText(item.description, 40, y + 42);
+
+    // 値表示エリア
+    const displayValue = item.format ? item.format(value) : value.toString();
+
+    // 左矢印ボタン
+    const leftBtnX = 320;
+    const leftBtnY = y + 5;
+    const btnSize = 50;
+    const isLeftHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'left';
+
+    ctx.fillStyle = isLeftHovered ? 'rgba(255, 255, 0, 0.8)' : 'rgba(0, 200, 255, 0.3)';
+    ctx.beginPath();
+    ctx.roundRect(leftBtnX, leftBtnY, btnSize, btnSize, 6);
+    ctx.fill();
+    ctx.strokeStyle = isLeftHovered ? '#ffff00' : 'rgba(0, 200, 255, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.font = 'bold 28px Arial';
+    ctx.fillStyle = isLeftHovered ? '#000000' : '#00c8ff';
+    ctx.textAlign = 'center';
+    ctx.fillText('◀', leftBtnX + btnSize / 2, leftBtnY + btnSize / 2 + 8);
+
+    settingsButtonAreas.push({
+      x: leftBtnX, y: leftBtnY, w: btnSize, h: btnSize,
+      index: index, type: 'left'
+    });
+
+    // 値
+    ctx.font = 'bold 22px Arial';
+    ctx.fillStyle = '#00c8ff';
+    ctx.textAlign = 'center';
+    ctx.fillText(displayValue, 440, y + 40);
+
+    // 右矢印ボタン
+    const rightBtnX = 510;
+    const rightBtnY = y + 5;
+    const isRightHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'right';
+
+    ctx.fillStyle = isRightHovered ? 'rgba(255, 255, 0, 0.8)' : 'rgba(0, 200, 255, 0.3)';
+    ctx.beginPath();
+    ctx.roundRect(rightBtnX, rightBtnY, btnSize, btnSize, 6);
+    ctx.fill();
+    ctx.strokeStyle = isRightHovered ? '#ffff00' : 'rgba(0, 200, 255, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.font = 'bold 28px Arial';
+    ctx.fillStyle = isRightHovered ? '#000000' : '#00c8ff';
+    ctx.textAlign = 'center';
+    ctx.fillText('▶', rightBtnX + btnSize / 2, rightBtnY + btnSize / 2 + 8);
+
+    settingsButtonAreas.push({
+      x: rightBtnX, y: rightBtnY, w: btnSize, h: btnSize,
+      index: index, type: 'right'
+    });
+
+    // デフォルトボタン
+    const defaultBtnX = 580;
+    const defaultBtnY = y + 5;
+    const defaultBtnW = 80;
+    const isDefaultHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'default';
+    const isDefault = Math.abs(value - item.defaultValue) < 0.0001;
+
+    ctx.fillStyle = isDefaultHovered ? 'rgba(255, 107, 107, 0.8)' : (isDefault ? 'rgba(100, 100, 100, 0.3)' : 'rgba(255, 107, 107, 0.3)');
+    ctx.beginPath();
+    ctx.roundRect(defaultBtnX, defaultBtnY, defaultBtnW, btnSize, 6);
+    ctx.fill();
+    ctx.strokeStyle = isDefaultHovered ? '#ff6b6b' : (isDefault ? 'rgba(100, 100, 100, 0.5)' : 'rgba(255, 107, 107, 0.6)');
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.font = 'bold 14px Arial';
+    ctx.fillStyle = isDefaultHovered ? '#000000' : (isDefault ? 'rgba(255, 255, 255, 0.3)' : '#ff6b6b');
+    ctx.textAlign = 'center';
+    ctx.fillText('DEFAULT', defaultBtnX + defaultBtnW / 2, defaultBtnY + btnSize / 2 + 5);
+
+    settingsButtonAreas.push({
+      x: defaultBtnX, y: defaultBtnY, w: defaultBtnW, h: btnSize,
+      index: index, type: 'default'
+    });
+
+    y += itemHeight;
+  });
+
+  // 操作説明
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(40, canvas.height - 80);
+  ctx.lineTo(canvas.width - 40, canvas.height - 80);
+  ctx.stroke();
+
+  ctx.font = '16px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.textAlign = 'center';
+  ctx.fillText('右コントローラーのレーザーで操作', canvas.width / 2, canvas.height - 50);
+
+  // 閉じる説明
+  ctx.font = 'bold 22px Arial';
+  ctx.fillStyle = '#ffff00';
+  ctx.shadowColor = 'rgba(255, 255, 0, 0.5)';
+  ctx.shadowBlur = 10;
+  ctx.fillText('X ボタンで閉じる', canvas.width / 2, canvas.height - 20);
+  ctx.shadowBlur = 0;
+
+  if (settingsMenuTexture) {
+    settingsMenuTexture.needsUpdate = true;
+  }
+}
+
+// 設定メニューを削除
+export function removeSettingsMenu() {
+  if (state.settingsMenu) {
+    state.scene.remove(state.settingsMenu);
+    state.settingsMenu.traverse((child) => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
+    });
+    state.setSettingsMenu(null);
+    state.setIsSettingsMenuVisible(false);
+    settingsMenuCanvas = null;
+    settingsMenuTexture = null;
+    settingsButtonAreas = [];
+  }
+
+  // レーザーも削除
+  removeSettingsLaser();
+}
+
+// 設定メニューをトグル
+export function toggleSettingsMenu() {
+  if (state.isSettingsMenuVisible) {
+    removeSettingsMenu();
+  } else {
+    createSettingsMenu();
+  }
+}
+
+// レーザーを作成
+function createSettingsLaser() {
+  // レーザーライン
+  const lineMaterial = new THREE.LineBasicMaterial({
+    color: 0x00ffff,
+    linewidth: 2,
+    transparent: true,
+    opacity: 0.8
+  });
+  const lineGeometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(6);
+  lineGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const laserLine = new THREE.Line(lineGeometry, lineMaterial);
+  state.scene.add(laserLine);
+  state.setSettingsLaserLine(laserLine);
+
+  // レーザードット
+  const dotGeometry = new THREE.SphereGeometry(0.005, 8, 8);
+  const dotMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffff00,
+    transparent: true,
+    opacity: 0.9
+  });
+  const laserDot = new THREE.Mesh(dotGeometry, dotMaterial);
+  laserDot.visible = false;
+  state.scene.add(laserDot);
+  state.setSettingsLaserDot(laserDot);
+}
+
+// レーザーを削除
+function removeSettingsLaser() {
+  if (state.settingsLaserLine) {
+    state.scene.remove(state.settingsLaserLine);
+    state.settingsLaserLine.geometry.dispose();
+    state.settingsLaserLine.material.dispose();
+    state.setSettingsLaserLine(null);
+  }
+  if (state.settingsLaserDot) {
+    state.scene.remove(state.settingsLaserDot);
+    state.settingsLaserDot.geometry.dispose();
+    state.settingsLaserDot.material.dispose();
+    state.setSettingsLaserDot(null);
+  }
+}
+
+// レーザーのクリック判定用クールダウン
+let laserClickCooldown = 0;
+
+// 設定メニューの位置を更新（左コントローラー上に常に追従）
+export function updateSettingsMenu() {
+  if (!state.settingsMenu || !state.xrSession) return;
+
+  const inputSources = state.xrSession.inputSources;
+  const frame = state.renderer.xr.getFrame();
+  const referenceSpace = state.renderer.xr.getReferenceSpace();
+
+  if (!frame || !referenceSpace) return;
+
+  let rightControllerPos = null;
+  let rightControllerDir = null;
+  let rightTriggerPressed = false;
+
+  for (const source of inputSources) {
+    // 左コントローラー：メニュー位置を更新
+    if (source.handedness === 'left' && source.gripSpace) {
+      const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+      if (gripPose) {
+        const controllerMatrix = new THREE.Matrix4().fromArray(gripPose.transform.matrix);
+        const controllerPos = new THREE.Vector3().setFromMatrixPosition(controllerMatrix);
+
+        const menuPos = controllerPos.clone();
+        menuPos.y += 0.25;
+
+        state.settingsMenu.position.copy(menuPos);
+
+        if (state.camera) {
+          const cameraPos = new THREE.Vector3();
+          state.camera.getWorldPosition(cameraPos);
+
+          const direction = new THREE.Vector3();
+          direction.subVectors(cameraPos, menuPos);
+          direction.y = 0;
+          direction.normalize();
+
+          const angle = Math.atan2(direction.x, direction.z);
+          state.settingsMenu.rotation.set(0, angle, 0);
+        }
+      }
+    }
+
+    // 右コントローラー：レーザー用の位置と向きを取得
+    if (source.handedness === 'right' && source.targetRaySpace) {
+      const rayPose = frame.getPose(source.targetRaySpace, referenceSpace);
+      if (rayPose) {
+        const rayMatrix = new THREE.Matrix4().fromArray(rayPose.transform.matrix);
+        rightControllerPos = new THREE.Vector3().setFromMatrixPosition(rayMatrix);
+
+        // 向きを取得（Z軸負方向がポインティング方向）
+        rightControllerDir = new THREE.Vector3(0, 0, -1);
+        const rayQuat = new THREE.Quaternion().setFromRotationMatrix(rayMatrix);
+        rightControllerDir.applyQuaternion(rayQuat);
+      }
+
+      if (source.gamepad && source.gamepad.buttons[0]) {
+        rightTriggerPressed = source.gamepad.buttons[0].pressed;
+      }
+    }
+  }
+
+  // レーザーとメニューの交点を計算
+  let hoveredButton = null;
+
+  if (rightControllerPos && rightControllerDir && state.settingsMenu) {
+    // レーザーラインを更新
+    if (state.settingsLaserLine) {
+      const positions = state.settingsLaserLine.geometry.attributes.position.array;
+      positions[0] = rightControllerPos.x;
+      positions[1] = rightControllerPos.y;
+      positions[2] = rightControllerPos.z;
+
+      const endPoint = rightControllerPos.clone().add(rightControllerDir.clone().multiplyScalar(2));
+      positions[3] = endPoint.x;
+      positions[4] = endPoint.y;
+      positions[5] = endPoint.z;
+
+      state.settingsLaserLine.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // メニューとの交点を計算
+    const raycaster = new THREE.Raycaster(rightControllerPos, rightControllerDir);
+    const intersects = raycaster.intersectObject(state.settingsMenu);
+
+    if (intersects.length > 0) {
+      const hit = intersects[0];
+
+      // ドットを表示
+      if (state.settingsLaserDot) {
+        state.settingsLaserDot.visible = true;
+        state.settingsLaserDot.position.copy(hit.point);
+      }
+
+      // UV座標からキャンバス上の位置を計算
+      if (hit.uv) {
+        const canvasX = hit.uv.x * settingsMenuCanvas.width;
+        const canvasY = (1 - hit.uv.y) * settingsMenuCanvas.height;
+
+        // ボタンの当たり判定
+        for (const btn of settingsButtonAreas) {
+          if (canvasX >= btn.x && canvasX <= btn.x + btn.w &&
+              canvasY >= btn.y && canvasY <= btn.y + btn.h) {
+            hoveredButton = btn;
+            break;
+          }
+        }
+
+        // トリガーでクリック
+        const now = Date.now();
+        if (rightTriggerPressed && hoveredButton && laserClickCooldown < now) {
+          handleSettingsButtonClick(hoveredButton);
+          laserClickCooldown = now + 200;
+        }
+      }
+    } else {
+      // メニューに当たっていない場合、ドットを非表示
+      if (state.settingsLaserDot) {
+        state.settingsLaserDot.visible = false;
+      }
+    }
+  }
+
+  // 再描画
+  redrawSettingsMenu(hoveredButton);
+}
+
+// ボタンクリック処理
+function handleSettingsButtonClick(button) {
+  const item = settingsItems[button.index];
+
+  if (button.type === 'left') {
+    // 値を減少
+    const currentValue = item.getValue();
+    const newValue = Math.max(item.min, currentValue - item.step);
+    item.setValue(newValue);
+  } else if (button.type === 'right') {
+    // 値を増加
+    const currentValue = item.getValue();
+    const newValue = Math.min(item.max, currentValue + item.step);
+    item.setValue(newValue);
+  } else if (button.type === 'default') {
+    // デフォルト値に戻す
+    item.setValue(item.defaultValue);
+  }
+}
+
 // コントローラーガイドメニューの位置を更新（右コントローラー上に常に追従、角度は水平固定）
 export function updateControllerGuideMenu() {
   if (!state.controllerGuideMenu || !state.xrSession) return;
@@ -1020,6 +1538,7 @@ export function updateControllerGuideMenu() {
   const pressedButtons = {
     leftStickX: false,
     leftStickY: false,
+    leftY: false,
     leftX: false,
     leftStickPress: false,
     leftTrigger: false,
@@ -1040,7 +1559,7 @@ export function updateControllerGuideMenu() {
       const axes = gp.axes;
 
       // デッドゾーン（実際のコントロールと同じ値）
-      const deadzone = 0.15;
+      const deadzone = state.stickDeadzone;
 
       if (source.handedness === 'left') {
         // 左スティック（デッドゾーン考慮）
@@ -1048,8 +1567,9 @@ export function updateControllerGuideMenu() {
           pressedButtons.leftStickX = Math.abs(axes[2]) > deadzone;
           pressedButtons.leftStickY = Math.abs(axes[3]) > deadzone;
         }
-        // ボタン
+        // ボタン (X=buttons[5], Y=buttons[4])
         if (buttons[5]) pressedButtons.leftX = buttons[5].pressed;
+        if (buttons[4]) pressedButtons.leftY = buttons[4].pressed;
         if (buttons[3]) pressedButtons.leftStickPress = buttons[3].pressed;
         if (buttons[0]) pressedButtons.leftTrigger = buttons[0].pressed || buttons[0].value > 0.5;
         if (buttons[1]) pressedButtons.leftGrip = buttons[1].pressed || buttons[1].value > 0.5;

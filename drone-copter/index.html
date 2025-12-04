@@ -142,133 +142,6 @@
       transform: translate(-50%, -50%);
     }
 
-    /* Controller Section */
-    .controller-section {
-      width: 100%;
-      max-width: 1000px;
-      margin-bottom: 30px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .section-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: clamp(1.2rem, 4vw, 1.8rem);
-      color: #00c8ff;
-      text-align: center;
-      margin-bottom: 20px;
-      padding-bottom: 10px;
-      border-bottom: 2px solid rgba(0, 200, 255, 0.3);
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-    }
-
-    .controller-container {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 20px;
-    }
-
-    /* Controller Card */
-    .controller-card {
-      background: rgba(20, 20, 50, 0.8);
-      border: 1px solid rgba(0, 200, 255, 0.3);
-      border-radius: 15px;
-      padding: 20px;
-      width: 100%;
-      max-width: 450px;
-      backdrop-filter: blur(10px);
-      box-shadow:
-        0 0 20px rgba(0, 200, 255, 0.1),
-        inset 0 0 30px rgba(0, 200, 255, 0.05);
-      transition: all 0.3s ease;
-    }
-
-    .controller-card:hover {
-      border-color: rgba(0, 200, 255, 0.6);
-      box-shadow:
-        0 0 30px rgba(0, 200, 255, 0.2),
-        inset 0 0 40px rgba(0, 200, 255, 0.1);
-    }
-
-    .controller-card h3 {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 1.3rem;
-      color: #00c8ff;
-      margin-bottom: 15px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .controller-card h3::before {
-      content: '';
-      width: 30px;
-      height: 30px;
-      background: linear-gradient(135deg, #00c8ff, #ff6b6b);
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .controller-card.left h3::before {
-      content: 'L';
-      color: #0a0a1a;
-      font-weight: bold;
-      font-size: 14px;
-      text-align: center;
-      line-height: 30px;
-    }
-
-    .controller-card.right h3::before {
-      content: 'R';
-      color: #0a0a1a;
-      font-weight: bold;
-      font-size: 14px;
-      text-align: center;
-      line-height: 30px;
-    }
-
-    /* Control Item */
-    .control-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px;
-      margin-bottom: 8px;
-      background: rgba(0, 200, 255, 0.05);
-      border-radius: 8px;
-      border-left: 3px solid transparent;
-      transition: all 0.2s ease;
-    }
-
-    .control-item:hover {
-      background: rgba(0, 200, 255, 0.1);
-      border-left-color: #00c8ff;
-    }
-
-    .control-button {
-      min-width: 80px;
-      padding: 6px 12px;
-      background: linear-gradient(135deg, rgba(0, 200, 255, 0.2), rgba(255, 107, 107, 0.2));
-      border: 1px solid rgba(0, 200, 255, 0.5);
-      border-radius: 6px;
-      color: #00c8ff;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.8rem;
-      font-weight: 700;
-      text-align: center;
-      white-space: nowrap;
-    }
-
-    .control-description {
-      color: rgba(255, 255, 255, 0.9);
-      font-size: 0.95rem;
-      flex: 1;
-    }
-
     /* Action Buttons */
     .action-buttons {
       display: flex;
@@ -344,32 +217,6 @@
       transform: translateY(0);
     }
 
-    /* Hand Tracking Info */
-    .hand-tracking-info {
-      background: rgba(0, 255, 150, 0.1);
-      border: 1px solid rgba(0, 255, 150, 0.3);
-      border-radius: 12px;
-      padding: 15px 20px;
-      margin-top: 20px;
-      max-width: 600px;
-      text-align: center;
-      position: relative;
-      z-index: 1;
-    }
-
-    .hand-tracking-info h4 {
-      font-family: 'Orbitron', sans-serif;
-      color: #00ff96;
-      margin-bottom: 10px;
-      font-size: 1rem;
-    }
-
-    .hand-tracking-info p {
-      color: rgba(255, 255, 255, 0.8);
-      font-size: 0.9rem;
-      line-height: 1.5;
-    }
-
     /* Footer */
     .footer-info {
       margin-top: 30px;
@@ -441,17 +288,6 @@
 
     /* Responsive */
     @media (max-width: 600px) {
-      .controller-card {
-        padding: 15px;
-      }
-      .control-button {
-        min-width: 70px;
-        font-size: 0.7rem;
-        padding: 5px 8px;
-      }
-      .control-description {
-        font-size: 0.85rem;
-      }
       .action-btn {
         padding: 15px 35px;
         font-size: 1rem;
@@ -479,94 +315,6 @@
         <button class="action-btn mr-btn" id="landing-mr-btn">MR を開始</button>
         <button class="action-btn vr-btn" id="landing-vr-btn">VR を開始</button>
       </div>
-    </div>
-
-    <!-- Controller Section -->
-    <div class="controller-section">
-      <h2 class="section-title">Controller Guide</h2>
-
-      <div class="controller-container">
-        <!-- Left Controller -->
-        <div class="controller-card left">
-          <h3>左コントローラー</h3>
-
-          <div class="control-item">
-            <span class="control-button">スティック↑↓</span>
-            <span class="control-description">前進 / 後退</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">スティック←→</span>
-            <span class="control-description">左旋回 / 右旋回</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">X ボタン</span>
-            <span class="control-description">起動 / 終了シーケンス</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">Y ボタン</span>
-            <span class="control-description">衝突判定 ON/OFF</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">トリガー</span>
-            <span class="control-description">速度ダウン</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">グリップ</span>
-            <span class="control-description">ドローンを掴む</span>
-          </div>
-        </div>
-
-        <!-- Right Controller -->
-        <div class="controller-card right">
-          <h3>右コントローラー</h3>
-
-          <div class="control-item">
-            <span class="control-button">スティック↑↓</span>
-            <span class="control-description">上昇 / 下降</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">スティック←→</span>
-            <span class="control-description">左移動 / 右移動</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">スティック押込</span>
-            <span class="control-description">HUDモード ON/OFF</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">A ボタン</span>
-            <span class="control-description">サウンド ON/OFF</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">B ボタン</span>
-            <span class="control-description">自動帰還モード</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">トリガー</span>
-            <span class="control-description">速度アップ</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">グリップ</span>
-            <span class="control-description">ドローンを掴む</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Hand Tracking Info -->
-    <div class="hand-tracking-info">
-      <h4>ハンドトラッキング対応</h4>
-      <p>コントローラーなしでも操作可能。ピンチジェスチャーでドローンを掴んで移動・スケール変更ができます。</p>
     </div>
 
     <div class="footer-info">

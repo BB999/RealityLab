@@ -7,13 +7,14 @@ import {
   updateAutoReturnText, updateSpeedText, updateVolumeText, updateCollisionText,
   updateTrackingLostText, updateSequenceStatusText,
   updateDroneLocationArrow, createTrackingLostText, removeTrackingLostText,
-  removeSequenceStatusText, updateControllerGuideMenu
+  removeSequenceStatusText, updateControllerGuideMenu, updateSettingsMenu
 } from './ui.js';
 import { checkPlaneCollision, updatePreStartupPhysics, updateHoverAnimation, updateReturnToHover } from './physics.js';
 import { createVREnvironment, removeVREnvironment, processDepthInformation, updatePlanes, createDepthVisualization, positionDrone } from './vr.js';
 import {
   updateAutoReturn, handleSpeedChange, handleRightControllerButtons,
-  handleStartupSequence, handleSizeChange, handleControllerGrab, handleHandGrab
+  handleStartupSequence, handleSizeChange, handleControllerGrab, handleHandGrab,
+  handleLeftControllerButtons
 } from './controls.js';
 
 // シーンの初期化
@@ -76,6 +77,7 @@ function render() {
   updateTrackingLostText();
   updateSequenceStatusText();
   updateControllerGuideMenu();
+  updateSettingsMenu();
 
   // ドローンがカメラ外にいる時の方向ガイド（常に更新）
   updateDroneLocationArrow();
@@ -149,6 +151,7 @@ function render() {
   updateAutoReturn();
   handleSpeedChange();
   handleRightControllerButtons();
+  handleLeftControllerButtons();
   handleStartupSequence();
   updateDecelerationSequence();
   updateGamepadMovement();
@@ -396,6 +399,7 @@ function updateGamepadMovement() {
   }
 
   // スティック入力取得
+  const deadzone = state.stickDeadzone;
   for (const source of inputSources) {
     if (source.gamepad) {
       const gp = source.gamepad;
@@ -403,20 +407,20 @@ function updateGamepadMovement() {
 
       if (state.liftStartTime === null && state.descentStartTime === null && state.decelerationStartTime === null) {
         if (source.handedness === 'right' && axes.length >= 4) {
-          if (Math.abs(axes[2]) > 0.25) {
+          if (Math.abs(axes[2]) > deadzone) {
             inputX = axes[2];
             rawInputX = axes[2];
           }
-          if (Math.abs(axes[3]) > 0.25) {
+          if (Math.abs(axes[3]) > deadzone) {
             inputY = -axes[3];
           }
         }
 
         if (source.handedness === 'left' && axes.length >= 4) {
-          if (Math.abs(axes[2]) > 0.25) {
+          if (Math.abs(axes[2]) > deadzone) {
             inputRotation = -axes[2];
           }
-          if (Math.abs(axes[3]) > 0.25) {
+          if (Math.abs(axes[3]) > deadzone) {
             inputZ = axes[3];
             rawInputZ = axes[3];
           }
