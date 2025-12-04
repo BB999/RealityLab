@@ -52,7 +52,7 @@
       height: 100%;
       background:
         radial-gradient(ellipse at 20% 20%, rgba(0, 200, 255, 0.1) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 80%, rgba(138, 43, 226, 0.1) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(255, 107, 107, 0.1) 0%, transparent 50%),
         radial-gradient(ellipse at 50% 50%, rgba(0, 255, 150, 0.05) 0%, transparent 60%);
       pointer-events: none;
       animation: pulseBackground 8s ease-in-out infinite;
@@ -206,7 +206,7 @@
       content: '';
       width: 30px;
       height: 30px;
-      background: linear-gradient(135deg, #00c8ff, #8a2be2);
+      background: linear-gradient(135deg, #00c8ff, #ff6b6b);
       border-radius: 8px;
       display: flex;
       align-items: center;
@@ -252,7 +252,7 @@
     .control-button {
       min-width: 80px;
       padding: 6px 12px;
-      background: linear-gradient(135deg, rgba(0, 200, 255, 0.2), rgba(138, 43, 226, 0.2));
+      background: linear-gradient(135deg, rgba(0, 200, 255, 0.2), rgba(255, 107, 107, 0.2));
       border: 1px solid rgba(0, 200, 255, 0.5);
       border-radius: 6px;
       color: #00c8ff;
@@ -326,17 +326,17 @@
     }
 
     .vr-btn {
-      background: linear-gradient(135deg, #8a2be2 0%, #6a0dad 100%);
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
       color: #fff;
       box-shadow:
-        0 0 20px rgba(138, 43, 226, 0.4),
+        0 0 20px rgba(255, 107, 107, 0.4),
         0 5px 15px rgba(0, 0, 0, 0.3);
     }
 
     .vr-btn:hover {
       transform: translateY(-3px);
       box-shadow:
-        0 0 30px rgba(138, 43, 226, 0.6),
+        0 0 30px rgba(255, 107, 107, 0.6),
         0 8px 25px rgba(0, 0, 0, 0.4);
     }
 
@@ -601,7 +601,7 @@
     const directionalLight = new THREE.DirectionalLight(0x00c8ff, 1);
     directionalLight.position.set(2, 2, 2);
     scene.add(directionalLight);
-    const backLight = new THREE.DirectionalLight(0x8a2be2, 0.5);
+    const backLight = new THREE.DirectionalLight(0xff6b6b, 0.5);
     backLight.position.set(-2, 1, -2);
     scene.add(backLight);
 
