@@ -4,6 +4,39 @@ import * as state from './state.js';
 import { setupDroneSound, updateDroneSoundPitch } from './sound.js';
 import { updateInfo } from './utils.js';
 
+// 前方向を示す青い光るボックスを作成
+function createDirectionIndicator() {
+  const geometry = new THREE.BoxGeometry(0.1, 0.04, 0.01);
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x0088ff,
+    emissive: 0x0088ff,
+    emissiveIntensity: 2,
+  });
+  const indicator = new THREE.Mesh(geometry, material);
+  // ドローンの前方（Z軸プラス方向）に配置
+  indicator.position.set(0, 0.04, 0.22);
+
+  // 点滅パターン: 0.15秒表示→0.15秒消灯→0.15秒表示→1.5秒消灯→ループ
+  let blinkState = 0;
+  const blinkPattern = [
+    { visible: true, duration: 150 },
+    { visible: false, duration: 150 },
+    { visible: true, duration: 150 },
+    { visible: false, duration: 1000 },
+  ];
+
+  function blink() {
+    indicator.visible = blinkPattern[blinkState].visible;
+    setTimeout(() => {
+      blinkState = (blinkState + 1) % blinkPattern.length;
+      blink();
+    }, blinkPattern[blinkState].duration);
+  }
+  blink();
+
+  return indicator;
+}
+
 // ドローンのバウンディングボックスを計算して当たり判定の半径を設定
 export function calculateDroneBoundingBox() {
   if (!state.drone) return;
@@ -137,6 +170,10 @@ export function loadDroneModel() {
 
       // ドローンのバウンディングボックスを計算
       calculateDroneBoundingBox();
+
+      // 前方向を示す青い光るボックスを追加
+      const directionIndicator = createDirectionIndicator();
+      drone.add(directionIndicator);
 
       // ドローン音声の設定
       setupDroneSound();
