@@ -177,11 +177,11 @@ export function handleRightControllerButtons() {
 
       state.setRightBButtonPressed(isBPressed);
 
-      // Aボタンで音量オンオフ
-      const aButton = buttons[4];
-      const isAPressed = aButton && aButton.pressed;
+      // 右スティック押し込みで音量オンオフ
+      const rightStickButton = buttons[3];
+      const isRightStickPressed = rightStickButton && rightStickButton.pressed;
 
-      if (isAPressed && !state.rightAButtonPressedForCollision) {
+      if (isRightStickPressed && !state.rightStickButtonPressed) {
         state.setIsSoundMuted(!state.isSoundMuted);
 
         if (state.isSoundMuted) {
@@ -197,7 +197,7 @@ export function handleRightControllerButtons() {
         }
       }
 
-      state.setRightAButtonPressedForCollision(isAPressed);
+      state.setRightStickButtonPressed(isRightStickPressed);
     }
   }
 }
@@ -283,18 +283,18 @@ export function handleStartupSequence() {
 
       // 起動完了後のみ他のボタンを受け付ける
       if (state.isStartupComplete && !state.isShuttingDown) {
-        // Yボタンで当たり判定オンオフ
-        const yButton = buttons[4];
-        const isYPressed = yButton && yButton.pressed;
+        // 左スティック押し込みで当たり判定オンオフ
+        const leftStickButton = buttons[3];
+        const isLeftStickPressed = leftStickButton && leftStickButton.pressed;
 
-        if (isYPressed && !state.leftYButtonPressed) {
+        if (isLeftStickPressed && !state.leftStickButtonPressed) {
           state.setIsCollisionEnabled(!state.isCollisionEnabled);
           createCollisionText(state.isCollisionEnabled);
           updateInfo(state.isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
           console.log(state.isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
         }
 
-        state.setLeftYButtonPressed(isYPressed);
+        state.setLeftStickButtonPressed(isLeftStickPressed);
       }
     }
   }
