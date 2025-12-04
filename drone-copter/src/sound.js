@@ -16,6 +16,10 @@ let windowCloseSoundBuffer = null;
 let cursorSound = null;
 let cursorSoundBuffer = null;
 
+// 衝突音用のAudioオブジェクト（3D）
+let crashSound = null;
+let crashSoundBuffer = null;
+
 // ボタン音の初期化
 export function setupButtonSound() {
   if (!state.audioListener) {
@@ -151,6 +155,48 @@ export function playCursorSound() {
     cursorSound.stop();
   }
   cursorSound.play();
+}
+
+// 衝突音の初期化（3D音響）
+export function setupCrashSound() {
+  if (!state.drone || !state.audioListener) {
+    console.error('ドローンまたはオーディオリスナーが未初期化');
+    return;
+  }
+
+  // PositionalAudio（3D音響）
+  crashSound = new THREE.PositionalAudio(state.audioListener);
+
+  const audioLoader = new THREE.AudioLoader();
+  audioLoader.load(
+    './crash.mp3',
+    (buffer) => {
+      crashSoundBuffer = buffer;
+      crashSound.setBuffer(buffer);
+      crashSound.setVolume(0.5);
+      crashSound.setRefDistance(0.5);
+      crashSound.setRolloffFactor(2);
+      crashSound.setMaxDistance(10);
+      console.log('衝突音声読み込み完了');
+    },
+    undefined,
+    (error) => {
+      console.error('衝突音声ファイルの読み込みエラー:', error);
+    }
+  );
+
+  // ドローンに音声を追加
+  state.drone.add(crashSound);
+}
+
+// 衝突音を再生
+export function playCrashSound() {
+  if (!crashSound || !crashSoundBuffer) return;
+
+  if (crashSound.isPlaying) {
+    crashSound.stop();
+  }
+  crashSound.play();
 }
 
 // ドローン音声の設定

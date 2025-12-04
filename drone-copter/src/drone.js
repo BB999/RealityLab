@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as state from './state.js';
-import { setupDroneSound, setupButtonSound, setupWindowSound, setupCursorSound, updateDroneSoundPitch } from './sound.js';
+import { setupDroneSound, setupButtonSound, setupWindowSound, setupCursorSound, setupCrashSound, updateDroneSoundPitch } from './sound.js';
 import { updateInfo } from './utils.js';
 
 // 前方向を示す青い光るボックスを作成
@@ -190,6 +190,7 @@ export function loadDroneModel() {
       setupButtonSound();
       setupWindowSound();
       setupCursorSound();
+      setupCrashSound();
 
       updateInfo('ドローンモデル読み込み完了');
     },

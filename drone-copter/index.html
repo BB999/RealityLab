@@ -448,21 +448,43 @@
     const mainButtonSound = new Audio('./mainbutton.mp3');
     mainButtonSound.volume = 0.5;
 
-    // Landing page button handlers
-    document.getElementById('landing-mr-btn').addEventListener('click', function() {
+    // ボタン点滅処理
+    function blinkButton(button, callback) {
       mainButtonSound.play();
       bgm.pause();
       bgm.currentTime = 0;
-      document.getElementById('landing-page').style.display = 'none';
-      document.getElementById('start-button').click();
+
+      let blinkCount = 0;
+      const blinkInterval = setInterval(() => {
+        button.style.opacity = button.style.opacity === '0.3' ? '1' : '0.3';
+        blinkCount++;
+        if (blinkCount >= 10) { // 2秒間で10回点滅（200ms間隔）
+          clearInterval(blinkInterval);
+          button.style.opacity = '1';
+          callback();
+        }
+      }, 200);
+    }
+
+    // Landing page button handlers
+    document.getElementById('landing-mr-btn').addEventListener('click', function() {
+      const btn = this;
+      btn.disabled = true;
+      document.getElementById('landing-vr-btn').disabled = true;
+      blinkButton(btn, function() {
+        document.getElementById('landing-page').style.display = 'none';
+        document.getElementById('start-button').click();
+      });
     });
 
     document.getElementById('landing-vr-btn').addEventListener('click', function() {
-      mainButtonSound.play();
-      bgm.pause();
-      bgm.currentTime = 0;
-      document.getElementById('landing-page').style.display = 'none';
-      document.getElementById('vr-button').click();
+      const btn = this;
+      btn.disabled = true;
+      document.getElementById('landing-mr-btn').disabled = true;
+      blinkButton(btn, function() {
+        document.getElementById('landing-page').style.display = 'none';
+        document.getElementById('vr-button').click();
+      });
     });
   </script>
   <script type="module" src="/src/main.js"></script>

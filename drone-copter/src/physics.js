@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as state from './state.js';
+import { playCrashSound } from './sound.js';
 
 // ドローンと平面の衝突判定
 export function checkPlaneCollision() {
@@ -59,6 +60,7 @@ export function checkPlaneCollision() {
 
         if (collisionStrength > 0.001 && !state.isColliding) {
           state.setIsColliding(true);
+          playCrashSound();
           if (state.xrSession) {
             const inputSources = state.xrSession.inputSources;
             for (const source of inputSources) {
@@ -97,6 +99,7 @@ export function checkPlaneCollision() {
     // 触覚フィードバック
     if (pushDistance > 0.001 && !state.isColliding) {
       state.setIsColliding(true);
+      playCrashSound();
       if (state.xrSession) {
         const inputSources = state.xrSession.inputSources;
         for (const source of inputSources) {
