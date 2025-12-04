@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as state from './state.js';
+import { playWindowOpenSound, playWindowCloseSound, playCursorSound, playButtonSound } from './sound.js';
 
 // 自動帰還中のテキストを作成
 export function createAutoReturnText() {
@@ -1003,8 +1004,10 @@ export function removeControllerGuideMenu() {
 export function toggleControllerGuideMenu() {
   if (state.isControllerGuideVisible) {
     removeControllerGuideMenu();
+    playWindowCloseSound();
   } else {
     createControllerGuideMenu();
+    playWindowOpenSound();
   }
 }
 
@@ -1325,8 +1328,10 @@ export function removeSettingsMenu() {
 export function toggleSettingsMenu() {
   if (state.isSettingsMenuVisible) {
     removeSettingsMenu();
+    playWindowCloseSound();
   } else {
     createSettingsMenu();
+    playWindowOpenSound();
   }
 }
 
@@ -1513,14 +1518,17 @@ function handleSettingsButtonClick(button) {
     const currentValue = item.getValue();
     const newValue = Math.max(item.min, currentValue - item.step);
     item.setValue(newValue);
+    playCursorSound();
   } else if (button.type === 'right') {
     // 値を増加
     const currentValue = item.getValue();
     const newValue = Math.min(item.max, currentValue + item.step);
     item.setValue(newValue);
+    playCursorSound();
   } else if (button.type === 'default') {
     // デフォルト値に戻す
     item.setValue(item.defaultValue);
+    playButtonSound();
   }
 }
 

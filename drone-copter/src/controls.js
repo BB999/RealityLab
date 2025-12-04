@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import * as state from './state.js';
 import { updateInfo } from './utils.js';
 import { updateDroneScale, updateMaxSpeed } from './drone.js';
-import { updateDroneSoundPitch } from './sound.js';
+import { updateDroneSoundPitch, playButtonSound, playCursorSound } from './sound.js';
 import {
   createAutoReturnText, createAutoReturnRightControllerText, removeAutoReturnText,
   createSpeedText, createVolumeText, createCollisionText, createTrackingLostText,
@@ -106,9 +106,11 @@ export function handleSpeedChange() {
           updateMaxSpeed();
           createSpeedText();
           updateInfo(`速度レベル: ${state.speedLevel}`);
+          playButtonSound();
         } else {
           createSpeedText();
           updateInfo(`速度レベル: ${state.speedLevel} (最小)`);
+          playButtonSound();
         }
         state.setLeftTriggerPressed(true);
       } else if (source.handedness === 'left' && !isTriggerPressed) {
@@ -121,9 +123,11 @@ export function handleSpeedChange() {
           updateMaxSpeed();
           createSpeedText();
           updateInfo(`速度レベル: ${state.speedLevel}`);
+          playButtonSound();
         } else {
           createSpeedText();
           updateInfo(`速度レベル: ${state.speedLevel} (最大)`);
+          playButtonSound();
         }
         state.setRightTriggerPressed(true);
       } else if (source.handedness === 'right' && !isTriggerPressed) {
@@ -186,6 +190,7 @@ export function handleRightControllerButtons() {
               createAutoReturnRightControllerText();
               updateInfo('自動帰還モード開始 - 水平移動中');
               console.log('自動帰還開始:', state.autoReturnTarget, 'speed:', state.autoReturnSpeed);
+              playButtonSound();
             }
           }
         } else {
@@ -194,6 +199,7 @@ export function handleRightControllerButtons() {
           removeAutoReturnText();
           updateInfo('自動帰還モードをキャンセル');
           console.log('自動帰還キャンセル');
+          playButtonSound();
         }
       }
 
@@ -217,6 +223,7 @@ export function handleRightControllerButtons() {
           updateInfo('ドローン音声: オン');
           createVolumeText(true);
         }
+        playButtonSound();
       }
 
       state.setRightStickButtonPressed(isRightStickPressed);
@@ -269,6 +276,7 @@ export function handleStartupSequence() {
         console.log('起動シーケンス開始');
         updateInfo('Drone Starting...');
         createSequenceStatusText('STARTING UP');
+        playButtonSound();
 
         // ドローン音を低ピッチで再生開始
         if (state.droneSound && state.droneSound.buffer && !state.droneSound.isPlaying) {
@@ -323,6 +331,7 @@ export function handleStartupSequence() {
         console.log('=== 終了シーケンス開始 - 降下を開始 ===');
         updateInfo('Shutting Down...');
         createSequenceStatusText('SHUTTING DOWN');
+        playButtonSound();
       }
 
       state.setLeftXButtonPressed(isXPressed);
@@ -338,6 +347,7 @@ export function handleStartupSequence() {
           createCollisionText(state.isCollisionEnabled);
           updateInfo(state.isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
           console.log(state.isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
+          playButtonSound();
         }
 
         state.setLeftStickButtonPressed(isLeftStickPressed);

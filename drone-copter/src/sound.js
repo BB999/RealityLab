@@ -2,6 +2,157 @@ import * as THREE from 'three';
 import * as state from './state.js';
 import { updateInfo } from './utils.js';
 
+// ボタン音用のAudioオブジェクト
+let buttonSound = null;
+let buttonSoundBuffer = null;
+
+// ウィンドウ音用のAudioオブジェクト
+let windowOpenSound = null;
+let windowOpenSoundBuffer = null;
+let windowCloseSound = null;
+let windowCloseSoundBuffer = null;
+
+// カーソル音用のAudioオブジェクト
+let cursorSound = null;
+let cursorSoundBuffer = null;
+
+// ボタン音の初期化
+export function setupButtonSound() {
+  if (!state.audioListener) {
+    console.error('オーディオリスナーが未初期化');
+    return;
+  }
+
+  // 通常のAudio（3Dではない）
+  buttonSound = new THREE.Audio(state.audioListener);
+
+  const audioLoader = new THREE.AudioLoader();
+  audioLoader.load(
+    './button1.mp3',
+    (buffer) => {
+      buttonSoundBuffer = buffer;
+      buttonSound.setBuffer(buffer);
+      buttonSound.setVolume(0.2);
+      console.log('ボタン音声読み込み完了');
+    },
+    undefined,
+    (error) => {
+      console.error('ボタン音声ファイルの読み込みエラー:', error);
+    }
+  );
+}
+
+// ボタン音を再生
+export function playButtonSound() {
+  if (!buttonSound || !buttonSoundBuffer) return;
+
+  // 再生中なら停止して最初から
+  if (buttonSound.isPlaying) {
+    buttonSound.stop();
+  }
+  buttonSound.play();
+}
+
+// ウィンドウ音の初期化
+export function setupWindowSound() {
+  if (!state.audioListener) {
+    console.error('オーディオリスナーが未初期化');
+    return;
+  }
+
+  // ウィンドウ開く音
+  windowOpenSound = new THREE.Audio(state.audioListener);
+  // ウィンドウ閉じる音
+  windowCloseSound = new THREE.Audio(state.audioListener);
+
+  const audioLoader = new THREE.AudioLoader();
+
+  // 開く音を読み込み
+  audioLoader.load(
+    './window1.mp3',
+    (buffer) => {
+      windowOpenSoundBuffer = buffer;
+      windowOpenSound.setBuffer(buffer);
+      windowOpenSound.setVolume(0.2);
+      console.log('ウィンドウ開く音声読み込み完了');
+    },
+    undefined,
+    (error) => {
+      console.error('ウィンドウ開く音声ファイルの読み込みエラー:', error);
+    }
+  );
+
+  // 閉じる音を読み込み
+  audioLoader.load(
+    './window2.mp3',
+    (buffer) => {
+      windowCloseSoundBuffer = buffer;
+      windowCloseSound.setBuffer(buffer);
+      windowCloseSound.setVolume(0.2);
+      console.log('ウィンドウ閉じる音声読み込み完了');
+    },
+    undefined,
+    (error) => {
+      console.error('ウィンドウ閉じる音声ファイルの読み込みエラー:', error);
+    }
+  );
+}
+
+// ウィンドウ開く音を再生
+export function playWindowOpenSound() {
+  if (!windowOpenSound || !windowOpenSoundBuffer) return;
+
+  if (windowOpenSound.isPlaying) {
+    windowOpenSound.stop();
+  }
+  windowOpenSound.play();
+}
+
+// ウィンドウ閉じる音を再生
+export function playWindowCloseSound() {
+  if (!windowCloseSound || !windowCloseSoundBuffer) return;
+
+  if (windowCloseSound.isPlaying) {
+    windowCloseSound.stop();
+  }
+  windowCloseSound.play();
+}
+
+// カーソル音の初期化
+export function setupCursorSound() {
+  if (!state.audioListener) {
+    console.error('オーディオリスナーが未初期化');
+    return;
+  }
+
+  cursorSound = new THREE.Audio(state.audioListener);
+
+  const audioLoader = new THREE.AudioLoader();
+  audioLoader.load(
+    './cursor.mp3',
+    (buffer) => {
+      cursorSoundBuffer = buffer;
+      cursorSound.setBuffer(buffer);
+      cursorSound.setVolume(0.2);
+      console.log('カーソル音声読み込み完了');
+    },
+    undefined,
+    (error) => {
+      console.error('カーソル音声ファイルの読み込みエラー:', error);
+    }
+  );
+}
+
+// カーソル音を再生
+export function playCursorSound() {
+  if (!cursorSound || !cursorSoundBuffer) return;
+
+  if (cursorSound.isPlaying) {
+    cursorSound.stop();
+  }
+  cursorSound.play();
+}
+
 // ドローン音声の設定
 export function setupDroneSound() {
   if (!state.drone || !state.audioListener) {

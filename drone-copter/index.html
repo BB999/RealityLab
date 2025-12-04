@@ -430,13 +430,37 @@
     }
     animate();
 
+    // BGM設定
+    const bgm = new Audio('./mainBGM.mp3');
+    bgm.loop = true;
+    bgm.volume = 0.3;
+
+    // ユーザー操作後にBGM再生開始
+    function startBGM() {
+      bgm.play().catch(e => console.log('BGM再生待機中'));
+      document.removeEventListener('click', startBGM);
+      document.removeEventListener('touchstart', startBGM);
+    }
+    document.addEventListener('click', startBGM);
+    document.addEventListener('touchstart', startBGM);
+
+    // ボタン音
+    const mainButtonSound = new Audio('./mainbutton.mp3');
+    mainButtonSound.volume = 0.5;
+
     // Landing page button handlers
     document.getElementById('landing-mr-btn').addEventListener('click', function() {
+      mainButtonSound.play();
+      bgm.pause();
+      bgm.currentTime = 0;
       document.getElementById('landing-page').style.display = 'none';
       document.getElementById('start-button').click();
     });
 
     document.getElementById('landing-vr-btn').addEventListener('click', function() {
+      mainButtonSound.play();
+      bgm.pause();
+      bgm.currentTime = 0;
       document.getElementById('landing-page').style.display = 'none';
       document.getElementById('vr-button').click();
     });
