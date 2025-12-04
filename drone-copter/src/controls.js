@@ -252,15 +252,24 @@ export function handleRightControllerButtons() {
 
       state.setRightAButtonPressed(isRightStickPressed);
 
-      // Aボタンで当たり判定オンオフ
+      // Aボタンで音量オンオフ
       const aButton = buttons[4];
       const isAPressed = aButton && aButton.pressed;
 
       if (isAPressed && !state.rightAButtonPressedForCollision) {
-        state.setIsCollisionEnabled(!state.isCollisionEnabled);
-        createCollisionText(state.isCollisionEnabled);
-        updateInfo(state.isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
-        console.log(state.isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
+        state.setIsSoundMuted(!state.isSoundMuted);
+
+        if (state.isSoundMuted) {
+          if (state.droneSound) state.droneSound.setVolume(0);
+          console.log('ドローン音声: ミュート');
+          updateInfo('ドローン音声: ミュート');
+          createVolumeText(false);
+        } else {
+          updateDroneSoundPitch();
+          console.log('ドローン音声: オン');
+          updateInfo('ドローン音声: オン');
+          createVolumeText(true);
+        }
       }
 
       state.setRightAButtonPressedForCollision(isAPressed);
@@ -348,24 +357,15 @@ export function handleStartupSequence() {
 
       // 起動完了後のみ他のボタンを受け付ける
       if (state.isStartupComplete && !state.isShuttingDown) {
-        // Yボタンで音量オンオフ
+        // Yボタンで当たり判定オンオフ
         const yButton = buttons[4];
         const isYPressed = yButton && yButton.pressed;
 
         if (isYPressed && !state.leftYButtonPressed) {
-          state.setIsSoundMuted(!state.isSoundMuted);
-
-          if (state.isSoundMuted) {
-            state.droneSound.setVolume(0);
-            console.log('ドローン音声: ミュート');
-            updateInfo('ドローン音声: ミュート');
-            createVolumeText(false);
-          } else {
-            updateDroneSoundPitch();
-            console.log('ドローン音声: オン');
-            updateInfo('ドローン音声: オン');
-            createVolumeText(true);
-          }
+          state.setIsCollisionEnabled(!state.isCollisionEnabled);
+          createCollisionText(state.isCollisionEnabled);
+          updateInfo(state.isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
+          console.log(state.isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
         }
 
         state.setLeftYButtonPressed(isYPressed);
