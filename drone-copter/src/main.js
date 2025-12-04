@@ -5,8 +5,8 @@ import { loadDroneModel, updateMaxSpeed } from './drone.js';
 import { updateDroneSoundPitch } from './sound.js';
 import {
   updateAutoReturnText, updateSpeedText, updateVolumeText, updateCollisionText,
-  updateTrackingLostText, updateSequenceStatusText, updateHUDModeText,
-  updateDirectionArrow, updateDroneLocationArrow, createTrackingLostText, removeTrackingLostText,
+  updateTrackingLostText, updateSequenceStatusText,
+  updateDroneLocationArrow, createTrackingLostText, removeTrackingLostText,
   removeSequenceStatusText
 } from './ui.js';
 import { checkPlaneCollision, updatePreStartupPhysics, updateHoverAnimation, updateReturnToHover } from './physics.js';
@@ -76,12 +76,8 @@ function render() {
   updateTrackingLostText();
   updateSequenceStatusText();
 
-  // HUDモード時の表示更新
-  if (state.isHUDMode) {
-    updateHUDModeText();
-    updateDirectionArrow();
-    updateDroneLocationArrow();
-  }
+  // ドローンがカメラ外にいる時の方向ガイド（常に更新）
+  updateDroneLocationArrow();
 
   // XRセッション中の処理
   if (state.xrSession) {

@@ -6,8 +6,7 @@ import { updateDroneSoundPitch } from './sound.js';
 import {
   createAutoReturnText, createAutoReturnRightControllerText, removeAutoReturnText,
   createSpeedText, createVolumeText, createCollisionText, createTrackingLostText,
-  createSequenceStatusText, removeSequenceStatusText,
-  createHUDModeText, createDirectionArrow
+  createSequenceStatusText, removeSequenceStatusText
 } from './ui.js';
 
 // 自動帰還モードの処理
@@ -131,7 +130,7 @@ export function handleSpeedChange() {
   }
 }
 
-// 右コントローラーのボタン処理（自動帰還、HUDモード、当たり判定）
+// 右コントローラーのボタン処理（自動帰還、音量オンオフ）
 export function handleRightControllerButtons() {
   if (!state.xrSession || !state.drone || !state.dronePositioned) return;
   if (!state.isStartupComplete || state.isGrabbedByController || state.isGrabbedByHand || state.bothGripsPressed) return;
@@ -177,80 +176,6 @@ export function handleRightControllerButtons() {
       }
 
       state.setRightBButtonPressed(isBPressed);
-
-      // 右スティック押し込みでHUDモードトグル
-      const rightStickButton = buttons[3];
-      const isRightStickPressed = rightStickButton && rightStickButton.pressed;
-
-      if (isRightStickPressed && !state.rightAButtonPressed) {
-        state.setIsHUDMode(!state.isHUDMode);
-
-        if (state.isHUDMode) {
-          createHUDModeText();
-          createDirectionArrow();
-          createSpeedText();
-          createVolumeText(!state.isSoundMuted);
-          createCollisionText(state.isCollisionEnabled);
-          if (!state.isLeftControllerTracked || !state.isRightControllerTracked) {
-            createTrackingLostText();
-          }
-          updateInfo('HUDモード開始');
-          console.log('HUDモード開始');
-        } else {
-          // HUDモード解除時のクリーンアップ
-          if (state.hudModeText) {
-            state.scene.remove(state.hudModeText);
-            state.hudModeText.geometry.dispose();
-            state.hudModeText.material.dispose();
-            state.hudModeText.material.map.dispose();
-            state.setHudModeText(null);
-          }
-          if (state.hudDirectionArrow) {
-            state.scene.remove(state.hudDirectionArrow);
-            state.hudDirectionArrow.geometry.dispose();
-            state.hudDirectionArrow.material.dispose();
-            state.setHudDirectionArrow(null);
-          }
-          if (state.hudDroneLocationArrow) {
-            state.scene.remove(state.hudDroneLocationArrow);
-            state.hudDroneLocationArrow.geometry.dispose();
-            state.hudDroneLocationArrow.material.dispose();
-            state.setHudDroneLocationArrow(null);
-          }
-          if (state.speedText) {
-            state.scene.remove(state.speedText);
-            state.speedText.geometry.dispose();
-            state.speedText.material.dispose();
-            state.speedText.material.map.dispose();
-            state.setSpeedText(null);
-          }
-          if (state.speedRightControllerText) {
-            state.scene.remove(state.speedRightControllerText);
-            state.speedRightControllerText.geometry.dispose();
-            state.speedRightControllerText.material.dispose();
-            state.speedRightControllerText.material.map.dispose();
-            state.setSpeedRightControllerText(null);
-          }
-          if (state.volumeText) {
-            state.scene.remove(state.volumeText);
-            state.volumeText.geometry.dispose();
-            state.volumeText.material.dispose();
-            state.volumeText.material.map.dispose();
-            state.setVolumeText(null);
-          }
-          if (state.collisionText) {
-            state.scene.remove(state.collisionText);
-            state.collisionText.geometry.dispose();
-            state.collisionText.material.dispose();
-            state.collisionText.material.map.dispose();
-            state.setCollisionText(null);
-          }
-          updateInfo('HUDモード解除');
-          console.log('HUDモード解除');
-        }
-      }
-
-      state.setRightAButtonPressed(isRightStickPressed);
 
       // Aボタンで音量オンオフ
       const aButton = buttons[4];

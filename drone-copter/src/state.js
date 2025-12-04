@@ -69,12 +69,8 @@ export let dronePhysicsVelocity = new THREE.Vector3(0, 0, 0);
 export let droneAngularVelocity = new THREE.Vector3(0, 0, 0);
 export let dronePreviousPosition = new THREE.Vector3(0, 0, 0);
 
-// HUDモード用変数
-export let isHUDMode = false;
-export let hudModeText = null;
-export let hudDirectionArrow = null;
+// 方向ガイド用変数
 export let hudDroneLocationArrow = null;
-export let rightAButtonPressed = false;
 
 // 深度センサー用変数
 export let depthDataTexture = null;
@@ -203,11 +199,7 @@ export function setHasLanded(value) { hasLanded = value; }
 export function setDronePhysicsVelocity(value) { dronePhysicsVelocity = value; }
 export function setDroneAngularVelocity(value) { droneAngularVelocity = value; }
 export function setDronePreviousPosition(value) { dronePreviousPosition = value; }
-export function setIsHUDMode(value) { isHUDMode = value; }
-export function setHudModeText(value) { hudModeText = value; }
-export function setHudDirectionArrow(value) { hudDirectionArrow = value; }
 export function setHudDroneLocationArrow(value) { hudDroneLocationArrow = value; }
-export function setRightAButtonPressed(value) { rightAButtonPressed = value; }
 export function setDepthDataTexture(value) { depthDataTexture = value; }
 export function setDepthMesh(value) { depthMesh = value; }
 export function setShowDepthVisualization(value) { showDepthVisualization = value; }

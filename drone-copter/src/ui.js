@@ -184,32 +184,30 @@ export function createSpeedText() {
   state.scene.add(speedRightText);
   state.setSpeedRightControllerText(speedRightText);
 
-  if (!state.isHUDMode) {
-    // 既存のタイマーをクリア
-    if (state.speedTextTimerId) {
-      clearTimeout(state.speedTextTimerId);
-    }
-
-    const timerId = setTimeout(() => {
-      if (state.speedText) {
-        state.scene.remove(state.speedText);
-        state.speedText.geometry.dispose();
-        state.speedText.material.dispose();
-        state.speedText.material.map.dispose();
-        state.setSpeedText(null);
-      }
-      if (state.speedRightControllerText) {
-        state.scene.remove(state.speedRightControllerText);
-        state.speedRightControllerText.geometry.dispose();
-        state.speedRightControllerText.material.dispose();
-        state.speedRightControllerText.material.map.dispose();
-        state.setSpeedRightControllerText(null);
-      }
-      state.setSpeedTextTimerId(null);
-    }, 3000);
-
-    state.setSpeedTextTimerId(timerId);
+  // 既存のタイマーをクリア
+  if (state.speedTextTimerId) {
+    clearTimeout(state.speedTextTimerId);
   }
+
+  const timerId = setTimeout(() => {
+    if (state.speedText) {
+      state.scene.remove(state.speedText);
+      state.speedText.geometry.dispose();
+      state.speedText.material.dispose();
+      state.speedText.material.map.dispose();
+      state.setSpeedText(null);
+    }
+    if (state.speedRightControllerText) {
+      state.scene.remove(state.speedRightControllerText);
+      state.speedRightControllerText.geometry.dispose();
+      state.speedRightControllerText.material.dispose();
+      state.speedRightControllerText.material.map.dispose();
+      state.setSpeedRightControllerText(null);
+    }
+    state.setSpeedTextTimerId(null);
+  }, 3000);
+
+  state.setSpeedTextTimerId(timerId);
 }
 
 // 速度レベル表示の位置を更新
@@ -270,17 +268,15 @@ export function createVolumeText(isOn) {
   state.scene.add(volumeText);
   state.setVolumeText(volumeText);
 
-  if (!state.isHUDMode) {
-    setTimeout(() => {
-      if (state.volumeText) {
-        state.scene.remove(state.volumeText);
-        state.volumeText.geometry.dispose();
-        state.volumeText.material.dispose();
-        state.volumeText.material.map.dispose();
-        state.setVolumeText(null);
-      }
-    }, 3000);
-  }
+  setTimeout(() => {
+    if (state.volumeText) {
+      state.scene.remove(state.volumeText);
+      state.volumeText.geometry.dispose();
+      state.volumeText.material.dispose();
+      state.volumeText.material.map.dispose();
+      state.setVolumeText(null);
+    }
+  }, 3000);
 }
 
 // 音量オンオフ表示の位置を更新
@@ -337,17 +333,15 @@ export function createCollisionText(isOn) {
   state.scene.add(collisionText);
   state.setCollisionText(collisionText);
 
-  if (!state.isHUDMode) {
-    setTimeout(() => {
-      if (state.collisionText) {
-        state.scene.remove(state.collisionText);
-        state.collisionText.geometry.dispose();
-        state.collisionText.material.dispose();
-        state.collisionText.material.map.dispose();
-        state.setCollisionText(null);
-      }
-    }, 3000);
-  }
+  setTimeout(() => {
+    if (state.collisionText) {
+      state.scene.remove(state.collisionText);
+      state.collisionText.geometry.dispose();
+      state.collisionText.material.dispose();
+      state.collisionText.material.map.dispose();
+      state.setCollisionText(null);
+    }
+  }, 3000);
 }
 
 // 当たり判定オンオフ表示の位置を更新
@@ -517,101 +511,7 @@ export function updateSequenceStatusText() {
   }
 }
 
-// HUDモードテキストを作成
-export function createHUDModeText() {
-  if (state.hudModeText) {
-    state.scene.remove(state.hudModeText);
-    state.hudModeText.geometry.dispose();
-    state.hudModeText.material.dispose();
-    state.hudModeText.material.map.dispose();
-    state.setHudModeText(null);
-  }
-
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 128;
-  const context = canvas.getContext('2d');
-
-  context.fillStyle = '#00ffff';
-  context.font = 'bold 50px Arial';
-  context.textAlign = 'center';
-  context.textBaseline = 'middle';
-  context.fillText('HUD Mode', canvas.width / 2, canvas.height / 2);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  const geometry = new THREE.PlaneGeometry(0.25, 0.06);
-  const material = new THREE.MeshBasicMaterial({
-    map: texture,
-    transparent: true,
-    side: THREE.DoubleSide
-  });
-
-  const hudModeText = new THREE.Mesh(geometry, material);
-  state.scene.add(hudModeText);
-  state.setHudModeText(hudModeText);
-}
-
-// HUDモードテキストの位置を更新
-export function updateHUDModeText() {
-  if (state.hudModeText) {
-    const cameraPos = new THREE.Vector3();
-    state.camera.getWorldPosition(cameraPos);
-
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(state.camera.quaternion);
-    const left = new THREE.Vector3(-1, 0, 0).applyQuaternion(state.camera.quaternion);
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(state.camera.quaternion);
-
-    const textPos = cameraPos.clone()
-      .add(forward.multiplyScalar(0.5))
-      .add(left.multiplyScalar(0.15))
-      .add(up.multiplyScalar(0.15));
-
-    state.hudModeText.position.copy(textPos);
-    state.hudModeText.lookAt(state.camera.position);
-  }
-}
-
-// 進行方向の矢印を作成
-export function createDirectionArrow() {
-  if (state.hudDirectionArrow) {
-    state.scene.remove(state.hudDirectionArrow);
-    if (state.hudDirectionArrow.geometry) state.hudDirectionArrow.geometry.dispose();
-    if (state.hudDirectionArrow.material) state.hudDirectionArrow.material.dispose();
-    state.setHudDirectionArrow(null);
-  }
-
-  const geometry = new THREE.ConeGeometry(0.03, 0.1, 8);
-  const material = new THREE.MeshBasicMaterial({
-    color: 0xff0000,
-    transparent: true,
-    opacity: 0.8
-  });
-
-  const hudDirectionArrow = new THREE.Mesh(geometry, material);
-  state.scene.add(hudDirectionArrow);
-  state.setHudDirectionArrow(hudDirectionArrow);
-}
-
-// 進行方向矢印の位置と向きを更新
-export function updateDirectionArrow() {
-  if (state.hudDirectionArrow && state.drone) {
-    const arrowScale = Math.max(0.5, Math.min(2.0, state.currentDroneScale / 0.3));
-    state.hudDirectionArrow.scale.set(arrowScale, arrowScale, arrowScale);
-
-    const droneRadius = state.currentDroneScale * 0.5;
-    const arrowLength = 0.1 * arrowScale;
-    const arrowOffset = droneRadius + arrowLength * 0.6;
-
-    const droneForward = new THREE.Vector3(0, 0, 1).applyQuaternion(state.drone.quaternion);
-    const arrowPos = state.drone.position.clone().add(droneForward.multiplyScalar(arrowOffset));
-    state.hudDirectionArrow.position.copy(arrowPos);
-
-    state.hudDirectionArrow.rotation.copy(state.drone.rotation);
-    state.hudDirectionArrow.rotateX(Math.PI / 2);
-  }
-}
-
-// ドローン位置表示矢印を作成
+// ドローン位置表示矢印を作成（ドローンがカメラ外にいる時の方向ガイド）
 export function createDroneLocationArrow() {
   if (state.hudDroneLocationArrow) {
     state.scene.remove(state.hudDroneLocationArrow);
@@ -674,23 +574,20 @@ export function updateDroneLocationArrow() {
     const depth = 0.35;
     let edgePos = cameraPos.clone().add(forward.clone().multiplyScalar(depth));
 
-    let horizontalOffset = 0;
-    if (Math.abs(angleX) > horizontalHalfAngle) {
-      const edgeAngleX = angleX > 0 ? horizontalHalfAngle * 0.75 : -horizontalHalfAngle * 0.65;
-      horizontalOffset = Math.tan(edgeAngleX) * depth;
-    } else {
-      horizontalOffset = Math.tan(angleX) * depth;
-    }
-    edgePos.add(right.clone().multiplyScalar(horizontalOffset));
+    // 円形の表示エリアにするため、角度から方向を計算
+    const dirAngle = Math.atan2(angleY, angleX);
 
-    let verticalOffset = 0;
-    if (Math.abs(angleY) > verticalHalfAngle) {
-      const edgeAngleY = angleY > 0 ? verticalHalfAngle * 0.85 : -verticalHalfAngle * 1.05;
-      verticalOffset = Math.tan(edgeAngleY) * depth;
-    } else {
-      verticalOffset = Math.tan(angleY) * depth;
-    }
-    edgePos.add(up.clone().multiplyScalar(verticalOffset));
+    // 上下で異なる半径係数を使用（下は外側に、上は内側に）
+    const isDown = angleY < 0;
+    const verticalRadius = isDown ? 0.95 : 0.55;
+    const horizontalRadius = 0.55;
+
+    // 円周上の位置を計算
+    const horizontalOffset = Math.cos(dirAngle) * horizontalHalfAngle * horizontalRadius;
+    const verticalOffset = Math.sin(dirAngle) * verticalHalfAngle * verticalRadius;
+
+    edgePos.add(right.clone().multiplyScalar(Math.tan(horizontalOffset) * depth));
+    edgePos.add(up.clone().multiplyScalar(Math.tan(verticalOffset) * depth));
 
     state.hudDroneLocationArrow.position.copy(edgePos);
     state.hudDroneLocationArrow.lookAt(dronePos);
