@@ -3,7 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Drone MR - Mixed Reality Drone Simulator</title>
+  <title>DOROCON - MR Drone Simulator</title>
+
+  <!-- PWA Meta Tags -->
+  <meta name="description" content="Mixed Reality Drone Simulator for Quest 3 / Quest Pro">
+  <meta name="theme-color" content="#00c8ff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="DOROCON">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="manifest" href="/manifest.json">
+
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;700&display=swap" rel="stylesheet">
   <style>
     * {
@@ -450,8 +460,8 @@
       text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
     }
   </style>
-  <script type="module" crossorigin src="/assets/index-DXzn9hLW.js"></script>
-</head>
+  <script type="module" crossorigin src="/assets/index-BekWHezw.js"></script>
+<link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
 <body>
   <div id="app"></div>
 
@@ -469,8 +479,8 @@
 
       <!-- Action Buttons (under drone icon) -->
       <div class="action-buttons" style="margin-top: 20px;">
-        <button class="action-btn mr-btn" id="landing-mr-btn">MR を開始</button>
-        <button class="action-btn vr-btn" id="landing-vr-btn">VR を開始</button>
+        <button class="action-btn mr-btn" id="landing-mr-btn">MR START</button>
+        <button class="action-btn vr-btn" id="landing-vr-btn">VR START</button>
       </div>
 
       <!-- Credits Button -->
@@ -513,10 +523,10 @@
   <!-- Back Button -->
   <button class="back-btn" id="back-btn">← BACK</button>
 
-  <button id="start-button">MRを開始</button>
-  <button id="vr-button">VRを開始</button>
+  <button id="start-button">MR START</button>
+  <button id="vr-button">VR START</button>
   <button id="depth-toggle">深度表示 OFF</button>
-  <div id="info">ドローンを表示するには「MRを開始」または「VRを開始」をタップしてください</div>
+  <div id="info">ドローンを表示するには「MR START」または「VR START」をタップしてください</div>
 
 </body>
 </html>
