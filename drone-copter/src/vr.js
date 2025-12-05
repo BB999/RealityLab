@@ -77,17 +77,17 @@ export function removeMRShadow() {
 export function createVREnvironment() {
   state.scene.background = new THREE.Color(0xcccccc);
 
-  const gridSize = 50;
-  const gridDivisions = 100;
+  const gridSize = 100;
+  const gridDivisions = 200;
   const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0x888888, 0x999999);
   gridHelper.position.y = 0;
   state.scene.add(gridHelper);
   state.setGridHelper(gridHelper);
 
-  // 影を受ける床面を追加
+  // 影を受ける床面を追加（広範囲）
   const floorGeometry = new THREE.PlaneGeometry(gridSize, gridSize);
   const floorMaterial = new THREE.ShadowMaterial({
-    opacity: 0.3
+    opacity: 0.4
   });
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.rotation.x = -Math.PI / 2;
@@ -96,18 +96,19 @@ export function createVREnvironment() {
   state.scene.add(floor);
   state.setVrFloor(floor);
 
-  // 影用のディレクショナルライトを追加
-  const shadowLight = new THREE.DirectionalLight(0xffffff, 0.5);
-  shadowLight.position.set(0, 10, 0);
+  // 影用のディレクショナルライトを追加（広範囲対応）
+  const shadowLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  shadowLight.position.set(10, 20, 10);
   shadowLight.castShadow = true;
-  shadowLight.shadow.mapSize.width = 1024;
-  shadowLight.shadow.mapSize.height = 1024;
+  shadowLight.shadow.mapSize.width = 4096;
+  shadowLight.shadow.mapSize.height = 4096;
   shadowLight.shadow.camera.near = 0.5;
-  shadowLight.shadow.camera.far = 50;
-  shadowLight.shadow.camera.left = -3;
-  shadowLight.shadow.camera.right = 3;
-  shadowLight.shadow.camera.top = 3;
-  shadowLight.shadow.camera.bottom = -3;
+  shadowLight.shadow.camera.far = 100;
+  shadowLight.shadow.camera.left = -50;
+  shadowLight.shadow.camera.right = 50;
+  shadowLight.shadow.camera.top = 50;
+  shadowLight.shadow.camera.bottom = -50;
+  shadowLight.shadow.bias = -0.0001;
   state.scene.add(shadowLight);
   // ターゲットもシーンに追加（位置更新を反映させるため）
   state.scene.add(shadowLight.target);
@@ -132,98 +133,508 @@ export function createVREnvironment() {
   console.log('VR環境を作成しました');
 }
 
-// 練習用障害物を作成
+// 競技用コースを作成（全方向ランダム配置・影付き）
 function createTrainingObstacles() {
   const obstacles = [];
 
-  // キューブ障害物（ランダム配置）
-  const cubePositions = [
-    { x: 3, y: 1.5, z: -5 },
-    { x: -4, y: 2, z: -8 },
-    { x: 6, y: 1, z: 3 },
-    { x: -2, y: 2.5, z: 5 },
-    { x: 5, y: 1.8, z: -3 },
-    { x: -6, y: 1.2, z: -4 },
-  ];
+  // シード付き乱数生成器（毎回異なる配置）
+  const seed = Date.now();
+  let randomState = seed;
+  function seededRandom() {
+    randomState = (randomState * 1103515245 + 12345) & 0x7fffffff;
+    return randomState / 0x7fffffff;
+  }
 
-  cubePositions.forEach((pos, i) => {
-    const size = 0.5 + Math.random() * 0.5;
-    const geometry = new THREE.BoxGeometry(size, size, size);
+  // ランダム範囲生成
+  function randomRange(min, max) {
+    return min + seededRandom() * (max - min);
+  }
+
+  // 1m以上離れているか確認
+  function isValidPosition(x, z, minDist = 1) {
+    const dist = Math.sqrt(x * x + z * z);
+    return dist >= minDist;
+  }
+
+  // ヘルパー関数：メッシュに影を設定
+  function enableShadow(mesh) {
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+  }
+
+  // ===== ランダムにトーラスゲートを配置 =====
+  const torusCount = 25;
+  for (let i = 0; i < torusCount; i++) {
+    let x, z;
+    let attempts = 0;
+    do {
+      const angle = seededRandom() * Math.PI * 2;
+      const dist = randomRange(1, 40);
+      x = Math.cos(angle) * dist + randomRange(-3, 3);
+      z = Math.sin(angle) * dist + randomRange(-3, 3);
+      attempts++;
+    } while (!isValidPosition(x, z) && attempts < 10);
+
+    const y = randomRange(1.0, 3.5);
+    const radius = randomRange(0.6, 1.3);
+    const rotX = seededRandom() < 0.3 ? randomRange(0, Math.PI / 4) : 0;
+    const rotY = seededRandom() * Math.PI * 2;
+    const rotZ = seededRandom() < 0.2 ? randomRange(-Math.PI / 6, Math.PI / 6) : 0;
+
+    const tubeRadius = randomRange(0.06, 0.1);
+    const geometry = new THREE.TorusGeometry(radius, tubeRadius, 16, 32);
+    const hue = seededRandom() * 0.4 + 0.45; // シアン〜青〜紫
     const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color().setHSL(i / cubePositions.length, 0.7, 0.5),
-      roughness: 0.5,
-      metalness: 0.3
-    });
-    const cube = new THREE.Mesh(geometry, material);
-    cube.position.set(pos.x, pos.y, pos.z);
-    cube.userData.isObstacle = true;
-    cube.userData.type = 'cube';
-    cube.userData.size = size;
-
-    state.scene.add(cube);
-    obstacles.push(cube);
-  });
-
-  // ドーナツ（トーラス）ゲート - くぐる練習用
-  const torusPositions = [
-    { x: 0, y: 1.5, z: -6, rotY: 0 },
-    { x: -5, y: 2, z: 0, rotY: Math.PI / 2 },
-    { x: 4, y: 1.8, z: 4, rotY: Math.PI / 4 },
-    { x: -3, y: 2.5, z: -10, rotY: 0 },
-    { x: 7, y: 1.5, z: -7, rotY: -Math.PI / 3 },
-  ];
-
-  torusPositions.forEach((pos, i) => {
-    const outerRadius = 1.0 + Math.random() * 0.5;
-    const tubeRadius = 0.1;
-    const geometry = new THREE.TorusGeometry(outerRadius, tubeRadius, 16, 32);
-    const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color().setHSL(0.1 + i * 0.15, 0.8, 0.6),
-      roughness: 0.3,
-      metalness: 0.5
+      color: new THREE.Color().setHSL(hue, 0.9, 0.5),
+      roughness: 0.2,
+      metalness: 0.6,
+      emissive: new THREE.Color().setHSL(hue, 0.9, 0.15),
+      emissiveIntensity: 0.3
     });
     const torus = new THREE.Mesh(geometry, material);
-    torus.position.set(pos.x, pos.y, pos.z);
-    torus.rotation.y = pos.rotY;
+    torus.position.set(x, y, z);
+    torus.rotation.set(rotX, rotY, rotZ);
+    enableShadow(torus);
     torus.userData.isObstacle = true;
     torus.userData.type = 'torus';
-    torus.userData.outerRadius = outerRadius;
+    torus.userData.outerRadius = radius;
     torus.userData.tubeRadius = tubeRadius;
-
     state.scene.add(torus);
     obstacles.push(torus);
-  });
+  }
 
-  // ポール障害物（縦長の円柱）
-  const polePositions = [
-    { x: 2, z: -2 },
-    { x: -3, z: -6 },
-    { x: 5, z: 1 },
-    { x: -5, z: 3 },
-  ];
+  // ===== ランダムにキューブを配置 =====
+  const cubeCount = 35;
+  for (let i = 0; i < cubeCount; i++) {
+    let x, z;
+    let attempts = 0;
+    do {
+      const angle = seededRandom() * Math.PI * 2;
+      const dist = randomRange(1, 38);
+      x = Math.cos(angle) * dist + randomRange(-4, 4);
+      z = Math.sin(angle) * dist + randomRange(-4, 4);
+      attempts++;
+    } while (!isValidPosition(x, z) && attempts < 10);
 
-  polePositions.forEach((pos, i) => {
-    const height = 3 + Math.random() * 2;
-    const radius = 0.15;
+    const size = randomRange(0.3, 0.9);
+    const y = randomRange(0.8, 3.5);
+
+    const geometry = new THREE.BoxGeometry(size, size, size);
+    const hue = seededRandom() * 0.2 + 0.02; // 赤〜オレンジ〜黄色系
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(hue, 0.8, 0.5),
+      roughness: 0.4,
+      metalness: 0.4
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.rotation.set(
+      seededRandom() * 0.4,
+      seededRandom() * Math.PI,
+      seededRandom() * 0.4
+    );
+    enableShadow(mesh);
+    mesh.userData.isObstacle = true;
+    mesh.userData.type = 'cube';
+    mesh.userData.size = size;
+    state.scene.add(mesh);
+    obstacles.push(mesh);
+  }
+
+  // ===== ランダムにポールを配置 =====
+  const poleCount = 20;
+  for (let i = 0; i < poleCount; i++) {
+    let x, z;
+    let attempts = 0;
+    do {
+      const angle = seededRandom() * Math.PI * 2;
+      const dist = randomRange(1, 35);
+      x = Math.cos(angle) * dist + randomRange(-2, 2);
+      z = Math.sin(angle) * dist + randomRange(-2, 2);
+      attempts++;
+    } while (!isValidPosition(x, z) && attempts < 10);
+
+    const height = randomRange(2.5, 5.5);
+    const radius = 0.12;
+
     const geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
     const material = new THREE.MeshStandardMaterial({
-      color: 0xff4444,
+      color: 0xff3333,
       roughness: 0.4,
-      metalness: 0.2
+      metalness: 0.3,
+      emissive: 0x330000,
+      emissiveIntensity: 0.2
     });
     const pole = new THREE.Mesh(geometry, material);
-    pole.position.set(pos.x, height / 2, pos.z);
+    pole.position.set(x, height / 2, z);
+    enableShadow(pole);
     pole.userData.isObstacle = true;
     pole.userData.type = 'pole';
     pole.userData.radius = radius;
     pole.userData.height = height;
-
     state.scene.add(pole);
     obstacles.push(pole);
+  }
+
+  // ===== 外周にゴールドのゲート（4方向 + 斜め） =====
+  const goldGates = [
+    { dist: 40, angle: 0 },
+    { dist: 40, angle: Math.PI / 2 },
+    { dist: 40, angle: Math.PI },
+    { dist: 40, angle: Math.PI * 1.5 },
+    { dist: 35, angle: Math.PI / 4 },
+    { dist: 35, angle: Math.PI * 3 / 4 },
+    { dist: 35, angle: Math.PI * 5 / 4 },
+    { dist: 35, angle: Math.PI * 7 / 4 },
+  ];
+
+  goldGates.forEach((gate) => {
+    const x = Math.cos(gate.angle) * gate.dist;
+    const z = Math.sin(gate.angle) * gate.dist;
+    const y = randomRange(1.5, 2.5);
+    const radius = randomRange(1.2, 1.8);
+
+    const tubeRadius = 0.1;
+    const geometry = new THREE.TorusGeometry(radius, tubeRadius, 16, 32);
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xffd700,
+      roughness: 0.1,
+      metalness: 0.9,
+      emissive: 0xffd700,
+      emissiveIntensity: 0.5
+    });
+    const torus = new THREE.Mesh(geometry, material);
+    torus.position.set(x, y, z);
+    torus.rotation.y = gate.angle + Math.PI / 2;
+    enableShadow(torus);
+    torus.userData.isObstacle = true;
+    torus.userData.type = 'torus';
+    torus.userData.outerRadius = radius;
+    torus.userData.tubeRadius = tubeRadius;
+    state.scene.add(torus);
+    obstacles.push(torus);
   });
 
+  // ===== コース境界のポール（緑色、ランダムな間隔で配置） =====
+  const boundaryCount = 24;
+  for (let i = 0; i < boundaryCount; i++) {
+    const angle = (i / boundaryCount) * Math.PI * 2 + randomRange(-0.1, 0.1);
+    const dist = randomRange(38, 45);
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+
+    const height = randomRange(3, 5);
+    const radius = 0.08;
+    const geometry = new THREE.CylinderGeometry(radius, radius, height, 8);
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x44ff44,
+      roughness: 0.5,
+      metalness: 0.2,
+      emissive: 0x114411,
+      emissiveIntensity: 0.3
+    });
+    const pole = new THREE.Mesh(geometry, material);
+    pole.position.set(x, height / 2, z);
+    enableShadow(pole);
+    pole.userData.isObstacle = true;
+    pole.userData.type = 'pole';
+    pole.userData.radius = radius;
+    pole.userData.height = height;
+    state.scene.add(pole);
+    obstacles.push(pole);
+  }
+
+  // ===== 外周の大きなキューブ（ランダム配置） =====
+  const outerCubeCount = 12;
+  for (let i = 0; i < outerCubeCount; i++) {
+    const angle = seededRandom() * Math.PI * 2;
+    const dist = randomRange(25, 38);
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+    const size = randomRange(0.8, 1.2);
+    const y = randomRange(1.2, 2.5);
+
+    const geometry = new THREE.BoxGeometry(size, size, size);
+    const hue = 0.7 + seededRandom() * 0.2; // 紫〜青系
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(hue, 0.7, 0.5),
+      roughness: 0.3,
+      metalness: 0.5,
+      emissive: new THREE.Color().setHSL(hue, 0.7, 0.1),
+      emissiveIntensity: 0.2
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.rotation.set(
+      seededRandom() * Math.PI,
+      seededRandom() * Math.PI,
+      seededRandom() * Math.PI
+    );
+    enableShadow(mesh);
+    mesh.userData.isObstacle = true;
+    mesh.userData.type = 'cube';
+    mesh.userData.size = size;
+    state.scene.add(mesh);
+    obstacles.push(mesh);
+  }
+
+  // ===== 巨大キューブ（ランダム配置） =====
+  const giantCubeCount = 15;
+  for (let i = 0; i < giantCubeCount; i++) {
+    const angle = seededRandom() * Math.PI * 2;
+    const dist = randomRange(1, 40);
+    const x = Math.cos(angle) * dist + randomRange(-5, 5);
+    const z = Math.sin(angle) * dist + randomRange(-5, 5);
+
+    if (!isValidPosition(x, z)) continue;
+
+    const size = randomRange(1.5, 4.0); // 1.5m〜4mの巨大キューブ
+    const y = randomRange(1.0, 8.0); // 高さも様々
+
+    const geometry = new THREE.BoxGeometry(size, size, size);
+    const hue = seededRandom(); // 全色相
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(hue, 0.6, 0.4),
+      roughness: 0.5,
+      metalness: 0.3,
+      emissive: new THREE.Color().setHSL(hue, 0.6, 0.1),
+      emissiveIntensity: 0.15
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.rotation.set(
+      seededRandom() * 0.5,
+      seededRandom() * Math.PI,
+      seededRandom() * 0.5
+    );
+    enableShadow(mesh);
+    mesh.userData.isObstacle = true;
+    mesh.userData.type = 'cube';
+    mesh.userData.size = size;
+    state.scene.add(mesh);
+    obstacles.push(mesh);
+  }
+
+  // ===== 巨大トーラス（くぐりがいのあるゲート） =====
+  const giantTorusCount = 10;
+  for (let i = 0; i < giantTorusCount; i++) {
+    const angle = seededRandom() * Math.PI * 2;
+    const dist = randomRange(1, 35);
+    const x = Math.cos(angle) * dist + randomRange(-3, 3);
+    const z = Math.sin(angle) * dist + randomRange(-3, 3);
+
+    if (!isValidPosition(x, z)) continue;
+
+    const radius = randomRange(1.5, 3.5); // 1.5m〜3.5mの巨大ゲート
+    const y = randomRange(2.0, 10.0);
+    const rotX = seededRandom() < 0.4 ? randomRange(0, Math.PI / 3) : 0;
+    const rotY = seededRandom() * Math.PI * 2;
+    const rotZ = seededRandom() < 0.3 ? randomRange(-Math.PI / 4, Math.PI / 4) : 0;
+
+    const tubeRadius = randomRange(0.1, 0.2);
+    const geometry = new THREE.TorusGeometry(radius, tubeRadius, 16, 32);
+    const hue = seededRandom() * 0.3 + 0.55; // 青〜紫〜マゼンタ
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(hue, 0.85, 0.55),
+      roughness: 0.15,
+      metalness: 0.7,
+      emissive: new THREE.Color().setHSL(hue, 0.85, 0.2),
+      emissiveIntensity: 0.4
+    });
+    const torus = new THREE.Mesh(geometry, material);
+    torus.position.set(x, y, z);
+    torus.rotation.set(rotX, rotY, rotZ);
+    enableShadow(torus);
+    torus.userData.isObstacle = true;
+    torus.userData.type = 'torus';
+    torus.userData.outerRadius = radius;
+    torus.userData.tubeRadius = tubeRadius;
+    state.scene.add(torus);
+    obstacles.push(torus);
+  }
+
+  // ===== 高高度エリア（5m〜15m）のオブジェクト =====
+
+  // 高高度キューブ
+  const highCubeCount = 20;
+  for (let i = 0; i < highCubeCount; i++) {
+    const angle = seededRandom() * Math.PI * 2;
+    const dist = randomRange(1, 40);
+    const x = Math.cos(angle) * dist + randomRange(-4, 4);
+    const z = Math.sin(angle) * dist + randomRange(-4, 4);
+
+    if (!isValidPosition(x, z)) continue;
+
+    const size = randomRange(0.4, 2.0);
+    const y = randomRange(5, 15); // 高高度
+
+    const geometry = new THREE.BoxGeometry(size, size, size);
+    const hue = seededRandom() * 0.15 + 0.95; // ピンク〜赤系
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(hue % 1, 0.75, 0.55),
+      roughness: 0.35,
+      metalness: 0.45,
+      emissive: new THREE.Color().setHSL(hue % 1, 0.75, 0.15),
+      emissiveIntensity: 0.25
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.rotation.set(
+      seededRandom() * Math.PI,
+      seededRandom() * Math.PI,
+      seededRandom() * Math.PI
+    );
+    enableShadow(mesh);
+    mesh.userData.isObstacle = true;
+    mesh.userData.type = 'cube';
+    mesh.userData.size = size;
+    state.scene.add(mesh);
+    obstacles.push(mesh);
+  }
+
+  // 高高度トーラス
+  const highTorusCount = 15;
+  for (let i = 0; i < highTorusCount; i++) {
+    const angle = seededRandom() * Math.PI * 2;
+    const dist = randomRange(1, 38);
+    const x = Math.cos(angle) * dist + randomRange(-3, 3);
+    const z = Math.sin(angle) * dist + randomRange(-3, 3);
+
+    if (!isValidPosition(x, z)) continue;
+
+    const radius = randomRange(0.7, 2.0);
+    const y = randomRange(6, 14); // 高高度
+    const rotX = seededRandom() * Math.PI / 2;
+    const rotY = seededRandom() * Math.PI * 2;
+    const rotZ = seededRandom() * Math.PI / 3;
+
+    const tubeRadius = randomRange(0.06, 0.12);
+    const geometry = new THREE.TorusGeometry(radius, tubeRadius, 16, 32);
+    const hue = seededRandom() * 0.2 + 0.35; // 緑〜シアン系
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(hue, 0.9, 0.5),
+      roughness: 0.2,
+      metalness: 0.6,
+      emissive: new THREE.Color().setHSL(hue, 0.9, 0.15),
+      emissiveIntensity: 0.35
+    });
+    const torus = new THREE.Mesh(geometry, material);
+    torus.position.set(x, y, z);
+    torus.rotation.set(rotX, rotY, rotZ);
+    enableShadow(torus);
+    torus.userData.isObstacle = true;
+    torus.userData.type = 'torus';
+    torus.userData.outerRadius = radius;
+    torus.userData.tubeRadius = tubeRadius;
+    state.scene.add(torus);
+    obstacles.push(torus);
+  }
+
+  // ===== 超高高度エリア（15m〜25m）のオブジェクト =====
+
+  // 超高高度の巨大ゲート
+  const veryHighTorusCount = 8;
+  for (let i = 0; i < veryHighTorusCount; i++) {
+    const angle = seededRandom() * Math.PI * 2;
+    const dist = randomRange(1, 35);
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+
+    const radius = randomRange(2.0, 4.0); // 巨大ゲート
+    const y = randomRange(15, 25);
+    const rotX = seededRandom() * Math.PI / 3;
+    const rotY = seededRandom() * Math.PI * 2;
+
+    const tubeRadius = randomRange(0.12, 0.2);
+    const geometry = new THREE.TorusGeometry(radius, tubeRadius, 16, 32);
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x00ffff, // シアン
+      roughness: 0.1,
+      metalness: 0.8,
+      emissive: 0x00ffff,
+      emissiveIntensity: 0.5
+    });
+    const torus = new THREE.Mesh(geometry, material);
+    torus.position.set(x, y, z);
+    torus.rotation.set(rotX, rotY, 0);
+    enableShadow(torus);
+    torus.userData.isObstacle = true;
+    torus.userData.type = 'torus';
+    torus.userData.outerRadius = radius;
+    torus.userData.tubeRadius = tubeRadius;
+    state.scene.add(torus);
+    obstacles.push(torus);
+  }
+
+  // 超高高度のキューブ
+  const veryHighCubeCount = 10;
+  for (let i = 0; i < veryHighCubeCount; i++) {
+    const angle = seededRandom() * Math.PI * 2;
+    const dist = randomRange(1, 40);
+    const x = Math.cos(angle) * dist + randomRange(-3, 3);
+    const z = Math.sin(angle) * dist + randomRange(-3, 3);
+
+    if (!isValidPosition(x, z)) continue;
+
+    const size = randomRange(1.0, 3.0);
+    const y = randomRange(15, 22);
+
+    const geometry = new THREE.BoxGeometry(size, size, size);
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xff00ff, // マゼンタ
+      roughness: 0.25,
+      metalness: 0.6,
+      emissive: 0xff00ff,
+      emissiveIntensity: 0.3
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.rotation.set(
+      seededRandom() * Math.PI,
+      seededRandom() * Math.PI,
+      seededRandom() * Math.PI
+    );
+    enableShadow(mesh);
+    mesh.userData.isObstacle = true;
+    mesh.userData.type = 'cube';
+    mesh.userData.size = size;
+    state.scene.add(mesh);
+    obstacles.push(mesh);
+  }
+
+  // ===== 巨大ポール（タワー） =====
+  const towerCount = 8;
+  for (let i = 0; i < towerCount; i++) {
+    const angle = seededRandom() * Math.PI * 2;
+    const dist = randomRange(1, 38);
+    const x = Math.cos(angle) * dist;
+    const z = Math.sin(angle) * dist;
+
+    const height = randomRange(10, 25); // 10m〜25mの巨大タワー
+    const radius = randomRange(0.2, 0.5);
+
+    const geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
+    const hue = seededRandom() * 0.1 + 0.0; // 赤〜オレンジ
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(hue, 0.9, 0.5),
+      roughness: 0.3,
+      metalness: 0.4,
+      emissive: new THREE.Color().setHSL(hue, 0.9, 0.15),
+      emissiveIntensity: 0.25
+    });
+    const pole = new THREE.Mesh(geometry, material);
+    pole.position.set(x, height / 2, z);
+    enableShadow(pole);
+    pole.userData.isObstacle = true;
+    pole.userData.type = 'pole';
+    pole.userData.radius = radius;
+    pole.userData.height = height;
+    state.scene.add(pole);
+    obstacles.push(pole);
+  }
+
   state.setVrObstacles(obstacles);
-  console.log('練習用障害物を配置:', obstacles.length, '個');
+  console.log('競技用コースを配置:', obstacles.length, '個');
 }
 
 // VR環境を削除
