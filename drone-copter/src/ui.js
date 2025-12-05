@@ -1297,6 +1297,24 @@ let settingsMenuHeight = 0;
 // ボタンの当たり判定領域を保存
 let settingsButtonAreas = [];
 
+// 設定をlocalStorageに保存
+function saveSettingToStorage(key, value) {
+  const settings = JSON.parse(localStorage.getItem('droneSettings') || '{}');
+  settings[key] = value;
+  localStorage.setItem('droneSettings', JSON.stringify(settings));
+}
+
+// localStorageから設定を読み込んで適用
+export function loadSettingsFromStorage() {
+  const settings = JSON.parse(localStorage.getItem('droneSettings') || '{}');
+
+  settingsItems.forEach(item => {
+    if (settings[item.key] !== undefined) {
+      item.setValue(settings[item.key]);
+    }
+  });
+}
+
 // 設定項目の定義（動的に名前と説明を取得）
 const settingsItems = [
   {
@@ -2127,6 +2145,7 @@ function handleSettingsButtonClick(button) {
   if (button.type === 'langJa') {
     // 日本語を選択
     item.setValue('ja');
+    saveSettingToStorage(item.key, 'ja');
     playButtonSound();
     // コントローラーガイドメニューが開いていれば再描画
     if (state.controllerGuideMenu) {
@@ -2135,6 +2154,7 @@ function handleSettingsButtonClick(button) {
   } else if (button.type === 'langEn') {
     // 英語を選択
     item.setValue('en');
+    saveSettingToStorage(item.key, 'en');
     playButtonSound();
     // コントローラーガイドメニューが開いていれば再描画
     if (state.controllerGuideMenu) {
@@ -2143,24 +2163,29 @@ function handleSettingsButtonClick(button) {
   } else if (button.type === 'toggle') {
     // トグル切り替え
     const currentValue = item.getValue();
-    item.setValue(!currentValue);
+    const newValue = !currentValue;
+    item.setValue(newValue);
+    saveSettingToStorage(item.key, newValue);
     playButtonSound();
   } else if (button.type === 'left') {
     // 値を減少
     const currentValue = item.getValue();
     const newValue = Math.max(item.min, currentValue - item.step);
     item.setValue(newValue);
+    saveSettingToStorage(item.key, newValue);
     playCursorSound();
   } else if (button.type === 'right') {
     // 値を増加
     const currentValue = item.getValue();
     const newValue = Math.min(item.max, currentValue + item.step);
     item.setValue(newValue);
+    saveSettingToStorage(item.key, newValue);
     playCursorSound();
   } else if (button.type === 'default') {
     // デフォルト値に戻す
     const defaultVal = item.getDefaultValue ? item.getDefaultValue() : item.defaultValue;
     item.setValue(defaultVal);
+    saveSettingToStorage(item.key, defaultVal);
     playButtonSound();
   }
 }

@@ -12,7 +12,8 @@ import {
   createWelcomeWindow, updateWelcomeWindow, removeWelcomeWindow,
   createTutorial2Window, updateTutorial2Window, removeTutorial2Window,
   createTutorial3Window, updateTutorial3Window, removeTutorial3Window,
-  createTutorial4Window, updateTutorial4Window, removeTutorial4Window
+  createTutorial4Window, updateTutorial4Window, removeTutorial4Window,
+  loadSettingsFromStorage
 } from './ui.js';
 import { checkPlaneCollision, updatePreStartupPhysics, updateHoverAnimation, updateReturnToHover } from './physics.js';
 import { createVREnvironment, removeVREnvironment, createMRShadow, removeMRShadow, processDepthInformation, updatePlanes, createDepthVisualization, positionDrone } from './vr.js';
@@ -67,6 +68,9 @@ function init() {
 
   // ウィンドウリサイズ対応
   window.addEventListener('resize', onWindowResize);
+
+  // localStorageから設定を読み込み
+  loadSettingsFromStorage();
 
   // アニメーションループ
   renderer.setAnimationLoop(render);
