@@ -118,7 +118,7 @@ export function handleSpeedChange() {
       }
 
       if (source.handedness === 'right' && isTriggerPressed && !state.rightTriggerPressed) {
-        if (state.speedLevel < 20) {
+        if (state.speedLevel < 30) {
           state.setSpeedLevel(state.speedLevel + 1);
           updateMaxSpeed();
           createSpeedText();

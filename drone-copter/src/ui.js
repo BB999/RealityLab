@@ -1064,13 +1064,13 @@ const settingsItems = [
     setValue: (v) => state.setAcceleration(v),
     getDefaultValue: () => {
       // 速度レベルとサイズに応じたデフォルト値を計算
-      const speedMultiplier = 0.05 + (state.speedLevel - 1) * (3.0 - 0.05) / 19;
+      const speedMultiplier = 0.05 + (state.speedLevel - 1) * (4.0 - 0.05) / 29;
       const sizeMultiplier = Math.pow(state.currentDroneScale / 0.3, 0.5);
       const clampedSizeMultiplier = Math.max(0.5, Math.min(2.0, sizeMultiplier));
       return state.baseAcceleration * speedMultiplier * clampedSizeMultiplier;
     },
     min: 0.0001,
-    max: 0.003,
+    max: 0.005,
     step: 0.0001,
     format: (v) => (v * 1000).toFixed(1)
   },

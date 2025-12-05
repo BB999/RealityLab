@@ -96,8 +96,8 @@ export function updateDroneScale(newScale) {
 
 // 速度レベルとサイズに応じてmaxSpeedと加速度を更新
 export function updateMaxSpeed() {
-  // speedLevel 1 = 5%, 20 = 300%
-  const speedMultiplier = 0.05 + (state.speedLevel - 1) * (3.0 - 0.05) / 19; // 0.05 ~ 3.0
+  // speedLevel 1 = 5%, 30 = 400%
+  const speedMultiplier = 0.05 + (state.speedLevel - 1) * (4.0 - 0.05) / 29; // 0.05 ~ 4.0
 
   // サイズに応じた速度倍率（大きいほど速く、小さいほど遅く）
   // スケール0.3で1.0倍、スケール1.0で1.73倍、スケール0.1で0.58倍
