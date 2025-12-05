@@ -293,6 +293,162 @@
         font-size: 1rem;
       }
     }
+
+    /* BGM Button */
+    .bgm-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 200, 255, 0.6);
+      background: rgba(10, 10, 30, 0.8);
+      color: #00c8ff;
+      font-size: 1.5rem;
+      cursor: pointer;
+      z-index: 2100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      box-shadow: 0 0 15px rgba(0, 200, 255, 0.3);
+    }
+
+    .bgm-btn:hover {
+      background: rgba(0, 200, 255, 0.2);
+      box-shadow: 0 0 25px rgba(0, 200, 255, 0.5);
+      transform: scale(1.1);
+    }
+
+    .bgm-btn.playing {
+      border-color: rgba(0, 255, 150, 0.8);
+      color: #00ff96;
+      box-shadow: 0 0 20px rgba(0, 255, 150, 0.5);
+      animation: bgmPulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes bgmPulse {
+      0%, 100% { box-shadow: 0 0 15px rgba(0, 255, 150, 0.4); }
+      50% { box-shadow: 0 0 25px rgba(0, 255, 150, 0.7); }
+    }
+
+    /* Credits Button */
+    .credits-btn {
+      margin-top: 30px;
+      padding: 15px 50px;
+      border-radius: 30px;
+      border: 2px solid rgba(0, 200, 255, 0.5);
+      background: transparent;
+      color: rgba(0, 200, 255, 0.9);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .credits-btn:hover {
+      background: rgba(0, 200, 255, 0.1);
+      border-color: rgba(0, 200, 255, 0.8);
+      color: #00c8ff;
+      box-shadow: 0 0 15px rgba(0, 200, 255, 0.3);
+    }
+
+    /* Back Button */
+    .back-btn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      padding: 10px 20px;
+      border-radius: 25px;
+      border: 2px solid rgba(0, 200, 255, 0.6);
+      background: rgba(10, 10, 30, 0.8);
+      color: #00c8ff;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      z-index: 2100;
+      transition: all 0.3s ease;
+      box-shadow: 0 0 15px rgba(0, 200, 255, 0.3);
+      display: none;
+    }
+
+    .back-btn:hover {
+      background: rgba(0, 200, 255, 0.2);
+      box-shadow: 0 0 25px rgba(0, 200, 255, 0.5);
+      transform: scale(1.05);
+    }
+
+    /* Credits Page */
+    #credits-page {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2050;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0d0d2a 100%);
+    }
+
+    .credits-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(1.8rem, 5vw, 3rem);
+      font-weight: 700;
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 40px;
+      text-shadow:
+        0 0 10px rgba(0, 200, 255, 0.8),
+        0 0 20px rgba(0, 200, 255, 0.5);
+    }
+
+    .credits-list {
+      display: flex;
+      flex-direction: column;
+      gap: 25px;
+      text-align: center;
+    }
+
+    .credit-item {
+      background: rgba(0, 200, 255, 0.05);
+      border: 1px solid rgba(0, 200, 255, 0.3);
+      border-radius: 15px;
+      padding: 20px 40px;
+      transition: all 0.3s ease;
+    }
+
+    .credit-item:hover {
+      background: rgba(0, 200, 255, 0.1);
+      border-color: rgba(0, 200, 255, 0.6);
+      box-shadow: 0 0 20px rgba(0, 200, 255, 0.3);
+      transform: translateY(-3px);
+    }
+
+    .credit-category {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.9rem;
+      color: rgba(0, 200, 255, 0.7);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 8px;
+    }
+
+    .credit-name {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: #fff;
+      text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
+    }
   </style>
 </head>
 <body>
@@ -315,13 +471,42 @@
         <button class="action-btn mr-btn" id="landing-mr-btn">MR を開始</button>
         <button class="action-btn vr-btn" id="landing-vr-btn">VR を開始</button>
       </div>
+
+      <!-- Credits Button -->
+      <button class="credits-btn" id="credits-btn">CREDITS</button>
     </div>
 
     <div class="footer-info">
       <p>Quest 3 / Quest Pro 対応 | WebXR Immersive Experience</p>
       <p style="margin-top: 10px;">created by noranekob</p>
     </div>
+
+    <!-- BGM Button -->
+    <button class="bgm-btn" id="bgm-btn" title="BGM ON/OFF">&#9835;</button>
   </div>
+
+  <!-- Credits Page -->
+  <div id="credits-page">
+    <div class="grid-overlay"></div>
+    <h2 class="credits-title">CREDITS</h2>
+    <div class="credits-list">
+      <div class="credit-item">
+        <div class="credit-category">Sound Effects</div>
+        <div class="credit-name">効果音ラボ</div>
+      </div>
+      <div class="credit-item">
+        <div class="credit-category">Sound Effects</div>
+        <div class="credit-name">On-Jin ～音人～</div>
+      </div>
+      <div class="credit-item">
+        <div class="credit-category">Music</div>
+        <div class="credit-name">魔王魂</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Back Button -->
+  <button class="back-btn" id="back-btn">← BACK</button>
 
   <button id="start-button">MRを開始</button>
   <button id="vr-button">VRを開始</button>
@@ -431,34 +616,88 @@
     animate();
 
     // BGM設定
-    const bgm = new Audio('./mainBGM.mp3');
+    const bgm = new Audio('/mainBGM.mp3');
     bgm.loop = true;
     bgm.volume = 0.3;
+    let isBgmPlaying = false;
 
-    // ユーザー操作後にBGM再生開始
-    function startBGM() {
-      bgm.play().catch(e => console.log('BGM再生待機中'));
-      document.removeEventListener('click', startBGM);
-      document.removeEventListener('touchstart', startBGM);
+    // BGMボタン
+    const bgmBtn = document.getElementById('bgm-btn');
+
+    function toggleBGM() {
+      if (isBgmPlaying) {
+        bgm.pause();
+        bgmBtn.classList.remove('playing');
+        isBgmPlaying = false;
+      } else {
+        bgm.play().then(() => {
+          bgmBtn.classList.add('playing');
+          isBgmPlaying = true;
+        }).catch(e => console.log('BGM再生エラー:', e));
+      }
     }
-    document.addEventListener('click', startBGM);
-    document.addEventListener('touchstart', startBGM);
+
+    bgmBtn.addEventListener('click', toggleBGM);
+
+    // Credits Page
+    const creditsBtn = document.getElementById('credits-btn');
+    const backBtn = document.getElementById('back-btn');
+    const creditsPage = document.getElementById('credits-page');
+    const landingPage = document.getElementById('landing-page');
+
+    creditsBtn.addEventListener('click', () => {
+      landingPage.style.display = 'none';
+      creditsPage.style.display = 'flex';
+      backBtn.style.display = 'block';
+      bgmBtn.style.display = 'none';
+    });
+
+    backBtn.addEventListener('click', () => {
+      creditsPage.style.display = 'none';
+      landingPage.style.display = 'flex';
+      backBtn.style.display = 'none';
+      bgmBtn.style.display = 'flex';
+    });
 
     // ボタン音
-    const mainButtonSound = new Audio('./mainbutton.mp3');
+    const mainButtonSound = new Audio('/mainbutton.mp3');
     mainButtonSound.volume = 0.5;
+
+    // BGMフェードアウト
+    function fadeOutBGM(duration = 2000) {
+      if (!isBgmPlaying) return;
+
+      const startVolume = bgm.volume;
+      const fadeSteps = 20;
+      const stepTime = duration / fadeSteps;
+      const volumeStep = startVolume / fadeSteps;
+      let currentStep = 0;
+
+      const fadeInterval = setInterval(() => {
+        currentStep++;
+        bgm.volume = Math.max(0, startVolume - (volumeStep * currentStep));
+
+        if (currentStep >= fadeSteps) {
+          clearInterval(fadeInterval);
+          bgm.pause();
+          bgm.currentTime = 0;
+          bgm.volume = 0.3;
+          bgmBtn.classList.remove('playing');
+          isBgmPlaying = false;
+        }
+      }, stepTime);
+    }
 
     // ボタン点滅処理
     function blinkButton(button, callback) {
       mainButtonSound.play();
-      bgm.pause();
-      bgm.currentTime = 0;
+      fadeOutBGM(2500);
 
       let blinkCount = 0;
       const blinkInterval = setInterval(() => {
         button.style.opacity = button.style.opacity === '0.3' ? '1' : '0.3';
         blinkCount++;
-        if (blinkCount >= 10) { // 2秒間で10回点滅（200ms間隔）
+        if (blinkCount >= 15) { // 3秒間で15回点滅（200ms間隔）
           clearInterval(blinkInterval);
           button.style.opacity = '1';
           callback();
