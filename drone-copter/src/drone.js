@@ -192,6 +192,9 @@ export function loadDroneModel() {
       setupCursorSound();
       setupCrashSound();
 
+      // 配置されるまで非表示
+      drone.visible = false;
+
       updateInfo('ドローンモデル読み込み完了');
     },
     (progress) => {

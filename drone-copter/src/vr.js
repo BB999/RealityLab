@@ -192,6 +192,9 @@ export function positionDrone() {
   const angle = Math.atan2(cameraDirection.x, cameraDirection.z);
   state.drone.rotation.y = angle;
 
+  // ドローンを表示
+  state.drone.visible = true;
+
   state.setDronePositioned(true);
   console.log('ドローン配置位置:', state.drone.position);
   console.log('カメラ位置:', cameraPos);

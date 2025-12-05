@@ -525,7 +525,7 @@ export function createControllerGuideMenu() {
   // キャンバスでメニュー全体を描画
   guideMenuCanvas = document.createElement('canvas');
   guideMenuCanvas.width = 800;
-  guideMenuCanvas.height = 900;
+  guideMenuCanvas.height = 820;
   const canvas = guideMenuCanvas;
   const ctx = canvas.getContext('2d');
 
@@ -1119,6 +1119,16 @@ const settingsItems = [
     step: 0.01,
     format: (v) => (v * 100).toFixed(0) + '%'
   },
+  {
+    name: 'FPVモード',
+    description: 'ドローン視点で操縦',
+    key: 'fpvMode',
+    type: 'toggle',
+    getValue: () => state.isFpvMode,
+    setValue: (v) => state.setIsFpvMode(v),
+    defaultValue: false,
+    isHidden: () => state.isMrMode
+  },
 ];
 
 // 設定メニューを作成
@@ -1127,9 +1137,15 @@ export function createSettingsMenu() {
     return;
   }
 
+  // 表示項目数に応じてキャンバスの高さを計算
+  const visibleItems = settingsItems.filter(item => !item.isHidden || !item.isHidden());
+  const itemHeight = 100;
+  // タイトル(70) + 設定項目 + 操作説明(90) + タイトルに戻るボタン(80) + 余白(30)
+  const canvasHeight = 70 + (visibleItems.length * itemHeight) + 90 + 80 + 30;
+
   settingsMenuCanvas = document.createElement('canvas');
   settingsMenuCanvas.width = 700;
-  settingsMenuCanvas.height = 700;
+  settingsMenuCanvas.height = canvasHeight;
 
   redrawSettingsMenu(null);
 
@@ -1212,11 +1228,12 @@ export function redrawSettingsMenu(hoveredButton) {
   ctx.lineTo(canvas.width - 40, 70);
   ctx.stroke();
 
-  // 設定項目
+  // 設定項目（非表示のものを除外）
+  const visibleItems = settingsItems.filter(item => !item.isHidden || !item.isHidden());
   let y = 110;
   const itemHeight = 100;
 
-  settingsItems.forEach((item, index) => {
+  visibleItems.forEach((item, index) => {
     const value = item.getValue();
 
     // 項目の背景
@@ -1236,93 +1253,135 @@ export function redrawSettingsMenu(hoveredButton) {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.fillText(item.description, 40, y + 42);
 
-    // 値表示エリア
-    const displayValue = item.format ? item.format(value) : value.toString();
+    if (item.type === 'toggle') {
+      // トグルボタン
+      const toggleBtnX = 480;
+      const toggleBtnY = y + 5;
+      const toggleBtnW = 120;
+      const toggleBtnH = 50;
+      const isToggleHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'toggle';
+      const isOn = value === true;
 
-    // 左矢印ボタン
-    const leftBtnX = 320;
-    const leftBtnY = y + 5;
-    const btnSize = 50;
-    const isLeftHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'left';
+      // トグルボタン背景
+      if (isToggleHovered) {
+        ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';
+      } else if (isOn) {
+        ctx.fillStyle = 'rgba(0, 255, 150, 0.5)';
+      } else {
+        ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+      }
+      ctx.beginPath();
+      ctx.roundRect(toggleBtnX, toggleBtnY, toggleBtnW, toggleBtnH, 6);
+      ctx.fill();
 
-    ctx.fillStyle = isLeftHovered ? 'rgba(255, 255, 0, 0.8)' : 'rgba(0, 200, 255, 0.3)';
-    ctx.beginPath();
-    ctx.roundRect(leftBtnX, leftBtnY, btnSize, btnSize, 6);
-    ctx.fill();
-    ctx.strokeStyle = isLeftHovered ? '#ffff00' : 'rgba(0, 200, 255, 0.6)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+      if (isToggleHovered) {
+        ctx.strokeStyle = '#ffff00';
+      } else if (isOn) {
+        ctx.strokeStyle = 'rgba(0, 255, 150, 0.8)';
+      } else {
+        ctx.strokeStyle = 'rgba(100, 100, 100, 0.8)';
+      }
+      ctx.lineWidth = 2;
+      ctx.stroke();
 
-    ctx.font = 'bold 28px Arial';
-    ctx.fillStyle = isLeftHovered ? '#000000' : '#00c8ff';
-    ctx.textAlign = 'center';
-    ctx.fillText('◀', leftBtnX + btnSize / 2, leftBtnY + btnSize / 2 + 8);
+      ctx.font = 'bold 22px Arial';
+      ctx.fillStyle = isToggleHovered ? '#000000' : (isOn ? '#00ff96' : 'rgba(255, 255, 255, 0.6)');
+      ctx.textAlign = 'center';
+      ctx.fillText(isOn ? 'ON' : 'OFF', toggleBtnX + toggleBtnW / 2, toggleBtnY + toggleBtnH / 2 + 8);
 
-    settingsButtonAreas.push({
-      x: leftBtnX, y: leftBtnY, w: btnSize, h: btnSize,
-      index: index, type: 'left'
-    });
+      settingsButtonAreas.push({
+        x: toggleBtnX, y: toggleBtnY, w: toggleBtnW, h: toggleBtnH,
+        index: index, type: 'toggle'
+      });
+    } else {
+      // 値タイプ（従来の左右矢印とデフォルトボタン）
+      const displayValue = item.format ? item.format(value) : value.toString();
 
-    // 値
-    ctx.font = 'bold 22px Arial';
-    ctx.fillStyle = '#00c8ff';
-    ctx.textAlign = 'center';
-    ctx.fillText(displayValue, 440, y + 40);
+      // 左矢印ボタン
+      const leftBtnX = 320;
+      const leftBtnY = y + 5;
+      const btnSize = 50;
+      const isLeftHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'left';
 
-    // 右矢印ボタン
-    const rightBtnX = 510;
-    const rightBtnY = y + 5;
-    const isRightHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'right';
+      ctx.fillStyle = isLeftHovered ? 'rgba(255, 255, 0, 0.8)' : 'rgba(0, 200, 255, 0.3)';
+      ctx.beginPath();
+      ctx.roundRect(leftBtnX, leftBtnY, btnSize, btnSize, 6);
+      ctx.fill();
+      ctx.strokeStyle = isLeftHovered ? '#ffff00' : 'rgba(0, 200, 255, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
 
-    ctx.fillStyle = isRightHovered ? 'rgba(255, 255, 0, 0.8)' : 'rgba(0, 200, 255, 0.3)';
-    ctx.beginPath();
-    ctx.roundRect(rightBtnX, rightBtnY, btnSize, btnSize, 6);
-    ctx.fill();
-    ctx.strokeStyle = isRightHovered ? '#ffff00' : 'rgba(0, 200, 255, 0.6)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+      ctx.font = 'bold 28px Arial';
+      ctx.fillStyle = isLeftHovered ? '#000000' : '#00c8ff';
+      ctx.textAlign = 'center';
+      ctx.fillText('◀', leftBtnX + btnSize / 2, leftBtnY + btnSize / 2 + 8);
 
-    ctx.font = 'bold 28px Arial';
-    ctx.fillStyle = isRightHovered ? '#000000' : '#00c8ff';
-    ctx.textAlign = 'center';
-    ctx.fillText('▶', rightBtnX + btnSize / 2, rightBtnY + btnSize / 2 + 8);
+      settingsButtonAreas.push({
+        x: leftBtnX, y: leftBtnY, w: btnSize, h: btnSize,
+        index: index, type: 'left'
+      });
 
-    settingsButtonAreas.push({
-      x: rightBtnX, y: rightBtnY, w: btnSize, h: btnSize,
-      index: index, type: 'right'
-    });
+      // 値
+      ctx.font = 'bold 22px Arial';
+      ctx.fillStyle = '#00c8ff';
+      ctx.textAlign = 'center';
+      ctx.fillText(displayValue, 440, y + 40);
 
-    // デフォルトボタン
-    const defaultBtnX = 580;
-    const defaultBtnY = y + 5;
-    const defaultBtnW = 80;
-    const isDefaultHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'default';
-    const defaultVal = item.getDefaultValue ? item.getDefaultValue() : item.defaultValue;
-    const isDefault = Math.abs(value - defaultVal) < 0.0001;
+      // 右矢印ボタン
+      const rightBtnX = 510;
+      const rightBtnY = y + 5;
+      const isRightHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'right';
 
-    ctx.fillStyle = isDefaultHovered ? 'rgba(255, 107, 107, 0.8)' : (isDefault ? 'rgba(100, 100, 100, 0.3)' : 'rgba(255, 107, 107, 0.3)');
-    ctx.beginPath();
-    ctx.roundRect(defaultBtnX, defaultBtnY, defaultBtnW, btnSize, 6);
-    ctx.fill();
-    ctx.strokeStyle = isDefaultHovered ? '#ff6b6b' : (isDefault ? 'rgba(100, 100, 100, 0.5)' : 'rgba(255, 107, 107, 0.6)');
-    ctx.lineWidth = 2;
-    ctx.stroke();
+      ctx.fillStyle = isRightHovered ? 'rgba(255, 255, 0, 0.8)' : 'rgba(0, 200, 255, 0.3)';
+      ctx.beginPath();
+      ctx.roundRect(rightBtnX, rightBtnY, btnSize, btnSize, 6);
+      ctx.fill();
+      ctx.strokeStyle = isRightHovered ? '#ffff00' : 'rgba(0, 200, 255, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
 
-    ctx.font = 'bold 14px Arial';
-    ctx.fillStyle = isDefaultHovered ? '#000000' : (isDefault ? 'rgba(255, 255, 255, 0.3)' : '#ff6b6b');
-    ctx.textAlign = 'center';
-    ctx.fillText('DEFAULT', defaultBtnX + defaultBtnW / 2, defaultBtnY + btnSize / 2 + 5);
+      ctx.font = 'bold 28px Arial';
+      ctx.fillStyle = isRightHovered ? '#000000' : '#00c8ff';
+      ctx.textAlign = 'center';
+      ctx.fillText('▶', rightBtnX + btnSize / 2, rightBtnY + btnSize / 2 + 8);
 
-    settingsButtonAreas.push({
-      x: defaultBtnX, y: defaultBtnY, w: defaultBtnW, h: btnSize,
-      index: index, type: 'default'
-    });
+      settingsButtonAreas.push({
+        x: rightBtnX, y: rightBtnY, w: btnSize, h: btnSize,
+        index: index, type: 'right'
+      });
+
+      // デフォルトボタン
+      const defaultBtnX = 580;
+      const defaultBtnY = y + 5;
+      const defaultBtnW = 80;
+      const isDefaultHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'default';
+      const defaultVal = item.getDefaultValue ? item.getDefaultValue() : item.defaultValue;
+      const isDefault = Math.abs(value - defaultVal) < 0.0001;
+
+      ctx.fillStyle = isDefaultHovered ? 'rgba(255, 107, 107, 0.8)' : (isDefault ? 'rgba(100, 100, 100, 0.3)' : 'rgba(255, 107, 107, 0.3)');
+      ctx.beginPath();
+      ctx.roundRect(defaultBtnX, defaultBtnY, defaultBtnW, btnSize, 6);
+      ctx.fill();
+      ctx.strokeStyle = isDefaultHovered ? '#ff6b6b' : (isDefault ? 'rgba(100, 100, 100, 0.5)' : 'rgba(255, 107, 107, 0.6)');
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.font = 'bold 14px Arial';
+      ctx.fillStyle = isDefaultHovered ? '#000000' : (isDefault ? 'rgba(255, 255, 255, 0.3)' : '#ff6b6b');
+      ctx.textAlign = 'center';
+      ctx.fillText('DEFAULT', defaultBtnX + defaultBtnW / 2, defaultBtnY + btnSize / 2 + 5);
+
+      settingsButtonAreas.push({
+        x: defaultBtnX, y: defaultBtnY, w: defaultBtnW, h: btnSize,
+        index: index, type: 'default'
+      });
+    }
 
     y += itemHeight;
   });
 
-  // 操作説明（設定項目の下: y=110 + 100*5 = 610、+10で620）
-  const bottomLineY = 620;
+  // 操作説明（設定項目の下）
+  const bottomLineY = y + 10;
   ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -1342,6 +1401,31 @@ export function redrawSettingsMenu(hoveredButton) {
   ctx.shadowBlur = 10;
   ctx.fillText('X ボタンで閉じる', canvas.width / 2, bottomLineY + 60);
   ctx.shadowBlur = 0;
+
+  // タイトルに戻るボタン
+  const returnBtnX = 25;
+  const returnBtnY = bottomLineY + 80;
+  const returnBtnW = canvas.width - 50;
+  const returnBtnH = 60;
+  const isReturnHovered = hoveredButton && hoveredButton.type === 'returnToTitle';
+
+  ctx.fillStyle = isReturnHovered ? 'rgba(255, 100, 100, 0.9)' : 'rgba(255, 100, 100, 0.4)';
+  ctx.beginPath();
+  ctx.roundRect(returnBtnX, returnBtnY, returnBtnW, returnBtnH, 8);
+  ctx.fill();
+  ctx.strokeStyle = isReturnHovered ? '#ff6666' : 'rgba(255, 100, 100, 0.8)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.font = 'bold 26px Arial';
+  ctx.fillStyle = isReturnHovered ? '#000000' : '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.fillText('タイトルに戻る', canvas.width / 2, returnBtnY + returnBtnH / 2 + 9);
+
+  settingsButtonAreas.push({
+    x: returnBtnX, y: returnBtnY, w: returnBtnW, h: returnBtnH,
+    type: 'returnToTitle'
+  });
 
   if (settingsMenuTexture) {
     settingsMenuTexture.needsUpdate = true;
@@ -1612,9 +1696,29 @@ export function updateSettingsMenu() {
 
 // ボタンクリック処理
 function handleSettingsButtonClick(button) {
-  const item = settingsItems[button.index];
+  if (button.type === 'returnToTitle') {
+    // タイトルに戻る
+    playButtonSound();
+    removeSettingsMenu();
+    if (state.xrSession) {
+      state.xrSession.end().then(() => {
+        window.location.reload();
+      });
+    } else {
+      window.location.reload();
+    }
+    return;
+  }
 
-  if (button.type === 'left') {
+  const visibleItems = settingsItems.filter(item => !item.isHidden || !item.isHidden());
+  const item = visibleItems[button.index];
+
+  if (button.type === 'toggle') {
+    // トグル切り替え
+    const currentValue = item.getValue();
+    item.setValue(!currentValue);
+    playButtonSound();
+  } else if (button.type === 'left') {
     // 値を減少
     const currentValue = item.getValue();
     const newValue = Math.max(item.min, currentValue - item.step);

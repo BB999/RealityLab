@@ -160,6 +160,8 @@ export const baseAngularFriction = 0.965;
 export let tiltAmount = 0.6;
 export const tiltSmoothing = 0.05;
 export let stickDeadzone = 0.15;
+export let isFpvMode = false;
+export let isMrMode = false;
 
 // セッター関数群
 export function setScene(value) { scene = value; }
@@ -284,3 +286,5 @@ export function setMaxAngularSpeed(value) { maxAngularSpeed = value; }
 export function setAngularFriction(value) { angularFriction = value; }
 export function setTiltAmount(value) { tiltAmount = value; }
 export function setStickDeadzone(value) { stickDeadzone = value; }
+export function setIsFpvMode(value) { isFpvMode = value; }
+export function setIsMrMode(value) { isMrMode = value; }

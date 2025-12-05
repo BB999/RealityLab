@@ -548,6 +548,7 @@ async function startXR() {
     });
 
     state.setXrSession(xrSession);
+    state.setIsMrMode(true);
 
     await state.renderer.xr.setSession(xrSession);
 
@@ -605,6 +606,7 @@ async function startXR() {
 
     xrSession.addEventListener('end', () => {
       state.setXrSession(null);
+      state.setIsMrMode(false);
 
       if (state.droneSound && state.droneSound.isPlaying) {
         state.droneSound.stop();
