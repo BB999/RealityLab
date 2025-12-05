@@ -167,12 +167,16 @@ export function handleRightControllerButtons() {
     if (source.handedness === 'right' && source.gamepad) {
       const buttons = source.gamepad.buttons;
 
-      // Bボタンで自動帰還
+      // Bボタンで自動帰還（FPVモード中は無効）
       const bButton = buttons[5];
       const isBPressed = bButton && bButton.pressed;
 
       if (isBPressed && !state.rightBButtonPressed) {
-        if (!state.isAutoReturning) {
+        if (state.isFpvMode) {
+          // FPVモード中は自動帰還を使用不可
+          updateInfo('FPVモード中は自動帰還を使用できません');
+          playButtonSound();
+        } else if (!state.isAutoReturning) {
           const frame = state.renderer.xr.getFrame();
           const referenceSpace = state.renderer.xr.getReferenceSpace();
           if (frame && referenceSpace && source.gripSpace) {

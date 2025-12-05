@@ -22,7 +22,8 @@ export function createAutoReturnText() {
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    depthWrite: false
   });
 
   const mesh = new THREE.Mesh(geometry, material);
@@ -50,7 +51,8 @@ export function createAutoReturnRightControllerText() {
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    depthWrite: false
   });
 
   const mesh = new THREE.Mesh(geometry, material);
@@ -78,7 +80,8 @@ export function createAutoReturnLeftControllerText() {
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    depthWrite: false
   });
 
   const mesh = new THREE.Mesh(geometry, material);
@@ -169,7 +172,8 @@ export function createSpeedText() {
   const material1 = new THREE.MeshBasicMaterial({
     map: texture.clone(),
     transparent: true,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    depthWrite: false
   });
   const speedText = new THREE.Mesh(geometry1, material1);
   state.scene.add(speedText);
@@ -179,7 +183,8 @@ export function createSpeedText() {
   const material2 = new THREE.MeshBasicMaterial({
     map: texture.clone(),
     transparent: true,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    depthWrite: false
   });
   const speedRightText = new THREE.Mesh(geometry2, material2);
   state.scene.add(speedRightText);
@@ -262,7 +267,8 @@ export function createVolumeText(isOn) {
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    depthWrite: false
   });
 
   const volumeText = new THREE.Mesh(geometry, material);
@@ -327,7 +333,8 @@ export function createCollisionText(isOn) {
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    depthWrite: false
   });
 
   const collisionText = new THREE.Mesh(geometry, material);
@@ -402,7 +409,8 @@ export function createTrackingLostText() {
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    depthWrite: false
   });
 
   const trackingLostText = new THREE.Mesh(geometry, material);
@@ -475,7 +483,8 @@ export function createSequenceStatusText(message) {
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    depthWrite: false
   });
 
   const sequenceStatusText = new THREE.Mesh(geometry, material);
