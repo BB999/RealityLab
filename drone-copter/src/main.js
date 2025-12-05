@@ -175,7 +175,98 @@ function render() {
     state.dronePreviousPosition.copy(state.drone.position);
   }
 
+  // FPVモードのカメラオフセット更新
+  updateFpvCamera();
+
   state.renderer.render(state.scene, state.camera);
+}
+
+// FPVカメラの更新
+function updateFpvCamera() {
+  if (!state.xrSession || !state.drone || !state.dronePositioned) return;
+
+  // ベース参照空間を保存（初回のみ）
+  if (!state.baseReferenceSpace) {
+    const referenceSpace = state.renderer.xr.getReferenceSpace();
+    if (referenceSpace) {
+      state.setBaseReferenceSpace(referenceSpace);
+    }
+  }
+
+  if (!state.baseReferenceSpace) return;
+
+  // FPVモードの状態変化を検出
+  if (state.isFpvMode && !state.wasFpvMode) {
+    // FPVモードがオンになった瞬間
+    // まずベース参照空間に戻す
+    state.renderer.xr.setReferenceSpace(state.baseReferenceSpace);
+
+    // カメラの高さを保存
+    const cameraPos = new THREE.Vector3();
+    state.camera.getWorldPosition(cameraPos);
+    state.setFpvInitialCameraPos(cameraPos.clone());
+
+    // ドローン位置を保存（basePositionを使用）
+    const initialDronePos = state.drone.userData.basePosition
+      ? state.drone.userData.basePosition.clone()
+      : state.drone.position.clone();
+    state.setFpvInitialDronePos(initialDronePos);
+
+    state.setFpvInitialDroneRotationY(state.drone.rotation.y);
+    state.setWasFpvMode(true);
+    console.log('FPVモード開始');
+    console.log('  カメラ高さ:', cameraPos.y.toFixed(3));
+    console.log('  ドローンbasePosition:', initialDronePos.x.toFixed(3), initialDronePos.y.toFixed(3), initialDronePos.z.toFixed(3));
+  } else if (!state.isFpvMode && state.wasFpvMode) {
+    // FPVモードがオフになった瞬間
+    state.setWasFpvMode(false);
+    state.setFpvInitialCameraPos(null);
+    state.setFpvInitialDronePos(null);
+    state.setFpvInitialDroneRotationY(0);
+    // ベース参照空間に戻す
+    state.renderer.xr.setReferenceSpace(state.baseReferenceSpace);
+    console.log('FPVモード終了 - 元の位置に戻る');
+    return;
+  }
+
+  if (state.isFpvMode && state.fpvInitialDronePos && state.fpvInitialCameraPos) {
+    // FPVモード: カメラをドローンの位置に完全に同期
+    // basePositionを使用（ホバーアニメーションの影響を除外）
+    const dronePos = state.drone.userData.basePosition
+      ? state.drone.userData.basePosition.clone()
+      : state.drone.position.clone();
+
+    // ドローンの現在のY軸回転
+    const droneRotationY = state.drone.rotation.y;
+
+    // カメラの回転角度（ドローンの前方を向く = ドローンの回転 + 180度）
+    const cameraRotationY = droneRotationY + Math.PI;
+
+    // ドローンの位置をオフセットとして使用
+    // Y軸は初期カメラ高さとドローン高さの差分を補正
+    const totalOffset = new THREE.Vector3(
+      dronePos.x,
+      dronePos.y - state.fpvInitialCameraPos.y,
+      dronePos.z
+    );
+
+    // 回転後の座標系でのオフセットを計算
+    const rotQuat = new THREE.Quaternion();
+    rotQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), cameraRotationY);
+
+    // ワールド座標の移動ベクトルを回転後座標系に変換
+    const rotatedOffset = totalOffset.clone().applyQuaternion(rotQuat.clone().invert());
+
+    // XRRigidTransformを作成
+    const offsetTransform = new XRRigidTransform(
+      { x: -rotatedOffset.x, y: -rotatedOffset.y, z: -rotatedOffset.z },
+      { x: 0, y: Math.sin(-cameraRotationY / 2), z: 0, w: Math.cos(-cameraRotationY / 2) }
+    );
+
+    // 新しい参照空間を設定（baseReferenceSpaceからの相対オフセット）
+    const newReferenceSpace = state.baseReferenceSpace.getOffsetReferenceSpace(offsetTransform);
+    state.renderer.xr.setReferenceSpace(newReferenceSpace);
+  }
 }
 
 // 上昇シーケンスの処理
@@ -607,6 +698,11 @@ async function startXR() {
     xrSession.addEventListener('end', () => {
       state.setXrSession(null);
       state.setIsMrMode(false);
+      state.setBaseReferenceSpace(null);
+      state.setIsFpvMode(false);
+      state.setWasFpvMode(false);
+      state.setFpvInitialCameraPos(null);
+      state.setFpvInitialDronePos(null);
 
       if (state.droneSound && state.droneSound.isPlaying) {
         state.droneSound.stop();
@@ -715,6 +811,11 @@ async function startVR() {
 
     xrSession.addEventListener('end', () => {
       state.setXrSession(null);
+      state.setBaseReferenceSpace(null);
+      state.setIsFpvMode(false);
+      state.setWasFpvMode(false);
+      state.setFpvInitialCameraPos(null);
+      state.setFpvInitialDronePos(null);
 
       removeVREnvironment();
 

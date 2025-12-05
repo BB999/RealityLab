@@ -162,6 +162,12 @@ export const tiltSmoothing = 0.05;
 export let stickDeadzone = 0.15;
 export let isFpvMode = false;
 export let isMrMode = false;
+export let fpvCameraOffset = new THREE.Vector3();
+export let baseReferenceSpace = null;
+export let fpvInitialCameraPos = null;
+export let fpvInitialDronePos = null;
+export let fpvInitialDroneRotationY = 0;
+export let wasFpvMode = false;
 
 // セッター関数群
 export function setScene(value) { scene = value; }
@@ -288,3 +294,9 @@ export function setTiltAmount(value) { tiltAmount = value; }
 export function setStickDeadzone(value) { stickDeadzone = value; }
 export function setIsFpvMode(value) { isFpvMode = value; }
 export function setIsMrMode(value) { isMrMode = value; }
+export function setFpvCameraOffset(value) { fpvCameraOffset = value; }
+export function setBaseReferenceSpace(value) { baseReferenceSpace = value; }
+export function setFpvInitialCameraPos(value) { fpvInitialCameraPos = value; }
+export function setFpvInitialDronePos(value) { fpvInitialDronePos = value; }
+export function setFpvInitialDroneRotationY(value) { fpvInitialDroneRotationY = value; }
+export function setWasFpvMode(value) { wasFpvMode = value; }
