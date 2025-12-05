@@ -10,7 +10,7 @@ import {
   removeSequenceStatusText, updateControllerGuideMenu, updateSettingsMenu
 } from './ui.js';
 import { checkPlaneCollision, updatePreStartupPhysics, updateHoverAnimation, updateReturnToHover } from './physics.js';
-import { createVREnvironment, removeVREnvironment, processDepthInformation, updatePlanes, createDepthVisualization, positionDrone } from './vr.js';
+import { createVREnvironment, removeVREnvironment, createMRShadow, removeMRShadow, processDepthInformation, updatePlanes, createDepthVisualization, positionDrone } from './vr.js';
 import {
   updateAutoReturn, handleSpeedChange, handleRightControllerButtons,
   handleStartupSequence, handleSizeChange, handleControllerGrab, handleHandGrab,
@@ -194,6 +194,47 @@ function updateShadowLight() {
   // ターゲットをドローン位置に設定
   state.vrShadowLight.target.position.copy(dronePos);
   state.vrShadowLight.target.updateMatrixWorld();
+
+  // MRモードの場合、ドローン直下の最も近い平面までの距離で影の範囲を制限
+  if (state.isMrMode && state.detectedPlanes.size > 0) {
+    let nearestPlaneDistance = 50; // デフォルトの最大距離
+
+    state.detectedPlanes.forEach((planeData) => {
+      const { position, quaternion, polygon } = planeData;
+
+      // 水平な平面のみ対象
+      const planeNormal = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion);
+      if (Math.abs(planeNormal.y) < 0.7) return;
+
+      // ドローンより下にある平面のみ
+      if (position.y >= dronePos.y) return;
+
+      // ドローンが平面の範囲内にいるか確認
+      const inverseQuaternion = quaternion.clone().invert();
+      const localDronePos = dronePos.clone().sub(position).applyQuaternion(inverseQuaternion);
+
+      let inside = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].x, zi = polygon[i].z;
+        const xj = polygon[j].x, zj = polygon[j].z;
+
+        const intersect = ((zi > localDronePos.z) !== (zj > localDronePos.z))
+          && (localDronePos.x < (xj - xi) * (localDronePos.z - zi) / (zj - zi) + xi);
+        if (intersect) inside = !inside;
+      }
+
+      if (inside) {
+        const distanceToPlane = dronePos.y - position.y;
+        if (distanceToPlane < nearestPlaneDistance) {
+          nearestPlaneDistance = distanceToPlane;
+        }
+      }
+    });
+
+    // シャドウカメラのfarを最も近い平面までの距離 + マージンに設定
+    state.vrShadowLight.shadow.camera.far = 10 + nearestPlaneDistance + 0.1;
+    state.vrShadowLight.shadow.camera.updateProjectionMatrix();
+  }
 }
 
 // FPVカメラの更新
@@ -658,6 +699,9 @@ async function startXR() {
 
     await state.renderer.xr.setSession(xrSession);
 
+    // MR用の影設定を作成
+    createMRShadow();
+
     const rightController = state.renderer.xr.getController(0);
     const leftController = state.renderer.xr.getController(1);
     state.scene.add(rightController);
@@ -718,6 +762,9 @@ async function startXR() {
       state.setWasFpvMode(false);
       state.setFpvInitialCameraPos(null);
       state.setFpvInitialDronePos(null);
+
+      // MR用の影設定を削除
+      removeMRShadow();
 
       if (state.droneSound && state.droneSound.isPlaying) {
         state.droneSound.stop();
