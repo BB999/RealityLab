@@ -1,1 +1,1 @@
-if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/drone-copter/sw.js', { scope: '/drone-copter/' })})}
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/RealityLab/drone-copter/dist/sw.js', { scope: '/RealityLab/drone-copter/dist/' })})}
