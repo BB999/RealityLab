@@ -101,8 +101,12 @@ export let detectedPlanes = new Map();
 export let vrBackground = null;
 export let gridHelper = null;
 export let vrObstacles = [];
+export let vrFloor = null;
+export let vrShadowLight = null;
 
 export function setVrObstacles(value) { vrObstacles = value; }
+export function setVrFloor(value) { vrFloor = value; }
+export function setVrShadowLight(value) { vrShadowLight = value; }
 
 // ハンドトラッキングとグリップ機能用変数
 export let hand1 = null;

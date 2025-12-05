@@ -178,7 +178,22 @@ function render() {
   // FPVモードのカメラオフセット更新
   updateFpvCamera();
 
+  // VRモード時の影用ライト位置をドローンに追従
+  updateShadowLight();
+
   state.renderer.render(state.scene, state.camera);
+}
+
+// 影用ライトの位置をドローンに追従させる
+function updateShadowLight() {
+  if (!state.vrShadowLight || !state.drone || !state.dronePositioned) return;
+
+  const dronePos = state.drone.position;
+  // ライトをドローンの真上に配置
+  state.vrShadowLight.position.set(dronePos.x, dronePos.y + 10, dronePos.z);
+  // ターゲットをドローン位置に設定
+  state.vrShadowLight.target.position.copy(dronePos);
+  state.vrShadowLight.target.updateMatrixWorld();
 }
 
 // FPVカメラの更新

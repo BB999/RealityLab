@@ -12,6 +12,48 @@ export function createVREnvironment() {
   state.scene.add(gridHelper);
   state.setGridHelper(gridHelper);
 
+  // 影を受ける床面を追加
+  const floorGeometry = new THREE.PlaneGeometry(gridSize, gridSize);
+  const floorMaterial = new THREE.ShadowMaterial({
+    opacity: 0.3
+  });
+  const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = 0.001;
+  floor.receiveShadow = true;
+  state.scene.add(floor);
+  state.setVrFloor(floor);
+
+  // 影用のディレクショナルライトを追加
+  const shadowLight = new THREE.DirectionalLight(0xffffff, 0.5);
+  shadowLight.position.set(0, 10, 0);
+  shadowLight.castShadow = true;
+  shadowLight.shadow.mapSize.width = 1024;
+  shadowLight.shadow.mapSize.height = 1024;
+  shadowLight.shadow.camera.near = 0.5;
+  shadowLight.shadow.camera.far = 50;
+  shadowLight.shadow.camera.left = -3;
+  shadowLight.shadow.camera.right = 3;
+  shadowLight.shadow.camera.top = 3;
+  shadowLight.shadow.camera.bottom = -3;
+  state.scene.add(shadowLight);
+  // ターゲットもシーンに追加（位置更新を反映させるため）
+  state.scene.add(shadowLight.target);
+  state.setVrShadowLight(shadowLight);
+
+  // レンダラーの影を有効化
+  state.renderer.shadowMap.enabled = true;
+  state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  // ドローンに影を付ける
+  if (state.drone) {
+    state.drone.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+      }
+    });
+  }
+
   // 練習用障害物を配置
   createTrainingObstacles();
 
@@ -119,6 +161,21 @@ export function removeVREnvironment() {
   if (state.gridHelper) {
     state.scene.remove(state.gridHelper);
     state.setGridHelper(null);
+  }
+
+  // 床面を削除
+  if (state.vrFloor) {
+    state.scene.remove(state.vrFloor);
+    state.vrFloor.geometry.dispose();
+    state.vrFloor.material.dispose();
+    state.setVrFloor(null);
+  }
+
+  // 影用ライトを削除
+  if (state.vrShadowLight) {
+    state.scene.remove(state.vrShadowLight.target);
+    state.scene.remove(state.vrShadowLight);
+    state.setVrShadowLight(null);
   }
 
   // 障害物を削除
