@@ -519,15 +519,7 @@ let guideMenuTexture = null;
 // コントローラーガイドメニューを作成
 export function createControllerGuideMenu() {
   if (state.controllerGuideMenu) {
-    state.scene.remove(state.controllerGuideMenu);
-    state.controllerGuideMenu.traverse((child) => {
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) {
-        if (child.material.map) child.material.map.dispose();
-        child.material.dispose();
-      }
-    });
-    state.setControllerGuideMenu(null);
+    return;
   }
 
   // キャンバスでメニュー全体を描画
@@ -537,8 +529,11 @@ export function createControllerGuideMenu() {
   const canvas = guideMenuCanvas;
   const ctx = canvas.getContext('2d');
 
-  // 背景（グラデーション風の暗い色）
-  ctx.fillStyle = 'rgba(10, 10, 26, 0.95)';
+  // キャンバスをクリア（透明）
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 背景（半透明）
+  ctx.fillStyle = 'rgba(10, 10, 26, 0.7)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // 枠線（シアン）
@@ -752,9 +747,16 @@ export function createControllerGuideMenu() {
   });
 
   const menuMesh = new THREE.Mesh(geometry, material);
+  menuMesh.scale.set(0.01, 0.01, 0.01); // 最初は小さく
+  menuMesh.material.opacity = 0;
   state.scene.add(menuMesh);
   state.setControllerGuideMenu(menuMesh);
   state.setIsControllerGuideVisible(true);
+
+  // アニメーション開始
+  state.setControllerGuideAnimProgress(0);
+  state.setControllerGuideAnimating(true);
+  state.setControllerGuideAnimDirection(1);
 }
 
 // コントローラーガイドメニューを再描画（ボタン状態を反映）
@@ -764,8 +766,11 @@ export function redrawControllerGuideMenu(pressedButtons) {
   const canvas = guideMenuCanvas;
   const ctx = canvas.getContext('2d');
 
-  // 背景（グラデーション風の暗い色）
-  ctx.fillStyle = 'rgba(10, 10, 26, 0.95)';
+  // キャンバスをクリア（透明）
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 背景（半透明）
+  ctx.fillStyle = 'rgba(10, 10, 26, 0.7)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // 枠線（シアン）
@@ -984,8 +989,19 @@ export function redrawControllerGuideMenu(pressedButtons) {
   guideMenuTexture.needsUpdate = true;
 }
 
-// コントローラーガイドメニューを削除
+// コントローラーガイドメニューを削除（アニメーション開始）
 export function removeControllerGuideMenu() {
+  if (state.controllerGuideMenu && !state.controllerGuideAnimating) {
+    // 閉じるアニメーションを開始
+    state.setControllerGuideAnimProgress(1);
+    state.setControllerGuideAnimating(true);
+    state.setControllerGuideAnimDirection(-1);
+    state.setIsControllerGuideVisible(false);
+  }
+}
+
+// コントローラーガイドメニューを実際に削除（アニメーション完了後に呼ばれる）
+function destroyControllerGuideMenu() {
   if (state.controllerGuideMenu) {
     state.scene.remove(state.controllerGuideMenu);
     state.controllerGuideMenu.traverse((child) => {
@@ -996,13 +1012,17 @@ export function removeControllerGuideMenu() {
       }
     });
     state.setControllerGuideMenu(null);
-    state.setIsControllerGuideVisible(false);
+    guideMenuCanvas = null;
+    guideMenuTexture = null;
   }
 }
 
 // コントローラーガイドメニューをトグル
 export function toggleControllerGuideMenu() {
-  if (state.isControllerGuideVisible) {
+  // アニメーション中は操作を受け付けない
+  if (state.controllerGuideAnimating) return;
+
+  if (state.isControllerGuideVisible || state.controllerGuideMenu) {
     removeControllerGuideMenu();
     playWindowCloseSound();
   } else {
@@ -1030,9 +1050,9 @@ const settingsItems = [
     getValue: () => state.stickDeadzone,
     setValue: (v) => state.setStickDeadzone(v),
     defaultValue: 0.15,
-    min: 0.05,
+    min: 0.01,
     max: 0.35,
-    step: 0.05,
+    step: 0.01,
     format: (v) => (v * 100).toFixed(0) + '%'
   },
   {
@@ -1042,10 +1062,16 @@ const settingsItems = [
     type: 'value',
     getValue: () => state.acceleration,
     setValue: (v) => state.setAcceleration(v),
-    defaultValue: 0.001,
-    min: 0.0005,
+    getDefaultValue: () => {
+      // 速度レベルとサイズに応じたデフォルト値を計算
+      const speedMultiplier = 0.05 + (state.speedLevel - 1) * (3.0 - 0.05) / 19;
+      const sizeMultiplier = Math.pow(state.currentDroneScale / 0.3, 0.5);
+      const clampedSizeMultiplier = Math.max(0.5, Math.min(2.0, sizeMultiplier));
+      return state.baseAcceleration * speedMultiplier * clampedSizeMultiplier;
+    },
+    min: 0.0001,
     max: 0.003,
-    step: 0.0005,
+    step: 0.0001,
     format: (v) => (v * 1000).toFixed(1)
   },
   {
@@ -1077,25 +1103,33 @@ const settingsItems = [
     step: 0.1,
     format: (v) => v.toFixed(1)
   },
+  {
+    name: '旋回スピード',
+    description: '左スティック横の回転速度',
+    key: 'angularSpeed',
+    type: 'value',
+    getValue: () => state.maxAngularSpeed,
+    setValue: (v) => {
+      state.setMaxAngularSpeed(v);
+      state.setAngularAcceleration(v * 0.025);
+    },
+    defaultValue: 0.06,
+    min: 0.02,
+    max: 0.12,
+    step: 0.01,
+    format: (v) => (v * 100).toFixed(0) + '%'
+  },
 ];
 
 // 設定メニューを作成
 export function createSettingsMenu() {
   if (state.settingsMenu) {
-    state.scene.remove(state.settingsMenu);
-    state.settingsMenu.traverse((child) => {
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) {
-        if (child.material.map) child.material.map.dispose();
-        child.material.dispose();
-      }
-    });
-    state.setSettingsMenu(null);
+    return;
   }
 
   settingsMenuCanvas = document.createElement('canvas');
   settingsMenuCanvas.width = 700;
-  settingsMenuCanvas.height = 550;
+  settingsMenuCanvas.height = 700;
 
   redrawSettingsMenu(null);
 
@@ -1115,10 +1149,17 @@ export function createSettingsMenu() {
   });
 
   const menuMesh = new THREE.Mesh(geometry, material);
+  menuMesh.scale.set(0.01, 0.01, 0.01); // 最初は小さく
+  menuMesh.material.opacity = 0;
   state.scene.add(menuMesh);
   state.setSettingsMenu(menuMesh);
   state.setIsSettingsMenuVisible(true);
   state.setSettingsMenuSelectedIndex(0);
+
+  // アニメーション開始
+  state.setSettingsMenuAnimProgress(0);
+  state.setSettingsMenuAnimating(true);
+  state.setSettingsMenuAnimDirection(1);
 
   // レーザーライン作成
   createSettingsLaser();
@@ -1134,8 +1175,11 @@ export function redrawSettingsMenu(hoveredButton) {
   // ボタン領域をクリア
   settingsButtonAreas = [];
 
-  // 背景
-  ctx.fillStyle = 'rgba(10, 10, 26, 0.95)';
+  // キャンバスをクリア（透明）
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 背景（半透明）
+  ctx.fillStyle = 'rgba(10, 10, 26, 0.7)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // 枠線
@@ -1253,7 +1297,8 @@ export function redrawSettingsMenu(hoveredButton) {
     const defaultBtnY = y + 5;
     const defaultBtnW = 80;
     const isDefaultHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'default';
-    const isDefault = Math.abs(value - item.defaultValue) < 0.0001;
+    const defaultVal = item.getDefaultValue ? item.getDefaultValue() : item.defaultValue;
+    const isDefault = Math.abs(value - defaultVal) < 0.0001;
 
     ctx.fillStyle = isDefaultHovered ? 'rgba(255, 107, 107, 0.8)' : (isDefault ? 'rgba(100, 100, 100, 0.3)' : 'rgba(255, 107, 107, 0.3)');
     ctx.beginPath();
@@ -1276,25 +1321,26 @@ export function redrawSettingsMenu(hoveredButton) {
     y += itemHeight;
   });
 
-  // 操作説明
+  // 操作説明（設定項目の下: y=110 + 100*5 = 610、+10で620）
+  const bottomLineY = 620;
   ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(40, canvas.height - 80);
-  ctx.lineTo(canvas.width - 40, canvas.height - 80);
+  ctx.moveTo(40, bottomLineY);
+  ctx.lineTo(canvas.width - 40, bottomLineY);
   ctx.stroke();
 
   ctx.font = '16px Arial';
   ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
   ctx.textAlign = 'center';
-  ctx.fillText('右コントローラーのレーザーで操作', canvas.width / 2, canvas.height - 50);
+  ctx.fillText('右コントローラーのレーザーで操作', canvas.width / 2, bottomLineY + 30);
 
   // 閉じる説明
   ctx.font = 'bold 22px Arial';
   ctx.fillStyle = '#ffff00';
   ctx.shadowColor = 'rgba(255, 255, 0, 0.5)';
   ctx.shadowBlur = 10;
-  ctx.fillText('X ボタンで閉じる', canvas.width / 2, canvas.height - 20);
+  ctx.fillText('X ボタンで閉じる', canvas.width / 2, bottomLineY + 60);
   ctx.shadowBlur = 0;
 
   if (settingsMenuTexture) {
@@ -1302,8 +1348,19 @@ export function redrawSettingsMenu(hoveredButton) {
   }
 }
 
-// 設定メニューを削除
+// 設定メニューを削除（アニメーション開始）
 export function removeSettingsMenu() {
+  if (state.settingsMenu && !state.settingsMenuAnimating) {
+    // 閉じるアニメーションを開始
+    state.setSettingsMenuAnimProgress(1);
+    state.setSettingsMenuAnimating(true);
+    state.setSettingsMenuAnimDirection(-1);
+    state.setIsSettingsMenuVisible(false);
+  }
+}
+
+// 設定メニューを実際に削除（アニメーション完了後に呼ばれる）
+function destroySettingsMenu() {
   if (state.settingsMenu) {
     state.scene.remove(state.settingsMenu);
     state.settingsMenu.traverse((child) => {
@@ -1314,7 +1371,6 @@ export function removeSettingsMenu() {
       }
     });
     state.setSettingsMenu(null);
-    state.setIsSettingsMenuVisible(false);
     settingsMenuCanvas = null;
     settingsMenuTexture = null;
     settingsButtonAreas = [];
@@ -1326,7 +1382,10 @@ export function removeSettingsMenu() {
 
 // 設定メニューをトグル
 export function toggleSettingsMenu() {
-  if (state.isSettingsMenuVisible) {
+  // アニメーション中は操作を受け付けない
+  if (state.settingsMenuAnimating) return;
+
+  if (state.isSettingsMenuVisible || state.settingsMenu) {
     removeSettingsMenu();
     playWindowCloseSound();
   } else {
@@ -1383,8 +1442,50 @@ function removeSettingsLaser() {
 // レーザーのクリック判定用クールダウン
 let laserClickCooldown = 0;
 
-// 設定メニューの位置を更新（左コントローラー上に常に追従）
+// 設定メニューのアニメーション更新
+export function updateSettingsMenuAnimation() {
+  if (!state.settingsMenuAnimating) return;
+
+  const animSpeed = 0.08;
+
+  if (state.settingsMenuAnimDirection === 1) {
+    // 開くアニメーション
+    let progress = state.settingsMenuAnimProgress + animSpeed;
+    if (progress >= 1) {
+      progress = 1;
+      state.setSettingsMenuAnimating(false);
+    }
+    state.setSettingsMenuAnimProgress(progress);
+
+    if (state.settingsMenu) {
+      const easedProgress = easeOutBack(progress);
+      const scale = easedProgress;
+      state.settingsMenu.scale.set(scale, scale, scale);
+      state.settingsMenu.material.opacity = Math.min(1, progress * 1.5);
+    }
+  } else {
+    // 閉じるアニメーション
+    let progress = state.settingsMenuAnimProgress - animSpeed;
+    if (progress <= 0) {
+      progress = 0;
+      state.setSettingsMenuAnimating(false);
+      destroySettingsMenu();
+    }
+    state.setSettingsMenuAnimProgress(progress);
+
+    if (state.settingsMenu) {
+      const easedProgress = easeInBack(progress);
+      const scale = Math.max(0.01, easedProgress);
+      state.settingsMenu.scale.set(scale, scale, scale);
+      state.settingsMenu.material.opacity = progress;
+    }
+  }
+}
+
 export function updateSettingsMenu() {
+  // アニメーション更新
+  updateSettingsMenuAnimation();
+
   if (!state.settingsMenu || !state.xrSession) return;
 
   const inputSources = state.xrSession.inputSources;
@@ -1527,13 +1628,71 @@ function handleSettingsButtonClick(button) {
     playCursorSound();
   } else if (button.type === 'default') {
     // デフォルト値に戻す
-    item.setValue(item.defaultValue);
+    const defaultVal = item.getDefaultValue ? item.getDefaultValue() : item.defaultValue;
+    item.setValue(defaultVal);
     playButtonSound();
+  }
+}
+
+// イージング関数（バウンス風のエフェクト）
+function easeOutBack(t) {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
+// イージング関数（滑らかな加速）
+function easeInBack(t) {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return c3 * t * t * t - c1 * t * t;
+}
+
+// コントローラーガイドメニューのアニメーション更新
+export function updateControllerGuideAnimation() {
+  if (!state.controllerGuideAnimating) return;
+
+  const animSpeed = 0.08;
+
+  if (state.controllerGuideAnimDirection === 1) {
+    // 開くアニメーション
+    let progress = state.controllerGuideAnimProgress + animSpeed;
+    if (progress >= 1) {
+      progress = 1;
+      state.setControllerGuideAnimating(false);
+    }
+    state.setControllerGuideAnimProgress(progress);
+
+    if (state.controllerGuideMenu) {
+      const easedProgress = easeOutBack(progress);
+      const scale = easedProgress;
+      state.controllerGuideMenu.scale.set(scale, scale, scale);
+      state.controllerGuideMenu.material.opacity = Math.min(1, progress * 1.5);
+    }
+  } else {
+    // 閉じるアニメーション
+    let progress = state.controllerGuideAnimProgress - animSpeed;
+    if (progress <= 0) {
+      progress = 0;
+      state.setControllerGuideAnimating(false);
+      destroyControllerGuideMenu();
+    }
+    state.setControllerGuideAnimProgress(progress);
+
+    if (state.controllerGuideMenu) {
+      const easedProgress = easeInBack(progress);
+      const scale = Math.max(0.01, easedProgress);
+      state.controllerGuideMenu.scale.set(scale, scale, scale);
+      state.controllerGuideMenu.material.opacity = progress;
+    }
   }
 }
 
 // コントローラーガイドメニューの位置を更新（右コントローラー上に常に追従、角度は水平固定）
 export function updateControllerGuideMenu() {
+  // アニメーション更新
+  updateControllerGuideAnimation();
+
   if (!state.controllerGuideMenu || !state.xrSession) return;
 
   const inputSources = state.xrSession.inputSources;

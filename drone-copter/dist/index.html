@@ -52,7 +52,7 @@
       height: 100%;
       background:
         radial-gradient(ellipse at 20% 20%, rgba(0, 200, 255, 0.1) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 80%, rgba(138, 43, 226, 0.1) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(255, 107, 107, 0.1) 0%, transparent 50%),
         radial-gradient(ellipse at 50% 50%, rgba(0, 255, 150, 0.05) 0%, transparent 60%);
       pointer-events: none;
       animation: pulseBackground 8s ease-in-out infinite;
@@ -142,133 +142,6 @@
       transform: translate(-50%, -50%);
     }
 
-    /* Controller Section */
-    .controller-section {
-      width: 100%;
-      max-width: 1000px;
-      margin-bottom: 30px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .section-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: clamp(1.2rem, 4vw, 1.8rem);
-      color: #00c8ff;
-      text-align: center;
-      margin-bottom: 20px;
-      padding-bottom: 10px;
-      border-bottom: 2px solid rgba(0, 200, 255, 0.3);
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-    }
-
-    .controller-container {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 20px;
-    }
-
-    /* Controller Card */
-    .controller-card {
-      background: rgba(20, 20, 50, 0.8);
-      border: 1px solid rgba(0, 200, 255, 0.3);
-      border-radius: 15px;
-      padding: 20px;
-      width: 100%;
-      max-width: 450px;
-      backdrop-filter: blur(10px);
-      box-shadow:
-        0 0 20px rgba(0, 200, 255, 0.1),
-        inset 0 0 30px rgba(0, 200, 255, 0.05);
-      transition: all 0.3s ease;
-    }
-
-    .controller-card:hover {
-      border-color: rgba(0, 200, 255, 0.6);
-      box-shadow:
-        0 0 30px rgba(0, 200, 255, 0.2),
-        inset 0 0 40px rgba(0, 200, 255, 0.1);
-    }
-
-    .controller-card h3 {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 1.3rem;
-      color: #00c8ff;
-      margin-bottom: 15px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .controller-card h3::before {
-      content: '';
-      width: 30px;
-      height: 30px;
-      background: linear-gradient(135deg, #00c8ff, #8a2be2);
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .controller-card.left h3::before {
-      content: 'L';
-      color: #0a0a1a;
-      font-weight: bold;
-      font-size: 14px;
-      text-align: center;
-      line-height: 30px;
-    }
-
-    .controller-card.right h3::before {
-      content: 'R';
-      color: #0a0a1a;
-      font-weight: bold;
-      font-size: 14px;
-      text-align: center;
-      line-height: 30px;
-    }
-
-    /* Control Item */
-    .control-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px;
-      margin-bottom: 8px;
-      background: rgba(0, 200, 255, 0.05);
-      border-radius: 8px;
-      border-left: 3px solid transparent;
-      transition: all 0.2s ease;
-    }
-
-    .control-item:hover {
-      background: rgba(0, 200, 255, 0.1);
-      border-left-color: #00c8ff;
-    }
-
-    .control-button {
-      min-width: 80px;
-      padding: 6px 12px;
-      background: linear-gradient(135deg, rgba(0, 200, 255, 0.2), rgba(138, 43, 226, 0.2));
-      border: 1px solid rgba(0, 200, 255, 0.5);
-      border-radius: 6px;
-      color: #00c8ff;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.8rem;
-      font-weight: 700;
-      text-align: center;
-      white-space: nowrap;
-    }
-
-    .control-description {
-      color: rgba(255, 255, 255, 0.9);
-      font-size: 0.95rem;
-      flex: 1;
-    }
-
     /* Action Buttons */
     .action-buttons {
       display: flex;
@@ -326,48 +199,22 @@
     }
 
     .vr-btn {
-      background: linear-gradient(135deg, #8a2be2 0%, #6a0dad 100%);
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
       color: #fff;
       box-shadow:
-        0 0 20px rgba(138, 43, 226, 0.4),
+        0 0 20px rgba(255, 107, 107, 0.4),
         0 5px 15px rgba(0, 0, 0, 0.3);
     }
 
     .vr-btn:hover {
       transform: translateY(-3px);
       box-shadow:
-        0 0 30px rgba(138, 43, 226, 0.6),
+        0 0 30px rgba(255, 107, 107, 0.6),
         0 8px 25px rgba(0, 0, 0, 0.4);
     }
 
     .action-btn:active {
       transform: translateY(0);
-    }
-
-    /* Hand Tracking Info */
-    .hand-tracking-info {
-      background: rgba(0, 255, 150, 0.1);
-      border: 1px solid rgba(0, 255, 150, 0.3);
-      border-radius: 12px;
-      padding: 15px 20px;
-      margin-top: 20px;
-      max-width: 600px;
-      text-align: center;
-      position: relative;
-      z-index: 1;
-    }
-
-    .hand-tracking-info h4 {
-      font-family: 'Orbitron', sans-serif;
-      color: #00ff96;
-      margin-bottom: 10px;
-      font-size: 1rem;
-    }
-
-    .hand-tracking-info p {
-      color: rgba(255, 255, 255, 0.8);
-      font-size: 0.9rem;
-      line-height: 1.5;
     }
 
     /* Footer */
@@ -441,24 +288,169 @@
 
     /* Responsive */
     @media (max-width: 600px) {
-      .controller-card {
-        padding: 15px;
-      }
-      .control-button {
-        min-width: 70px;
-        font-size: 0.7rem;
-        padding: 5px 8px;
-      }
-      .control-description {
-        font-size: 0.85rem;
-      }
       .action-btn {
         padding: 15px 35px;
         font-size: 1rem;
       }
     }
+
+    /* BGM Button */
+    .bgm-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 200, 255, 0.6);
+      background: rgba(10, 10, 30, 0.8);
+      color: #00c8ff;
+      font-size: 1.5rem;
+      cursor: pointer;
+      z-index: 2100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      box-shadow: 0 0 15px rgba(0, 200, 255, 0.3);
+    }
+
+    .bgm-btn:hover {
+      background: rgba(0, 200, 255, 0.2);
+      box-shadow: 0 0 25px rgba(0, 200, 255, 0.5);
+      transform: scale(1.1);
+    }
+
+    .bgm-btn.playing {
+      border-color: rgba(0, 255, 150, 0.8);
+      color: #00ff96;
+      box-shadow: 0 0 20px rgba(0, 255, 150, 0.5);
+      animation: bgmPulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes bgmPulse {
+      0%, 100% { box-shadow: 0 0 15px rgba(0, 255, 150, 0.4); }
+      50% { box-shadow: 0 0 25px rgba(0, 255, 150, 0.7); }
+    }
+
+    /* Credits Button */
+    .credits-btn {
+      margin-top: 30px;
+      padding: 15px 50px;
+      border-radius: 30px;
+      border: 2px solid rgba(0, 200, 255, 0.5);
+      background: transparent;
+      color: rgba(0, 200, 255, 0.9);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .credits-btn:hover {
+      background: rgba(0, 200, 255, 0.1);
+      border-color: rgba(0, 200, 255, 0.8);
+      color: #00c8ff;
+      box-shadow: 0 0 15px rgba(0, 200, 255, 0.3);
+    }
+
+    /* Back Button */
+    .back-btn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      padding: 10px 20px;
+      border-radius: 25px;
+      border: 2px solid rgba(0, 200, 255, 0.6);
+      background: rgba(10, 10, 30, 0.8);
+      color: #00c8ff;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      z-index: 2100;
+      transition: all 0.3s ease;
+      box-shadow: 0 0 15px rgba(0, 200, 255, 0.3);
+      display: none;
+    }
+
+    .back-btn:hover {
+      background: rgba(0, 200, 255, 0.2);
+      box-shadow: 0 0 25px rgba(0, 200, 255, 0.5);
+      transform: scale(1.05);
+    }
+
+    /* Credits Page */
+    #credits-page {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2050;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0d0d2a 100%);
+    }
+
+    .credits-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(1.8rem, 5vw, 3rem);
+      font-weight: 700;
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 40px;
+      text-shadow:
+        0 0 10px rgba(0, 200, 255, 0.8),
+        0 0 20px rgba(0, 200, 255, 0.5);
+    }
+
+    .credits-list {
+      display: flex;
+      flex-direction: column;
+      gap: 25px;
+      text-align: center;
+    }
+
+    .credit-item {
+      background: rgba(0, 200, 255, 0.05);
+      border: 1px solid rgba(0, 200, 255, 0.3);
+      border-radius: 15px;
+      padding: 20px 40px;
+      transition: all 0.3s ease;
+    }
+
+    .credit-item:hover {
+      background: rgba(0, 200, 255, 0.1);
+      border-color: rgba(0, 200, 255, 0.6);
+      box-shadow: 0 0 20px rgba(0, 200, 255, 0.3);
+      transform: translateY(-3px);
+    }
+
+    .credit-category {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.9rem;
+      color: rgba(0, 200, 255, 0.7);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 8px;
+    }
+
+    .credit-name {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: #fff;
+      text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
+    }
   </style>
-  <script type="module" crossorigin src="/assets/index-CCZje4aw.js"></script>
+  <script type="module" crossorigin src="/assets/index-D9T57GeD.js"></script>
 </head>
 <body>
   <div id="app"></div>
@@ -480,100 +472,42 @@
         <button class="action-btn mr-btn" id="landing-mr-btn">MR を開始</button>
         <button class="action-btn vr-btn" id="landing-vr-btn">VR を開始</button>
       </div>
-    </div>
 
-    <!-- Controller Section -->
-    <div class="controller-section">
-      <h2 class="section-title">Controller Guide</h2>
-
-      <div class="controller-container">
-        <!-- Left Controller -->
-        <div class="controller-card left">
-          <h3>左コントローラー</h3>
-
-          <div class="control-item">
-            <span class="control-button">スティック↑↓</span>
-            <span class="control-description">前進 / 後退</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">スティック←→</span>
-            <span class="control-description">左旋回 / 右旋回</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">X ボタン</span>
-            <span class="control-description">起動 / 終了シーケンス</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">Y ボタン</span>
-            <span class="control-description">衝突判定 ON/OFF</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">トリガー</span>
-            <span class="control-description">速度ダウン</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">グリップ</span>
-            <span class="control-description">ドローンを掴む</span>
-          </div>
-        </div>
-
-        <!-- Right Controller -->
-        <div class="controller-card right">
-          <h3>右コントローラー</h3>
-
-          <div class="control-item">
-            <span class="control-button">スティック↑↓</span>
-            <span class="control-description">上昇 / 下降</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">スティック←→</span>
-            <span class="control-description">左移動 / 右移動</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">スティック押込</span>
-            <span class="control-description">HUDモード ON/OFF</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">A ボタン</span>
-            <span class="control-description">サウンド ON/OFF</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">B ボタン</span>
-            <span class="control-description">自動帰還モード</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">トリガー</span>
-            <span class="control-description">速度アップ</span>
-          </div>
-
-          <div class="control-item">
-            <span class="control-button">グリップ</span>
-            <span class="control-description">ドローンを掴む</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Hand Tracking Info -->
-    <div class="hand-tracking-info">
-      <h4>ハンドトラッキング対応</h4>
-      <p>コントローラーなしでも操作可能。ピンチジェスチャーでドローンを掴んで移動・スケール変更ができます。</p>
+      <!-- Credits Button -->
+      <button class="credits-btn" id="credits-btn">CREDITS</button>
     </div>
 
     <div class="footer-info">
       <p>Quest 3 / Quest Pro 対応 | WebXR Immersive Experience</p>
+      <p style="margin-top: 10px;">created by noranekob</p>
+    </div>
+
+    <!-- BGM Button -->
+    <button class="bgm-btn" id="bgm-btn" title="BGM ON/OFF">&#9835;</button>
+  </div>
+
+  <!-- Credits Page -->
+  <div id="credits-page">
+    <div class="grid-overlay"></div>
+    <h2 class="credits-title">CREDITS</h2>
+    <div class="credits-list">
+      <div class="credit-item">
+        <div class="credit-category">Sound Effects</div>
+        <div class="credit-name">効果音ラボ</div>
+      </div>
+      <div class="credit-item">
+        <div class="credit-category">Sound Effects</div>
+        <div class="credit-name">On-Jin ～音人～</div>
+      </div>
+      <div class="credit-item">
+        <div class="credit-category">Music</div>
+        <div class="credit-name">魔王魂</div>
+      </div>
     </div>
   </div>
+
+  <!-- Back Button -->
+  <button class="back-btn" id="back-btn">← BACK</button>
 
   <button id="start-button">MRを開始</button>
   <button id="vr-button">VRを開始</button>
