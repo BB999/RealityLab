@@ -182,6 +182,9 @@ export let fpvInitialDronePos = null;
 export let fpvInitialDroneRotationY = 0;
 export let wasFpvMode = false;
 
+// 言語設定（'ja': 日本語, 'en': 英語）
+export let currentLanguage = 'ja';
+
 // セッター関数群
 export function setScene(value) { scene = value; }
 export function setCamera(value) { camera = value; }
@@ -314,3 +317,4 @@ export function setFpvInitialCameraPos(value) { fpvInitialCameraPos = value; }
 export function setFpvInitialDronePos(value) { fpvInitialDronePos = value; }
 export function setFpvInitialDroneRotationY(value) { fpvInitialDroneRotationY = value; }
 export function setWasFpvMode(value) { wasFpvMode = value; }
+export function setCurrentLanguage(value) { currentLanguage = value; }

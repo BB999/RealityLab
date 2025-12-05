@@ -2,6 +2,164 @@ import * as THREE from 'three';
 import * as state from './state.js';
 import { playWindowOpenSound, playWindowCloseSound, playCursorSound, playButtonSound } from './sound.js';
 
+// 多言語テキスト定義
+const i18n = {
+  ja: {
+    // 設定ウィンドウ
+    settings: {
+      title: 'SETTINGS',
+      language: '言語',
+      languageDesc: '表示言語を選択',
+      deadzone: 'デッドゾーン',
+      deadzoneDesc: 'スティック入力の無効範囲',
+      acceleration: '加速度',
+      accelerationDesc: 'ドローンの加速の強さ',
+      friction: '摩擦',
+      frictionDesc: '高いほど滑らかに止まる',
+      tilt: '傾き量',
+      tiltDesc: '移動時のドローンの傾き',
+      angularSpeed: '旋回スピード',
+      angularSpeedDesc: '左スティック横の回転速度',
+      propellerSpeed: 'プロペラ速度',
+      propellerSpeedDesc: 'プロペラの回転速度',
+      fpvMode: 'FPVモード (実験的機能)',
+      fpvModeDesc: 'ドローン視点で操縦',
+      laserInstruction: '右コントローラーのレーザーで操作',
+      closeInstruction: 'X ボタンで閉じる',
+      returnToTitle: 'タイトルに戻る',
+      default: 'DEFAULT',
+      on: 'ON',
+      off: 'OFF',
+      japanese: '日本語',
+      english: 'English'
+    },
+    // コントローラーガイド
+    guide: {
+      title: 'CONTROLLER GUIDE',
+      leftController: '左コントローラー',
+      rightController: '右コントローラー',
+      stickUpDown: 'スティック↑↓',
+      stickLeftRight: 'スティック←→',
+      yButton: 'Y ボタン',
+      xButton: 'X ボタン',
+      aButton: 'A ボタン',
+      bButton: 'B ボタン',
+      stickPress: 'スティック押込',
+      trigger: 'トリガー',
+      grip: 'グリップ',
+      forwardBackward: '前進 / 後退',
+      turnLeftRight: '左旋回 / 右旋回',
+      startStop: '起動 / 終了',
+      settingsWindow: '設定ウィンドウ',
+      collisionToggle: '衝突 ON/OFF',
+      speedDown: '速度ダウン',
+      grabDrone: 'ドローンを掴む',
+      upDown: '上昇 / 下降',
+      moveLeftRight: '左移動 / 右移動',
+      thisMenu: 'このメニュー',
+      volumeToggle: '音量 ON/OFF',
+      autoReturn: '自動帰還',
+      speedUp: '速度アップ',
+      handTracking: 'ハンドトラッキング対応',
+      handTrackingDesc: 'ピンチジェスチャーでドローンを掴んで移動・スケール変更',
+      bothGrips: '両グリップ同時押し + 左右移動: ドローンサイズ変更',
+      closeWithA: 'A ボタンで閉じる',
+      footer: 'Quest 3 / Quest Pro 対応 | WebXR Immersive Experience'
+    },
+    // ステータステキスト
+    status: {
+      autoReturn: '自動帰還中',
+      volumeOn: 'Volume On',
+      volumeOff: 'Volume Off',
+      collisionOn: 'Collision On',
+      collisionOff: 'Collision Off',
+      trackingLostBoth: 'Controllers Tracking Lost',
+      trackingLostLeft: 'Left Controller Tracking Lost',
+      trackingLostRight: 'Right Controller Tracking Lost'
+    }
+  },
+  en: {
+    // Settings window
+    settings: {
+      title: 'SETTINGS',
+      language: 'Language',
+      languageDesc: 'Select display language',
+      deadzone: 'Deadzone',
+      deadzoneDesc: 'Stick input dead zone',
+      acceleration: 'Acceleration',
+      accelerationDesc: 'Drone acceleration strength',
+      friction: 'Friction',
+      frictionDesc: 'Higher = smoother stop',
+      tilt: 'Tilt Amount',
+      tiltDesc: 'Drone tilt during movement',
+      angularSpeed: 'Turn Speed',
+      angularSpeedDesc: 'Left stick horizontal rotation',
+      propellerSpeed: 'Propeller Speed',
+      propellerSpeedDesc: 'Propeller rotation speed',
+      fpvMode: 'FPV Mode (Experimental)',
+      fpvModeDesc: 'Fly from drone perspective',
+      laserInstruction: 'Use right controller laser to operate',
+      closeInstruction: 'Press X to close',
+      returnToTitle: 'Return to Title',
+      default: 'DEFAULT',
+      on: 'ON',
+      off: 'OFF',
+      japanese: '日本語',
+      english: 'English'
+    },
+    // Controller guide
+    guide: {
+      title: 'CONTROLLER GUIDE',
+      leftController: 'Left Controller',
+      rightController: 'Right Controller',
+      stickUpDown: 'Stick ↑↓',
+      stickLeftRight: 'Stick ←→',
+      yButton: 'Y Button',
+      xButton: 'X Button',
+      aButton: 'A Button',
+      bButton: 'B Button',
+      stickPress: 'Stick Press',
+      trigger: 'Trigger',
+      grip: 'Grip',
+      forwardBackward: 'Forward / Backward',
+      turnLeftRight: 'Turn Left / Right',
+      startStop: 'Start / Stop',
+      settingsWindow: 'Settings Window',
+      collisionToggle: 'Collision ON/OFF',
+      speedDown: 'Speed Down',
+      grabDrone: 'Grab Drone',
+      upDown: 'Up / Down',
+      moveLeftRight: 'Move Left / Right',
+      thisMenu: 'This Menu',
+      volumeToggle: 'Volume ON/OFF',
+      autoReturn: 'Auto Return',
+      speedUp: 'Speed Up',
+      handTracking: 'Hand Tracking Supported',
+      handTrackingDesc: 'Pinch gesture to grab drone and move/scale',
+      bothGrips: 'Both Grips + Move: Change Drone Size',
+      closeWithA: 'Press A to close',
+      footer: 'Quest 3 / Quest Pro Compatible | WebXR Immersive Experience'
+    },
+    // Status text
+    status: {
+      autoReturn: 'Auto Returning',
+      volumeOn: 'Volume On',
+      volumeOff: 'Volume Off',
+      collisionOn: 'Collision On',
+      collisionOff: 'Collision Off',
+      trackingLostBoth: 'Controllers Tracking Lost',
+      trackingLostLeft: 'Left Controller Tracking Lost',
+      trackingLostRight: 'Right Controller Tracking Lost'
+    }
+  }
+};
+
+// 現在の言語でテキストを取得するヘルパー関数
+function t(category, key) {
+  const lang = state.currentLanguage || 'ja';
+  return i18n[lang][category][key] || i18n['ja'][category][key] || key;
+}
+
 // 自動帰還中のテキストを作成
 export function createAutoReturnText() {
   if (state.autoReturnText) return;
@@ -559,12 +717,12 @@ export function createControllerGuideMenu() {
   ctx.fillRect(4, 4, canvas.width - 8, canvas.height - 8);
 
   // タイトル
-  ctx.font = 'bold 48px Orbitron, Arial';
+  ctx.font = 'bold 48px Arial';
   ctx.fillStyle = '#00c8ff';
   ctx.textAlign = 'center';
   ctx.shadowColor = 'rgba(0, 200, 255, 0.8)';
   ctx.shadowBlur = 20;
-  ctx.fillText('CONTROLLER GUIDE', canvas.width / 2, 60);
+  ctx.fillText(t('guide', 'title'), canvas.width / 2, 60);
   ctx.shadowBlur = 0;
 
   // 区切り線
@@ -588,22 +746,22 @@ export function createControllerGuideMenu() {
   ctx.roundRect(leftX - 100, y - 5, 200, 35, 8);
   ctx.fill();
 
-  ctx.font = 'bold 24px Orbitron, Arial';
+  ctx.font = 'bold 24px Arial';
   ctx.fillStyle = '#0a0a1a';
   ctx.textAlign = 'center';
-  ctx.fillText('左コントローラー', leftX, y + 20);
+  ctx.fillText(t('guide', 'leftController'), leftX, y + 20);
 
   y += 55;
 
   // 左コントローラーの操作一覧
   const leftControls = [
-    { button: 'スティック↑↓', desc: '前進 / 後退' },
-    { button: 'スティック←→', desc: '左旋回 / 右旋回' },
-    { button: 'Y ボタン', desc: '起動 / 終了' },
-    { button: 'X ボタン', desc: '設定ウィンドウ' },
-    { button: 'スティック押込', desc: '衝突 ON/OFF' },
-    { button: 'トリガー', desc: '速度ダウン' },
-    { button: 'グリップ', desc: 'ドローンを掴む' }
+    { button: t('guide', 'stickUpDown'), desc: t('guide', 'forwardBackward') },
+    { button: t('guide', 'stickLeftRight'), desc: t('guide', 'turnLeftRight') },
+    { button: t('guide', 'yButton'), desc: t('guide', 'startStop') },
+    { button: t('guide', 'xButton'), desc: t('guide', 'settingsWindow') },
+    { button: t('guide', 'stickPress'), desc: t('guide', 'collisionToggle') },
+    { button: t('guide', 'trigger'), desc: t('guide', 'speedDown') },
+    { button: t('guide', 'grip'), desc: t('guide', 'grabDrone') }
   ];
 
   leftControls.forEach((item) => {
@@ -645,22 +803,22 @@ export function createControllerGuideMenu() {
   ctx.roundRect(rightX - 100, y - 5, 200, 35, 8);
   ctx.fill();
 
-  ctx.font = 'bold 24px Orbitron, Arial';
+  ctx.font = 'bold 24px Arial';
   ctx.fillStyle = '#0a0a1a';
   ctx.textAlign = 'center';
-  ctx.fillText('右コントローラー', rightX, y + 20);
+  ctx.fillText(t('guide', 'rightController'), rightX, y + 20);
 
   y += 55;
 
   // 右コントローラーの操作一覧
   const rightControls = [
-    { button: 'スティック↑↓', desc: '上昇 / 下降' },
-    { button: 'スティック←→', desc: '左移動 / 右移動' },
-    { button: 'A ボタン', desc: 'このメニュー' },
-    { button: 'スティック押込', desc: '音量 ON/OFF' },
-    { button: 'B ボタン', desc: '自動帰還' },
-    { button: 'トリガー', desc: '速度アップ' },
-    { button: 'グリップ', desc: 'ドローンを掴む' }
+    { button: t('guide', 'stickUpDown'), desc: t('guide', 'upDown') },
+    { button: t('guide', 'stickLeftRight'), desc: t('guide', 'moveLeftRight') },
+    { button: t('guide', 'aButton'), desc: t('guide', 'thisMenu') },
+    { button: t('guide', 'stickPress'), desc: t('guide', 'volumeToggle') },
+    { button: t('guide', 'bButton'), desc: t('guide', 'autoReturn') },
+    { button: t('guide', 'trigger'), desc: t('guide', 'speedUp') },
+    { button: t('guide', 'grip'), desc: t('guide', 'grabDrone') }
   ];
 
   rightControls.forEach((item) => {
@@ -698,14 +856,14 @@ export function createControllerGuideMenu() {
   ctx.fill();
   ctx.stroke();
 
-  ctx.font = 'bold 22px Orbitron, Arial';
+  ctx.font = 'bold 22px Arial';
   ctx.fillStyle = '#00ff96';
   ctx.textAlign = 'center';
-  ctx.fillText('ハンドトラッキング対応', canvas.width / 2, 555);
+  ctx.fillText(t('guide', 'handTracking'), canvas.width / 2, 555);
 
-  ctx.font = '18px Rajdhani, Arial';
+  ctx.font = '18px Arial';
   ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-  ctx.fillText('ピンチジェスチャーでドローンを掴んで移動・スケール変更', canvas.width / 2, 585);
+  ctx.fillText(t('guide', 'handTrackingDesc'), canvas.width / 2, 585);
 
   // 両グリップ操作
   ctx.fillStyle = 'rgba(255, 200, 0, 0.1)';
@@ -715,9 +873,9 @@ export function createControllerGuideMenu() {
   ctx.fill();
   ctx.stroke();
 
-  ctx.font = 'bold 20px Orbitron, Arial';
+  ctx.font = 'bold 20px Arial';
   ctx.fillStyle = '#ffc800';
-  ctx.fillText('両グリップ同時押し: ドローンサイズ変更', canvas.width / 2, 660);
+  ctx.fillText(t('guide', 'bothGrips'), canvas.width / 2, 660);
 
   // 区切り線
   ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
@@ -728,17 +886,17 @@ export function createControllerGuideMenu() {
   ctx.stroke();
 
   // 閉じる説明
-  ctx.font = 'bold 28px Orbitron, Arial';
+  ctx.font = 'bold 28px Arial';
   ctx.fillStyle = '#ffff00';
   ctx.shadowColor = 'rgba(255, 255, 0, 0.5)';
   ctx.shadowBlur = 10;
-  ctx.fillText('A ボタンで閉じる', canvas.width / 2, 760);
+  ctx.fillText(t('guide', 'closeWithA'), canvas.width / 2, 760);
   ctx.shadowBlur = 0;
 
   // フッター
-  ctx.font = '16px Rajdhani, Arial';
+  ctx.font = '16px Arial';
   ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-  ctx.fillText('Quest 3 / Quest Pro 対応 | WebXR Immersive Experience', canvas.width / 2, 800);
+  ctx.fillText(t('guide', 'footer'), canvas.width / 2, 800);
 
   // テクスチャ作成
   guideMenuTexture = new THREE.CanvasTexture(canvas);
@@ -801,7 +959,7 @@ export function redrawControllerGuideMenu(pressedButtons) {
   ctx.textAlign = 'center';
   ctx.shadowColor = 'rgba(0, 200, 255, 0.8)';
   ctx.shadowBlur = 20;
-  ctx.fillText('CONTROLLER GUIDE', canvas.width / 2, 60);
+  ctx.fillText(t('guide', 'title'), canvas.width / 2, 60);
   ctx.shadowBlur = 0;
 
   // 区切り線
@@ -829,19 +987,19 @@ export function redrawControllerGuideMenu(pressedButtons) {
   ctx.font = 'bold 24px Arial';
   ctx.fillStyle = '#0a0a1a';
   ctx.textAlign = 'center';
-  ctx.fillText('左コントローラー', leftX, y + 20);
+  ctx.fillText(t('guide', 'leftController'), leftX, y + 20);
 
   y += 55;
 
   // 左コントローラーの操作一覧
   const leftControls = [
-    { button: 'スティック↑↓', desc: '前進 / 後退', key: 'leftStickY' },
-    { button: 'スティック←→', desc: '左旋回 / 右旋回', key: 'leftStickX' },
-    { button: 'Y ボタン', desc: '起動 / 終了', key: 'leftX' },
-    { button: 'X ボタン', desc: '設定ウィンドウ', key: 'leftY' },
-    { button: 'スティック押込', desc: '衝突 ON/OFF', key: 'leftStickPress' },
-    { button: 'トリガー', desc: '速度ダウン', key: 'leftTrigger' },
-    { button: 'グリップ', desc: 'ドローンを掴む', key: 'leftGrip' }
+    { button: t('guide', 'stickUpDown'), desc: t('guide', 'forwardBackward'), key: 'leftStickY' },
+    { button: t('guide', 'stickLeftRight'), desc: t('guide', 'turnLeftRight'), key: 'leftStickX' },
+    { button: t('guide', 'yButton'), desc: t('guide', 'startStop'), key: 'leftX' },
+    { button: t('guide', 'xButton'), desc: t('guide', 'settingsWindow'), key: 'leftY' },
+    { button: t('guide', 'stickPress'), desc: t('guide', 'collisionToggle'), key: 'leftStickPress' },
+    { button: t('guide', 'trigger'), desc: t('guide', 'speedDown'), key: 'leftTrigger' },
+    { button: t('guide', 'grip'), desc: t('guide', 'grabDrone'), key: 'leftGrip' }
   ];
 
   leftControls.forEach((item) => {
@@ -892,19 +1050,19 @@ export function redrawControllerGuideMenu(pressedButtons) {
   ctx.font = 'bold 24px Arial';
   ctx.fillStyle = '#0a0a1a';
   ctx.textAlign = 'center';
-  ctx.fillText('右コントローラー', rightX, y + 20);
+  ctx.fillText(t('guide', 'rightController'), rightX, y + 20);
 
   y += 55;
 
   // 右コントローラーの操作一覧
   const rightControls = [
-    { button: 'スティック↑↓', desc: '上昇 / 下降', key: 'rightStickY' },
-    { button: 'スティック←→', desc: '左移動 / 右移動', key: 'rightStickX' },
-    { button: 'A ボタン', desc: 'このメニュー', key: 'rightA' },
-    { button: 'スティック押込', desc: '音量 ON/OFF', key: 'rightStickPress' },
-    { button: 'B ボタン', desc: '自動帰還', key: 'rightB' },
-    { button: 'トリガー', desc: '速度アップ', key: 'rightTrigger' },
-    { button: 'グリップ', desc: 'ドローンを掴む', key: 'rightGrip' }
+    { button: t('guide', 'stickUpDown'), desc: t('guide', 'upDown'), key: 'rightStickY' },
+    { button: t('guide', 'stickLeftRight'), desc: t('guide', 'moveLeftRight'), key: 'rightStickX' },
+    { button: t('guide', 'aButton'), desc: t('guide', 'thisMenu'), key: 'rightA' },
+    { button: t('guide', 'stickPress'), desc: t('guide', 'volumeToggle'), key: 'rightStickPress' },
+    { button: t('guide', 'bButton'), desc: t('guide', 'autoReturn'), key: 'rightB' },
+    { button: t('guide', 'trigger'), desc: t('guide', 'speedUp'), key: 'rightTrigger' },
+    { button: t('guide', 'grip'), desc: t('guide', 'grabDrone'), key: 'rightGrip' }
   ];
 
   rightControls.forEach((item) => {
@@ -953,7 +1111,7 @@ export function redrawControllerGuideMenu(pressedButtons) {
   ctx.font = 'bold 20px Arial';
   ctx.fillStyle = bothGripsPressed ? '#000000' : '#ffc800';
   ctx.textAlign = 'center';
-  ctx.fillText('両グリップ同時押し: ドローンサイズ変更', canvas.width / 2, 558);
+  ctx.fillText(t('guide', 'bothGrips'), canvas.width / 2, 558);
 
   // ハンドトラッキング情報
   ctx.fillStyle = 'rgba(0, 255, 150, 0.1)';
@@ -967,11 +1125,11 @@ export function redrawControllerGuideMenu(pressedButtons) {
   ctx.font = 'bold 22px Arial';
   ctx.fillStyle = '#00ff96';
   ctx.textAlign = 'center';
-  ctx.fillText('ハンドトラッキング対応', canvas.width / 2, 635);
+  ctx.fillText(t('guide', 'handTracking'), canvas.width / 2, 635);
 
   ctx.font = '18px Arial';
   ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-  ctx.fillText('ピンチジェスチャーでドローンを掴んで移動・スケール変更', canvas.width / 2, 665);
+  ctx.fillText(t('guide', 'handTrackingDesc'), canvas.width / 2, 665);
 
   // 区切り線
   ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
@@ -986,13 +1144,13 @@ export function redrawControllerGuideMenu(pressedButtons) {
   ctx.fillStyle = '#ffff00';
   ctx.shadowColor = 'rgba(255, 255, 0, 0.5)';
   ctx.shadowBlur = 10;
-  ctx.fillText('A ボタンで閉じる', canvas.width / 2, 760);
+  ctx.fillText(t('guide', 'closeWithA'), canvas.width / 2, 760);
   ctx.shadowBlur = 0;
 
   // フッター
   ctx.font = '16px Arial';
   ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-  ctx.fillText('Quest 3 / Quest Pro 対応 | WebXR Immersive Experience', canvas.width / 2, 800);
+  ctx.fillText(t('guide', 'footer'), canvas.width / 2, 800);
 
   // テクスチャを更新
   guideMenuTexture.needsUpdate = true;
@@ -1049,11 +1207,20 @@ let settingsMenuHeight = 0;
 // ボタンの当たり判定領域を保存
 let settingsButtonAreas = [];
 
-// 設定項目の定義
+// 設定項目の定義（動的に名前と説明を取得）
 const settingsItems = [
   {
-    name: 'デッドゾーン',
-    description: 'スティック入力の無効範囲',
+    nameKey: 'language',
+    descKey: 'languageDesc',
+    key: 'language',
+    type: 'language',
+    getValue: () => state.currentLanguage,
+    setValue: (v) => state.setCurrentLanguage(v),
+    defaultValue: 'ja'
+  },
+  {
+    nameKey: 'deadzone',
+    descKey: 'deadzoneDesc',
     key: 'deadzone',
     type: 'value',
     getValue: () => state.stickDeadzone,
@@ -1065,8 +1232,8 @@ const settingsItems = [
     format: (v) => (v * 100).toFixed(0) + '%'
   },
   {
-    name: '加速度',
-    description: 'ドローンの加速の強さ',
+    nameKey: 'acceleration',
+    descKey: 'accelerationDesc',
     key: 'acceleration',
     type: 'value',
     getValue: () => state.acceleration,
@@ -1084,8 +1251,8 @@ const settingsItems = [
     format: (v) => (v * 1000).toFixed(1)
   },
   {
-    name: '摩擦',
-    description: '高いほど滑らかに止まる',
+    nameKey: 'friction',
+    descKey: 'frictionDesc',
     key: 'friction',
     type: 'value',
     getValue: () => state.friction,
@@ -1100,8 +1267,8 @@ const settingsItems = [
     format: (v) => v.toFixed(2)
   },
   {
-    name: '傾き量',
-    description: '移動時のドローンの傾き',
+    nameKey: 'tilt',
+    descKey: 'tiltDesc',
     key: 'tilt',
     type: 'value',
     getValue: () => state.tiltAmount,
@@ -1113,8 +1280,8 @@ const settingsItems = [
     format: (v) => v.toFixed(1)
   },
   {
-    name: '旋回スピード',
-    description: '左スティック横の回転速度',
+    nameKey: 'angularSpeed',
+    descKey: 'angularSpeedDesc',
     key: 'angularSpeed',
     type: 'value',
     getValue: () => state.maxAngularSpeed,
@@ -1129,8 +1296,8 @@ const settingsItems = [
     format: (v) => (v * 100).toFixed(0) + '%'
   },
   {
-    name: 'プロペラ速度',
-    description: 'プロペラの回転速度',
+    nameKey: 'propellerSpeed',
+    descKey: 'propellerSpeedDesc',
     key: 'propellerSpeed',
     type: 'value',
     getValue: () => state.propellerRotationSpeed,
@@ -1142,8 +1309,8 @@ const settingsItems = [
     format: (v) => (v * 100).toFixed(0) + '%'
   },
   {
-    name: 'FPVモード',
-    description: 'ドローン視点で操縦',
+    nameKey: 'fpvMode',
+    descKey: 'fpvModeDesc',
     key: 'fpvMode',
     type: 'toggle',
     getValue: () => state.isFpvMode,
@@ -1239,7 +1406,7 @@ export function redrawSettingsMenu(hoveredButton) {
   ctx.textAlign = 'center';
   ctx.shadowColor = 'rgba(0, 200, 255, 0.8)';
   ctx.shadowBlur = 15;
-  ctx.fillText('SETTINGS', canvas.width / 2, 50);
+  ctx.fillText(t('settings', 'title'), canvas.width / 2, 50);
   ctx.shadowBlur = 0;
 
   // 区切り線
@@ -1257,6 +1424,9 @@ export function redrawSettingsMenu(hoveredButton) {
 
   visibleItems.forEach((item, index) => {
     const value = item.getValue();
+    // nameKey/descKey から動的にテキストを取得
+    const itemName = item.nameKey ? t('settings', item.nameKey) : item.name;
+    const itemDesc = item.descKey ? t('settings', item.descKey) : item.description;
 
     // 項目の背景
     ctx.fillStyle = 'rgba(30, 30, 50, 0.5)';
@@ -1268,14 +1438,94 @@ export function redrawSettingsMenu(hoveredButton) {
     ctx.font = 'bold 22px Arial';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'left';
-    ctx.fillText(item.name, 40, y + 20);
+    ctx.fillText(itemName, 40, y + 20);
 
     // 説明文
     ctx.font = '14px Arial';
     ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.fillText(item.description, 40, y + 42);
+    ctx.fillText(itemDesc, 40, y + 42);
 
-    if (item.type === 'toggle') {
+    if (item.type === 'language') {
+      // 言語選択ボタン（日本語 / English）
+      const isJapanese = value === 'ja';
+      const btnWidth = 100;
+      const btnHeight = 50;
+      const btnSpacing = 10;
+      const startX = 380;
+
+      // 日本語ボタン
+      const jaBtnX = startX;
+      const jaBtnY = y + 5;
+      const isJaHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'langJa';
+
+      if (isJaHovered) {
+        ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';
+      } else if (isJapanese) {
+        ctx.fillStyle = 'rgba(0, 255, 150, 0.5)';
+      } else {
+        ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+      }
+      ctx.beginPath();
+      ctx.roundRect(jaBtnX, jaBtnY, btnWidth, btnHeight, 6);
+      ctx.fill();
+
+      if (isJaHovered) {
+        ctx.strokeStyle = '#ffff00';
+      } else if (isJapanese) {
+        ctx.strokeStyle = 'rgba(0, 255, 150, 0.8)';
+      } else {
+        ctx.strokeStyle = 'rgba(100, 100, 100, 0.8)';
+      }
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.font = 'bold 18px Arial';
+      ctx.fillStyle = isJaHovered ? '#000000' : (isJapanese ? '#00ff96' : 'rgba(255, 255, 255, 0.6)');
+      ctx.textAlign = 'center';
+      ctx.fillText(t('settings', 'japanese'), jaBtnX + btnWidth / 2, jaBtnY + btnHeight / 2 + 6);
+
+      settingsButtonAreas.push({
+        x: jaBtnX, y: jaBtnY, w: btnWidth, h: btnHeight,
+        index: index, type: 'langJa'
+      });
+
+      // Englishボタン
+      const enBtnX = startX + btnWidth + btnSpacing;
+      const enBtnY = y + 5;
+      const isEnHovered = hoveredButton && hoveredButton.index === index && hoveredButton.type === 'langEn';
+
+      if (isEnHovered) {
+        ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';
+      } else if (!isJapanese) {
+        ctx.fillStyle = 'rgba(0, 255, 150, 0.5)';
+      } else {
+        ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+      }
+      ctx.beginPath();
+      ctx.roundRect(enBtnX, enBtnY, btnWidth, btnHeight, 6);
+      ctx.fill();
+
+      if (isEnHovered) {
+        ctx.strokeStyle = '#ffff00';
+      } else if (!isJapanese) {
+        ctx.strokeStyle = 'rgba(0, 255, 150, 0.8)';
+      } else {
+        ctx.strokeStyle = 'rgba(100, 100, 100, 0.8)';
+      }
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.font = 'bold 18px Arial';
+      ctx.fillStyle = isEnHovered ? '#000000' : (!isJapanese ? '#00ff96' : 'rgba(255, 255, 255, 0.6)');
+      ctx.textAlign = 'center';
+      ctx.fillText(t('settings', 'english'), enBtnX + btnWidth / 2, enBtnY + btnHeight / 2 + 6);
+
+      settingsButtonAreas.push({
+        x: enBtnX, y: enBtnY, w: btnWidth, h: btnHeight,
+        index: index, type: 'langEn'
+      });
+
+    } else if (item.type === 'toggle') {
       // トグルボタン
       const toggleBtnX = 480;
       const toggleBtnY = y + 5;
@@ -1309,7 +1559,7 @@ export function redrawSettingsMenu(hoveredButton) {
       ctx.font = 'bold 22px Arial';
       ctx.fillStyle = isToggleHovered ? '#000000' : (isOn ? '#00ff96' : 'rgba(255, 255, 255, 0.6)');
       ctx.textAlign = 'center';
-      ctx.fillText(isOn ? 'ON' : 'OFF', toggleBtnX + toggleBtnW / 2, toggleBtnY + toggleBtnH / 2 + 8);
+      ctx.fillText(isOn ? t('settings', 'on') : t('settings', 'off'), toggleBtnX + toggleBtnW / 2, toggleBtnY + toggleBtnH / 2 + 8);
 
       settingsButtonAreas.push({
         x: toggleBtnX, y: toggleBtnY, w: toggleBtnW, h: toggleBtnH,
@@ -1391,7 +1641,7 @@ export function redrawSettingsMenu(hoveredButton) {
       ctx.font = 'bold 14px Arial';
       ctx.fillStyle = isDefaultHovered ? '#000000' : (isDefault ? 'rgba(255, 255, 255, 0.3)' : '#ff6b6b');
       ctx.textAlign = 'center';
-      ctx.fillText('DEFAULT', defaultBtnX + defaultBtnW / 2, defaultBtnY + btnSize / 2 + 5);
+      ctx.fillText(t('settings', 'default'), defaultBtnX + defaultBtnW / 2, defaultBtnY + btnSize / 2 + 5);
 
       settingsButtonAreas.push({
         x: defaultBtnX, y: defaultBtnY, w: defaultBtnW, h: btnSize,
@@ -1414,14 +1664,14 @@ export function redrawSettingsMenu(hoveredButton) {
   ctx.font = '16px Arial';
   ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
   ctx.textAlign = 'center';
-  ctx.fillText('右コントローラーのレーザーで操作', canvas.width / 2, bottomLineY + 30);
+  ctx.fillText(t('settings', 'laserInstruction'), canvas.width / 2, bottomLineY + 30);
 
   // 閉じる説明
-  ctx.font = 'bold 22px Arial';
+  ctx.font = 'bold 28px Arial';
   ctx.fillStyle = '#ffff00';
   ctx.shadowColor = 'rgba(255, 255, 0, 0.5)';
   ctx.shadowBlur = 10;
-  ctx.fillText('X ボタンで閉じる', canvas.width / 2, bottomLineY + 60);
+  ctx.fillText(t('settings', 'closeInstruction'), canvas.width / 2, bottomLineY + 60);
   ctx.shadowBlur = 0;
 
   // タイトルに戻るボタン
@@ -1442,7 +1692,7 @@ export function redrawSettingsMenu(hoveredButton) {
   ctx.font = 'bold 26px Arial';
   ctx.fillStyle = isReturnHovered ? '#000000' : '#ffffff';
   ctx.textAlign = 'center';
-  ctx.fillText('タイトルに戻る', canvas.width / 2, returnBtnY + returnBtnH / 2 + 9);
+  ctx.fillText(t('settings', 'returnToTitle'), canvas.width / 2, returnBtnY + returnBtnH / 2 + 9);
 
   settingsButtonAreas.push({
     x: returnBtnX, y: returnBtnY, w: returnBtnW, h: returnBtnH,
@@ -1735,7 +1985,15 @@ function handleSettingsButtonClick(button) {
   const visibleItems = settingsItems.filter(item => !item.isHidden || !item.isHidden());
   const item = visibleItems[button.index];
 
-  if (button.type === 'toggle') {
+  if (button.type === 'langJa') {
+    // 日本語を選択
+    item.setValue('ja');
+    playButtonSound();
+  } else if (button.type === 'langEn') {
+    // 英語を選択
+    item.setValue('en');
+    playButtonSound();
+  } else if (button.type === 'toggle') {
     // トグル切り替え
     const currentValue = item.getValue();
     item.setValue(!currentValue);
