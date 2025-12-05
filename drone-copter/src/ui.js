@@ -27,6 +27,7 @@ const i18n = {
       laserInstruction: '右コントローラーのレーザーで操作',
       closeInstruction: 'X ボタンで閉じる',
       returnToTitle: 'タイトルに戻る',
+      tutorial: 'チュートリアルを受ける',
       default: 'DEFAULT',
       on: 'ON',
       off: 'OFF',
@@ -76,6 +77,51 @@ const i18n = {
       trackingLostBoth: 'Controllers Tracking Lost',
       trackingLostLeft: 'Left Controller Tracking Lost',
       trackingLostRight: 'Right Controller Tracking Lost'
+    },
+    // ウェルカムウィンドウ
+    welcome: {
+      step: 'チュートリアル①',
+      stepEn: 'Tutorial 1',
+      title: 'ドローンの世界へようこそ',
+      titleEn: 'Welcome to Drone World',
+      instruction1: 'コントローラーの前にドローンが配置されます',
+      instruction1En: 'Drone will be placed in front of your controller',
+      nextWithA: 'A ボタンで次へ',
+      nextWithAEn: 'Press A to continue'
+    },
+    tutorial2: {
+      step: 'チュートリアル②',
+      stepEn: 'Tutorial 2',
+      title: 'ドローンの世界へようこそ',
+      titleEn: 'Welcome to Drone World',
+      instruction1: 'Aボタンでコントロールガイドを開く',
+      instruction2: 'こちらで操作方法を覚えましょう',
+      instruction1En: 'Press A button to open Controller Guide',
+      instruction2En: 'Learn how to operate here',
+      nextWithA: 'A ボタンで開く',
+      nextWithAEn: 'Press A to open'
+    },
+    tutorial3: {
+      step: 'チュートリアル③',
+      stepEn: 'Tutorial 3',
+      title: 'ドローンの世界へようこそ',
+      titleEn: 'Welcome to Drone World',
+      instruction1: 'Xボタンで各種設定ウィンドウが出ます',
+      instruction1En: 'Press X button to open Settings window',
+      nextWithA: 'X ボタンで開く',
+      nextWithAEn: 'Press X to open'
+    },
+    tutorial4: {
+      step: 'チュートリアル④',
+      stepEn: 'Tutorial 4',
+      title: 'ドローンの世界へようこそ',
+      titleEn: 'Welcome to Drone World',
+      instruction1: 'Yボタンでドローンを起動できます',
+      instruction2: 'さぁドローンを楽しみましょう!!',
+      instruction1En: 'Press Y button to start the Drone',
+      instruction2En: 'Let\'s enjoy flying the Drone!!',
+      nextWithA: 'Y ボタンで起動',
+      nextWithAEn: 'Press Y to start'
     }
   },
   en: {
@@ -101,6 +147,7 @@ const i18n = {
       laserInstruction: 'Use right controller laser to operate',
       closeInstruction: 'Press X to close',
       returnToTitle: 'Return to Title',
+      tutorial: 'Start Tutorial',
       default: 'DEFAULT',
       on: 'ON',
       off: 'OFF',
@@ -150,6 +197,49 @@ const i18n = {
       trackingLostBoth: 'Controllers Tracking Lost',
       trackingLostLeft: 'Left Controller Tracking Lost',
       trackingLostRight: 'Right Controller Tracking Lost'
+    },
+    // Welcome window
+    welcome: {
+      step: 'Tutorial 1',
+      stepEn: 'Tutorial 1',
+      title: 'Welcome to Drone World',
+      titleEn: 'Welcome to Drone World',
+      instruction1: 'Drone will be placed in front of your controller',
+      instruction1En: 'Drone will be placed in front of your controller',
+      nextWithA: 'Press A to continue',
+      nextWithAEn: 'Press A to continue'
+    },
+    tutorial2: {
+      step: 'Tutorial 2',
+      stepEn: 'Tutorial 2',
+      title: 'Welcome to Drone World',
+      titleEn: 'Welcome to Drone World',
+      instruction1: 'Press A button to open Controller Guide',
+      instruction1En: 'Press A button to open Controller Guide',
+      nextWithA: 'Press A to open',
+      nextWithAEn: 'Press A to open'
+    },
+    tutorial3: {
+      step: 'Tutorial 3',
+      stepEn: 'Tutorial 3',
+      title: 'Welcome to Drone World',
+      titleEn: 'Welcome to Drone World',
+      instruction1: 'Press X button to open Settings window',
+      instruction1En: 'Press X button to open Settings window',
+      nextWithA: 'Press X to open',
+      nextWithAEn: 'Press X to open'
+    },
+    tutorial4: {
+      step: 'Tutorial 4',
+      stepEn: 'Tutorial 4',
+      title: 'Welcome to Drone World',
+      titleEn: 'Welcome to Drone World',
+      instruction1: 'Press Y button to start the Drone',
+      instruction2: 'Let\'s enjoy flying the Drone!!',
+      instruction1En: 'Press Y button to start the Drone',
+      instruction2En: 'Let\'s enjoy flying the Drone!!',
+      nextWithA: 'Press Y to start',
+      nextWithAEn: 'Press Y to start'
     }
   }
 };
@@ -1329,8 +1419,8 @@ export function createSettingsMenu() {
   // 表示項目数に応じてキャンバスの高さを計算
   const visibleItems = settingsItems.filter(item => !item.isHidden || !item.isHidden());
   const itemHeight = 100;
-  // タイトル(70) + 設定項目 + 操作説明(90) + タイトルに戻るボタン(80) + 余白(30)
-  const canvasHeight = 70 + (visibleItems.length * itemHeight) + 90 + 80 + 30;
+  // タイトル(70) + 設定項目 + 操作説明(90) + チュートリアルボタン(75) + タイトルに戻るボタン(75) + 余白(30)
+  const canvasHeight = 70 + (visibleItems.length * itemHeight) + 90 + 75 + 75 + 30;
 
   settingsMenuCanvas = document.createElement('canvas');
   settingsMenuCanvas.width = 700;
@@ -1674,9 +1764,34 @@ export function redrawSettingsMenu(hoveredButton) {
   ctx.fillText(t('settings', 'closeInstruction'), canvas.width / 2, bottomLineY + 60);
   ctx.shadowBlur = 0;
 
+  // チュートリアルを受けるボタン
+  const tutorialBtnX = 25;
+  const tutorialBtnY = bottomLineY + 80;
+  const tutorialBtnW = canvas.width - 50;
+  const tutorialBtnH = 60;
+  const isTutorialHovered = hoveredButton && hoveredButton.type === 'tutorial';
+
+  ctx.fillStyle = isTutorialHovered ? 'rgba(100, 200, 255, 0.9)' : 'rgba(100, 200, 255, 0.4)';
+  ctx.beginPath();
+  ctx.roundRect(tutorialBtnX, tutorialBtnY, tutorialBtnW, tutorialBtnH, 8);
+  ctx.fill();
+  ctx.strokeStyle = isTutorialHovered ? '#64c8ff' : 'rgba(100, 200, 255, 0.8)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.font = 'bold 26px Arial';
+  ctx.fillStyle = isTutorialHovered ? '#000000' : '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.fillText(t('settings', 'tutorial'), canvas.width / 2, tutorialBtnY + tutorialBtnH / 2 + 9);
+
+  settingsButtonAreas.push({
+    x: tutorialBtnX, y: tutorialBtnY, w: tutorialBtnW, h: tutorialBtnH,
+    type: 'tutorial'
+  });
+
   // タイトルに戻るボタン
   const returnBtnX = 25;
-  const returnBtnY = bottomLineY + 80;
+  const returnBtnY = tutorialBtnY + tutorialBtnH + 15;
   const returnBtnW = canvas.width - 50;
   const returnBtnH = 60;
   const isReturnHovered = hoveredButton && hoveredButton.type === 'returnToTitle';
@@ -1734,6 +1849,14 @@ function destroySettingsMenu() {
 
   // レーザーも削除
   removeSettingsLaser();
+
+  // チュートリアルステップ4の場合、チュートリアル4ウィンドウを表示
+  if (state.tutorialStep === 4) {
+    setTimeout(() => {
+      createTutorial4Window();
+    }, 300);
+    console.log('設定ウィンドウを閉じ、チュートリアル4を表示');
+  }
 }
 
 // 設定メニューをトグル
@@ -1968,6 +2091,22 @@ export function updateSettingsMenu() {
 
 // ボタンクリック処理
 function handleSettingsButtonClick(button) {
+  if (button.type === 'tutorial') {
+    // チュートリアルを受ける - タイトルに戻ってチュートリアルを再開
+    playButtonSound();
+    state.setRestartTutorial(true);
+    localStorage.setItem('restartTutorial', 'true');
+    removeSettingsMenu();
+    if (state.xrSession) {
+      state.xrSession.end().then(() => {
+        window.location.reload();
+      });
+    } else {
+      window.location.reload();
+    }
+    return;
+  }
+
   if (button.type === 'returnToTitle') {
     // タイトルに戻る
     playButtonSound();
@@ -2265,5 +2404,1230 @@ export function updateDroneLocationArrow() {
 
     // 矢印自体をゆっくり自転させる
     state.hudDroneLocationArrow.rotateY(Date.now() * 0.002);
+  }
+}
+
+// ウェルカムウィンドウ用のキャンバスとテクスチャ
+let welcomeWindowCanvas = null;
+let welcomeWindowTexture = null;
+
+// ウェルカムウィンドウを作成
+export function createWelcomeWindow() {
+  if (state.welcomeWindow) return;
+
+  playWindowOpenSound();
+
+  // キャンバス作成
+  const canvas = document.createElement('canvas');
+  canvas.width = 600;
+  canvas.height = 400;
+  welcomeWindowCanvas = canvas;
+
+  // テクスチャ作成
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  welcomeWindowTexture = texture;
+
+  // 初期描画
+  redrawWelcomeWindow();
+
+  // メッシュ作成
+  const geometry = new THREE.PlaneGeometry(0.6, 0.4);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  state.scene.add(mesh);
+  state.setWelcomeWindow(mesh);
+  state.setIsWelcomeWindowVisible(true);
+
+  // アニメーション開始
+  state.setWelcomeWindowAnimProgress(0);
+  state.setWelcomeWindowAnimating(true);
+  state.setWelcomeWindowAnimDirection(1);
+}
+
+// ウェルカムウィンドウを再描画
+function redrawWelcomeWindow() {
+  if (!welcomeWindowCanvas) return;
+
+  const canvas = welcomeWindowCanvas;
+  const ctx = canvas.getContext('2d');
+
+  // キャンバスをクリア
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 背景（半透明）
+  ctx.fillStyle = 'rgba(10, 10, 26, 0.85)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 枠線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+
+  // 内側の光彩効果
+  const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  gradient.addColorStop(0, 'rgba(0, 200, 255, 0.1)');
+  gradient.addColorStop(0.5, 'rgba(255, 107, 107, 0.05)');
+  gradient.addColorStop(1, 'rgba(0, 200, 255, 0.1)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(4, 4, canvas.width - 8, canvas.height - 8);
+
+  // ステップ番号
+  ctx.font = 'bold 20px Arial';
+  ctx.fillStyle = '#ffcc00';
+  ctx.textAlign = 'center';
+  ctx.fillText(t('welcome', 'step'), canvas.width / 2, 35);
+
+  // タイトル（日本語）
+  ctx.font = 'bold 36px Arial';
+  ctx.fillStyle = '#00c8ff';
+  ctx.shadowColor = 'rgba(0, 200, 255, 0.8)';
+  ctx.shadowBlur = 15;
+  ctx.fillText(t('welcome', 'title'), canvas.width / 2, 75);
+  ctx.shadowBlur = 0;
+
+  // タイトル（英語）
+  ctx.font = '18px Arial';
+  ctx.fillStyle = 'rgba(0, 200, 255, 0.7)';
+  ctx.fillText(t('welcome', 'titleEn'), canvas.width / 2, 100);
+
+  // 区切り線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(40, 120);
+  ctx.lineTo(canvas.width - 40, 120);
+  ctx.stroke();
+
+  // 説明文（日本語）
+  ctx.font = '22px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fillText(t('welcome', 'instruction1'), canvas.width / 2, 165);
+
+  // 説明文（英語）
+  ctx.font = '18px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.fillText(t('welcome', 'instruction1En'), canvas.width / 2, 195);
+
+  // 区切り線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
+  ctx.beginPath();
+  ctx.moveTo(40, 260);
+  ctx.lineTo(canvas.width - 40, 260);
+  ctx.stroke();
+
+  // 次へ説明（日本語）- 右寄せ
+  ctx.font = 'bold 28px Arial';
+  ctx.fillStyle = '#ffff00';
+  ctx.shadowColor = 'rgba(255, 255, 0, 0.5)';
+  ctx.shadowBlur = 10;
+  ctx.textAlign = 'right';
+  ctx.fillText(t('welcome', 'nextWithA'), canvas.width - 40, 310);
+  ctx.shadowBlur = 0;
+
+  // 次へ説明（英語）- 右寄せ
+  ctx.font = '18px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 0, 0.7)';
+  ctx.fillText(t('welcome', 'nextWithAEn'), canvas.width - 40, 340);
+  ctx.textAlign = 'center';
+
+  // テクスチャを更新
+  if (welcomeWindowTexture) {
+    welcomeWindowTexture.needsUpdate = true;
+  }
+}
+
+// ウェルカムウィンドウを削除（アニメーション開始）
+export function removeWelcomeWindow() {
+  if (!state.welcomeWindow || !state.isWelcomeWindowVisible) return;
+
+  playWindowCloseSound();
+  state.setWelcomeWindowAnimDirection(-1);
+  state.setWelcomeWindowAnimating(true);
+}
+
+// ウェルカムウィンドウのアニメーション更新
+function updateWelcomeWindowAnimation() {
+  if (!state.welcomeWindowAnimating) return;
+
+  const speed = 0.08;
+  let progress = state.welcomeWindowAnimProgress;
+
+  if (state.welcomeWindowAnimDirection === 1) {
+    progress += speed;
+    if (progress >= 1) {
+      progress = 1;
+      state.setWelcomeWindowAnimating(false);
+    }
+  } else {
+    progress -= speed;
+    if (progress <= 0) {
+      progress = 0;
+      state.setWelcomeWindowAnimating(false);
+      // 完全に閉じたらメッシュを削除
+      if (state.welcomeWindow) {
+        state.scene.remove(state.welcomeWindow);
+        if (state.welcomeWindow.geometry) state.welcomeWindow.geometry.dispose();
+        if (state.welcomeWindow.material) {
+          if (state.welcomeWindow.material.map) state.welcomeWindow.material.map.dispose();
+          state.welcomeWindow.material.dispose();
+        }
+        state.setWelcomeWindow(null);
+        state.setIsWelcomeWindowVisible(false);
+        welcomeWindowCanvas = null;
+        welcomeWindowTexture = null;
+      }
+      // ガイドラインとドットも削除
+      if (state.welcomeGuideLine) {
+        state.scene.remove(state.welcomeGuideLine);
+        if (state.welcomeGuideLine.geometry) state.welcomeGuideLine.geometry.dispose();
+        if (state.welcomeGuideLine.material) state.welcomeGuideLine.material.dispose();
+        state.setWelcomeGuideLine(null);
+      }
+      if (state.welcomeGuideDot) {
+        state.scene.remove(state.welcomeGuideDot);
+        if (state.welcomeGuideDot.geometry) state.welcomeGuideDot.geometry.dispose();
+        if (state.welcomeGuideDot.material) state.welcomeGuideDot.material.dispose();
+        state.setWelcomeGuideDot(null);
+      }
+    }
+  }
+
+  state.setWelcomeWindowAnimProgress(progress);
+
+  // メッシュのスケールとアルファを更新
+  if (state.welcomeWindow) {
+    const eased = easeOutBack(progress);
+    state.welcomeWindow.scale.set(eased, eased, 1);
+    if (state.welcomeWindow.material) {
+      state.welcomeWindow.material.opacity = progress;
+    }
+  }
+}
+
+// ウェルカムウィンドウの更新（毎フレーム呼び出し）
+export function updateWelcomeWindow() {
+  // アニメーション更新
+  updateWelcomeWindowAnimation();
+
+  if (!state.welcomeWindow || !state.xrSession) return;
+
+  // カメラ位置を取得
+  const cameraPos = new THREE.Vector3();
+  const cameraQuat = new THREE.Quaternion();
+  state.camera.getWorldPosition(cameraPos);
+  state.camera.getWorldQuaternion(cameraQuat);
+
+  // カメラの前方向
+  const forward = new THREE.Vector3(0, 0, -1);
+  forward.applyQuaternion(cameraQuat);
+
+  // ウィンドウの位置（カメラの前方1m、少し下に）
+  const windowPos = cameraPos.clone().add(forward.clone().multiplyScalar(1.0));
+  windowPos.y -= 0.15; // 少し下に配置
+  state.welcomeWindow.position.copy(windowPos);
+
+  // Y軸回転のみでカメラの方を向く
+  const direction = new THREE.Vector3();
+  direction.subVectors(cameraPos, windowPos);
+  direction.y = 0;
+  direction.normalize();
+
+  const angle = Math.atan2(direction.x, direction.z);
+  state.welcomeWindow.rotation.set(0, angle, 0);
+
+  // ドローンへの矢印を描画
+  if (state.drone && state.dronePositioned) {
+    const dronePos = new THREE.Vector3();
+    state.drone.getWorldPosition(dronePos);
+
+    // ウィンドウの下部からドローンへのライン
+    const lineStartOffset = new THREE.Vector3(0, -0.15, 0); // ウィンドウの下部
+    lineStartOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+    const lineStart = windowPos.clone().add(lineStartOffset);
+    const lineEnd = dronePos.clone();
+
+    // ガイドラインの作成/更新
+    if (!state.welcomeGuideLine) {
+      const lineGeometry = new THREE.BufferGeometry();
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: 0xffff00,
+        transparent: true,
+        opacity: 0.8
+      });
+      const line = new THREE.Line(lineGeometry, lineMaterial);
+      state.scene.add(line);
+      state.setWelcomeGuideLine(line);
+    }
+
+    // ラインの頂点を更新
+    const positions = new Float32Array([
+      lineStart.x, lineStart.y, lineStart.z,
+      lineEnd.x, lineEnd.y, lineEnd.z
+    ]);
+    state.welcomeGuideLine.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    state.welcomeGuideLine.geometry.attributes.position.needsUpdate = true;
+
+    // ドット（ドローン位置を示す点滅する球）の作成/更新
+    if (!state.welcomeGuideDot) {
+      const dotGeometry = new THREE.SphereGeometry(0.02, 16, 16);
+      const dotMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffff00,
+        transparent: true
+      });
+      const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+      state.scene.add(dot);
+      state.setWelcomeGuideDot(dot);
+    }
+
+    // ドットの位置を更新（ドローン位置）
+    state.welcomeGuideDot.position.copy(dronePos);
+
+    // ドットの点滅アニメーション
+    const pulseSpeed = 3.0;
+    const pulse = (Math.sin(Date.now() * 0.001 * pulseSpeed) + 1) / 2;
+    state.welcomeGuideDot.material.opacity = 0.3 + pulse * 0.7;
+    state.welcomeGuideDot.scale.setScalar(0.8 + pulse * 0.4);
+  }
+}
+
+// チュートリアル2用のキャンバスとテクスチャ
+let tutorial2Canvas = null;
+let tutorial2Texture = null;
+
+// チュートリアル2ウィンドウを作成
+export function createTutorial2Window() {
+  if (state.tutorial2Window) return;
+
+  playWindowOpenSound();
+
+  // キャンバス作成
+  const canvas = document.createElement('canvas');
+  canvas.width = 600;
+  canvas.height = 400;
+  tutorial2Canvas = canvas;
+
+  // テクスチャ作成
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  tutorial2Texture = texture;
+
+  // 初期描画
+  redrawTutorial2Window();
+
+  // メッシュ作成
+  const geometry = new THREE.PlaneGeometry(0.6, 0.4);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  state.scene.add(mesh);
+  state.setTutorial2Window(mesh);
+  state.setIsTutorial2Visible(true);
+
+  // アニメーション開始
+  state.setTutorial2AnimProgress(0);
+  state.setTutorial2Animating(true);
+  state.setTutorial2AnimDirection(1);
+}
+
+// チュートリアル2ウィンドウを再描画
+function redrawTutorial2Window() {
+  if (!tutorial2Canvas) return;
+
+  const canvas = tutorial2Canvas;
+  const ctx = canvas.getContext('2d');
+
+  // キャンバスをクリア
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 背景（半透明）
+  ctx.fillStyle = 'rgba(10, 10, 26, 0.85)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 枠線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+
+  // 内側の光彩効果
+  const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  gradient.addColorStop(0, 'rgba(0, 200, 255, 0.1)');
+  gradient.addColorStop(0.5, 'rgba(255, 107, 107, 0.05)');
+  gradient.addColorStop(1, 'rgba(0, 200, 255, 0.1)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(4, 4, canvas.width - 8, canvas.height - 8);
+
+  // ステップ番号
+  ctx.font = 'bold 20px Arial';
+  ctx.fillStyle = '#ffcc00';
+  ctx.textAlign = 'center';
+  ctx.fillText(t('tutorial2', 'step'), canvas.width / 2, 35);
+
+  // タイトル（日本語）
+  ctx.font = 'bold 36px Arial';
+  ctx.fillStyle = '#00c8ff';
+  ctx.shadowColor = 'rgba(0, 200, 255, 0.8)';
+  ctx.shadowBlur = 15;
+  ctx.fillText(t('tutorial2', 'title'), canvas.width / 2, 75);
+  ctx.shadowBlur = 0;
+
+  // タイトル（英語）
+  ctx.font = '18px Arial';
+  ctx.fillStyle = 'rgba(0, 200, 255, 0.7)';
+  ctx.fillText(t('tutorial2', 'titleEn'), canvas.width / 2, 100);
+
+  // 区切り線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(40, 120);
+  ctx.lineTo(canvas.width - 40, 120);
+  ctx.stroke();
+
+  // 説明文1（日本語）
+  ctx.font = '22px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fillText(t('tutorial2', 'instruction1'), canvas.width / 2, 155);
+
+  // 説明文2（日本語）
+  ctx.fillText(t('tutorial2', 'instruction2'), canvas.width / 2, 185);
+
+  // 説明文（英語）
+  ctx.font = '18px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.fillText(t('tutorial2', 'instruction1En'), canvas.width / 2, 215);
+  ctx.fillText(t('tutorial2', 'instruction2En'), canvas.width / 2, 240);
+
+  // 区切り線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
+  ctx.beginPath();
+  ctx.moveTo(40, 260);
+  ctx.lineTo(canvas.width - 40, 260);
+  ctx.stroke();
+
+  // 次へ説明（日本語）- 右寄せ
+  ctx.font = 'bold 28px Arial';
+  ctx.fillStyle = '#ffff00';
+  ctx.shadowColor = 'rgba(255, 255, 0, 0.5)';
+  ctx.shadowBlur = 10;
+  ctx.textAlign = 'right';
+  ctx.fillText(t('tutorial2', 'nextWithA'), canvas.width - 40, 310);
+  ctx.shadowBlur = 0;
+
+  // 次へ説明（英語）- 右寄せ
+  ctx.font = '18px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 0, 0.7)';
+  ctx.fillText(t('tutorial2', 'nextWithAEn'), canvas.width - 40, 340);
+  ctx.textAlign = 'center';
+
+  // テクスチャを更新
+  if (tutorial2Texture) {
+    tutorial2Texture.needsUpdate = true;
+  }
+}
+
+// チュートリアル2ウィンドウを削除（アニメーション開始）
+export function removeTutorial2Window() {
+  if (!state.tutorial2Window || !state.isTutorial2Visible) return;
+
+  playWindowCloseSound();
+  state.setTutorial2AnimDirection(-1);
+  state.setTutorial2Animating(true);
+}
+
+// チュートリアル2ウィンドウのアニメーション更新
+function updateTutorial2WindowAnimation() {
+  if (!state.tutorial2Animating) return;
+
+  const speed = 0.08;
+  let progress = state.tutorial2AnimProgress;
+
+  if (state.tutorial2AnimDirection === 1) {
+    progress += speed;
+    if (progress >= 1) {
+      progress = 1;
+      state.setTutorial2Animating(false);
+    }
+  } else {
+    progress -= speed;
+    if (progress <= 0) {
+      progress = 0;
+      state.setTutorial2Animating(false);
+      // 完全に閉じたらメッシュを削除
+      if (state.tutorial2Window) {
+        state.scene.remove(state.tutorial2Window);
+        if (state.tutorial2Window.geometry) state.tutorial2Window.geometry.dispose();
+        if (state.tutorial2Window.material) {
+          if (state.tutorial2Window.material.map) state.tutorial2Window.material.map.dispose();
+          state.tutorial2Window.material.dispose();
+        }
+        state.setTutorial2Window(null);
+        state.setIsTutorial2Visible(false);
+        tutorial2Canvas = null;
+        tutorial2Texture = null;
+      }
+      // ガイドラインとドットも削除
+      if (state.tutorial2GuideLine) {
+        state.scene.remove(state.tutorial2GuideLine);
+        if (state.tutorial2GuideLine.geometry) state.tutorial2GuideLine.geometry.dispose();
+        if (state.tutorial2GuideLine.material) state.tutorial2GuideLine.material.dispose();
+        state.setTutorial2GuideLine(null);
+      }
+      if (state.tutorial2GuideDot) {
+        state.scene.remove(state.tutorial2GuideDot);
+        if (state.tutorial2GuideDot.geometry) state.tutorial2GuideDot.geometry.dispose();
+        if (state.tutorial2GuideDot.material) state.tutorial2GuideDot.material.dispose();
+        state.setTutorial2GuideDot(null);
+      }
+    }
+  }
+
+  state.setTutorial2AnimProgress(progress);
+
+  // メッシュのスケールとアルファを更新
+  if (state.tutorial2Window) {
+    const eased = easeOutBack(progress);
+    state.tutorial2Window.scale.set(eased, eased, 1);
+    if (state.tutorial2Window.material) {
+      state.tutorial2Window.material.opacity = progress;
+    }
+  }
+}
+
+// チュートリアル2ウィンドウの更新（毎フレーム呼び出し）
+export function updateTutorial2Window() {
+  // アニメーション更新
+  updateTutorial2WindowAnimation();
+
+  if (!state.tutorial2Window || !state.xrSession) return;
+
+  const frame = state.renderer.xr.getFrame();
+  const referenceSpace = state.renderer.xr.getReferenceSpace();
+
+  if (!frame || !referenceSpace) return;
+
+  // カメラ位置を取得
+  const cameraPos = new THREE.Vector3();
+  const cameraQuat = new THREE.Quaternion();
+  state.camera.getWorldPosition(cameraPos);
+  state.camera.getWorldQuaternion(cameraQuat);
+
+  // カメラの前方向
+  const forward = new THREE.Vector3(0, 0, -1);
+  forward.applyQuaternion(cameraQuat);
+
+  // ウィンドウの位置（カメラの前方1m、少し下に）
+  const windowPos = cameraPos.clone().add(forward.clone().multiplyScalar(1.0));
+  windowPos.y -= 0.15; // 少し下に配置
+  state.tutorial2Window.position.copy(windowPos);
+
+  // Y軸回転のみでカメラの方を向く
+  const direction = new THREE.Vector3();
+  direction.subVectors(cameraPos, windowPos);
+  direction.y = 0;
+  direction.normalize();
+
+  const angle = Math.atan2(direction.x, direction.z);
+  state.tutorial2Window.rotation.set(0, angle, 0);
+
+  // 右コントローラーの位置を取得してラインを描画
+  let rightControllerPos = null;
+  const inputSources = state.xrSession.inputSources;
+  for (const source of inputSources) {
+    if (source.handedness === 'right' && source.gripSpace) {
+      const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+      if (gripPose) {
+        rightControllerPos = new THREE.Vector3().setFromMatrixPosition(
+          new THREE.Matrix4().fromArray(gripPose.transform.matrix)
+        );
+        break;
+      }
+    }
+  }
+
+  if (rightControllerPos) {
+    // ウィンドウの右下からコントローラーへのライン
+    const lineStartOffset = new THREE.Vector3(0.2, -0.15, 0); // ウィンドウの右下
+    lineStartOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+    const lineStart = windowPos.clone().add(lineStartOffset);
+    const lineEnd = rightControllerPos.clone();
+
+    // ガイドラインの作成/更新
+    if (!state.tutorial2GuideLine) {
+      const lineGeometry = new THREE.BufferGeometry();
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: 0xffff00,
+        transparent: true,
+        opacity: 0.8
+      });
+      const line = new THREE.Line(lineGeometry, lineMaterial);
+      state.scene.add(line);
+      state.setTutorial2GuideLine(line);
+    }
+
+    // ラインの頂点を更新
+    const positions = new Float32Array([
+      lineStart.x, lineStart.y, lineStart.z,
+      lineEnd.x, lineEnd.y, lineEnd.z
+    ]);
+    state.tutorial2GuideLine.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    state.tutorial2GuideLine.geometry.attributes.position.needsUpdate = true;
+
+    // ドット（Aボタン位置を示す点滅する球）の作成/更新
+    if (!state.tutorial2GuideDot) {
+      const dotGeometry = new THREE.SphereGeometry(0.015, 16, 16);
+      const dotMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffff00,
+        transparent: true
+      });
+      const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+      state.scene.add(dot);
+      state.setTutorial2GuideDot(dot);
+    }
+
+    // ドットの位置を更新（コントローラー位置）
+    state.tutorial2GuideDot.position.copy(rightControllerPos);
+
+    // ドットの点滅アニメーション
+    const pulseSpeed = 3.0;
+    const pulse = (Math.sin(Date.now() * 0.001 * pulseSpeed) + 1) / 2;
+    state.tutorial2GuideDot.material.opacity = 0.3 + pulse * 0.7;
+    state.tutorial2GuideDot.scale.setScalar(0.8 + pulse * 0.4);
+  }
+}
+
+// チュートリアル3用のキャンバスとテクスチャ
+let tutorial3Canvas = null;
+let tutorial3Texture = null;
+
+// チュートリアル3ウィンドウを作成
+export function createTutorial3Window() {
+  if (state.tutorial3Window) return;
+
+  playWindowOpenSound();
+
+  // キャンバス作成
+  const canvas = document.createElement('canvas');
+  canvas.width = 600;
+  canvas.height = 400;
+  tutorial3Canvas = canvas;
+
+  // テクスチャ作成
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  tutorial3Texture = texture;
+
+  // 初期描画
+  redrawTutorial3Window();
+
+  // メッシュ作成
+  const geometry = new THREE.PlaneGeometry(0.6, 0.4);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  state.scene.add(mesh);
+  state.setTutorial3Window(mesh);
+  state.setIsTutorial3Visible(true);
+
+  // アニメーション開始
+  state.setTutorial3AnimProgress(0);
+  state.setTutorial3Animating(true);
+  state.setTutorial3AnimDirection(1);
+}
+
+// チュートリアル3ウィンドウを再描画
+function redrawTutorial3Window() {
+  if (!tutorial3Canvas) return;
+
+  const canvas = tutorial3Canvas;
+  const ctx = canvas.getContext('2d');
+
+  // キャンバスをクリア
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 背景（半透明）
+  ctx.fillStyle = 'rgba(10, 10, 26, 0.85)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 枠線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+
+  // 内側の光彩効果
+  const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  gradient.addColorStop(0, 'rgba(0, 200, 255, 0.1)');
+  gradient.addColorStop(0.5, 'rgba(255, 107, 107, 0.05)');
+  gradient.addColorStop(1, 'rgba(0, 200, 255, 0.1)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(4, 4, canvas.width - 8, canvas.height - 8);
+
+  // ステップ番号
+  ctx.font = 'bold 20px Arial';
+  ctx.fillStyle = '#ffcc00';
+  ctx.textAlign = 'center';
+  ctx.fillText(t('tutorial3', 'step'), canvas.width / 2, 35);
+
+  // タイトル（日本語）
+  ctx.font = 'bold 36px Arial';
+  ctx.fillStyle = '#00c8ff';
+  ctx.shadowColor = 'rgba(0, 200, 255, 0.8)';
+  ctx.shadowBlur = 15;
+  ctx.fillText(t('tutorial3', 'title'), canvas.width / 2, 75);
+  ctx.shadowBlur = 0;
+
+  // タイトル（英語）
+  ctx.font = '18px Arial';
+  ctx.fillStyle = 'rgba(0, 200, 255, 0.7)';
+  ctx.fillText(t('tutorial3', 'titleEn'), canvas.width / 2, 100);
+
+  // 区切り線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(40, 120);
+  ctx.lineTo(canvas.width - 40, 120);
+  ctx.stroke();
+
+  // 説明文（日本語）
+  ctx.font = '22px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fillText(t('tutorial3', 'instruction1'), canvas.width / 2, 175);
+
+  // 説明文（英語）
+  ctx.font = '18px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.fillText(t('tutorial3', 'instruction1En'), canvas.width / 2, 205);
+
+  // 区切り線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
+  ctx.beginPath();
+  ctx.moveTo(40, 260);
+  ctx.lineTo(canvas.width - 40, 260);
+  ctx.stroke();
+
+  // 次へ説明（日本語）- 右寄せ
+  ctx.font = 'bold 28px Arial';
+  ctx.fillStyle = '#ffff00';
+  ctx.shadowColor = 'rgba(255, 255, 0, 0.5)';
+  ctx.shadowBlur = 10;
+  ctx.textAlign = 'right';
+  ctx.fillText(t('tutorial3', 'nextWithA'), canvas.width - 40, 310);
+  ctx.shadowBlur = 0;
+
+  // 次へ説明（英語）- 右寄せ
+  ctx.font = '18px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 0, 0.7)';
+  ctx.fillText(t('tutorial3', 'nextWithAEn'), canvas.width - 40, 340);
+  ctx.textAlign = 'center';
+
+  // テクスチャを更新
+  if (tutorial3Texture) {
+    tutorial3Texture.needsUpdate = true;
+  }
+}
+
+// チュートリアル3ウィンドウを削除（アニメーション開始）
+export function removeTutorial3Window() {
+  if (!state.tutorial3Window || !state.isTutorial3Visible) return;
+
+  playWindowCloseSound();
+  state.setTutorial3AnimDirection(-1);
+  state.setTutorial3Animating(true);
+}
+
+// チュートリアル3ウィンドウのアニメーション更新
+function updateTutorial3WindowAnimation() {
+  if (!state.tutorial3Animating) return;
+
+  const speed = 0.08;
+  let progress = state.tutorial3AnimProgress;
+
+  if (state.tutorial3AnimDirection === 1) {
+    progress += speed;
+    if (progress >= 1) {
+      progress = 1;
+      state.setTutorial3Animating(false);
+    }
+  } else {
+    progress -= speed;
+    if (progress <= 0) {
+      progress = 0;
+      state.setTutorial3Animating(false);
+      // 完全に閉じたらメッシュを削除
+      if (state.tutorial3Window) {
+        state.scene.remove(state.tutorial3Window);
+        if (state.tutorial3Window.geometry) state.tutorial3Window.geometry.dispose();
+        if (state.tutorial3Window.material) {
+          if (state.tutorial3Window.material.map) state.tutorial3Window.material.map.dispose();
+          state.tutorial3Window.material.dispose();
+        }
+        state.setTutorial3Window(null);
+        state.setIsTutorial3Visible(false);
+        tutorial3Canvas = null;
+        tutorial3Texture = null;
+      }
+      // ガイドラインとドットも削除
+      if (state.tutorial3GuideLine) {
+        state.scene.remove(state.tutorial3GuideLine);
+        if (state.tutorial3GuideLine.geometry) state.tutorial3GuideLine.geometry.dispose();
+        if (state.tutorial3GuideLine.material) state.tutorial3GuideLine.material.dispose();
+        state.setTutorial3GuideLine(null);
+      }
+      if (state.tutorial3GuideDot) {
+        state.scene.remove(state.tutorial3GuideDot);
+        if (state.tutorial3GuideDot.geometry) state.tutorial3GuideDot.geometry.dispose();
+        if (state.tutorial3GuideDot.material) state.tutorial3GuideDot.material.dispose();
+        state.setTutorial3GuideDot(null);
+      }
+    }
+  }
+
+  state.setTutorial3AnimProgress(progress);
+
+  // メッシュのスケールとアルファを更新
+  if (state.tutorial3Window) {
+    const eased = easeOutBack(progress);
+    state.tutorial3Window.scale.set(eased, eased, 1);
+    if (state.tutorial3Window.material) {
+      state.tutorial3Window.material.opacity = progress;
+    }
+  }
+}
+
+// チュートリアル3ウィンドウの更新（毎フレーム呼び出し）
+export function updateTutorial3Window() {
+  // アニメーション更新
+  updateTutorial3WindowAnimation();
+
+  if (!state.tutorial3Window || !state.xrSession) return;
+
+  const frame = state.renderer.xr.getFrame();
+  const referenceSpace = state.renderer.xr.getReferenceSpace();
+
+  if (!frame || !referenceSpace) return;
+
+  // カメラ位置を取得
+  const cameraPos = new THREE.Vector3();
+  const cameraQuat = new THREE.Quaternion();
+  state.camera.getWorldPosition(cameraPos);
+  state.camera.getWorldQuaternion(cameraQuat);
+
+  // カメラの前方向
+  const forward = new THREE.Vector3(0, 0, -1);
+  forward.applyQuaternion(cameraQuat);
+
+  // ウィンドウの位置（カメラの前方1m、少し下に）
+  const windowPos = cameraPos.clone().add(forward.clone().multiplyScalar(1.0));
+  windowPos.y -= 0.15; // 少し下に配置
+  state.tutorial3Window.position.copy(windowPos);
+
+  // Y軸回転のみでカメラの方を向く
+  const direction = new THREE.Vector3();
+  direction.subVectors(cameraPos, windowPos);
+  direction.y = 0;
+  direction.normalize();
+
+  const angle = Math.atan2(direction.x, direction.z);
+  state.tutorial3Window.rotation.set(0, angle, 0);
+
+  // 左コントローラーの位置を取得してラインを描画（Xボタンは左コントローラー）
+  let leftControllerPos = null;
+  const inputSources = state.xrSession.inputSources;
+  for (const source of inputSources) {
+    if (source.handedness === 'left' && source.gripSpace) {
+      const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+      if (gripPose) {
+        leftControllerPos = new THREE.Vector3().setFromMatrixPosition(
+          new THREE.Matrix4().fromArray(gripPose.transform.matrix)
+        );
+        break;
+      }
+    }
+  }
+
+  if (leftControllerPos) {
+    // ウィンドウの左下からコントローラーへのライン
+    const lineStartOffset = new THREE.Vector3(-0.2, -0.15, 0); // ウィンドウの左下
+    lineStartOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+    const lineStart = windowPos.clone().add(lineStartOffset);
+    const lineEnd = leftControllerPos.clone();
+
+    // ガイドラインの作成/更新
+    if (!state.tutorial3GuideLine) {
+      const lineGeometry = new THREE.BufferGeometry();
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: 0xffff00,
+        transparent: true,
+        opacity: 0.8
+      });
+      const line = new THREE.Line(lineGeometry, lineMaterial);
+      state.scene.add(line);
+      state.setTutorial3GuideLine(line);
+    }
+
+    // ラインの頂点を更新
+    const positions = new Float32Array([
+      lineStart.x, lineStart.y, lineStart.z,
+      lineEnd.x, lineEnd.y, lineEnd.z
+    ]);
+    state.tutorial3GuideLine.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    state.tutorial3GuideLine.geometry.attributes.position.needsUpdate = true;
+
+    // ドット（Xボタン位置を示す点滅する球）の作成/更新
+    if (!state.tutorial3GuideDot) {
+      const dotGeometry = new THREE.SphereGeometry(0.015, 16, 16);
+      const dotMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffff00,
+        transparent: true
+      });
+      const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+      state.scene.add(dot);
+      state.setTutorial3GuideDot(dot);
+    }
+
+    // ドットの位置を更新（コントローラー位置）
+    state.tutorial3GuideDot.position.copy(leftControllerPos);
+
+    // ドットの点滅アニメーション
+    const pulseSpeed = 3.0;
+    const pulse = (Math.sin(Date.now() * 0.001 * pulseSpeed) + 1) / 2;
+    state.tutorial3GuideDot.material.opacity = 0.3 + pulse * 0.7;
+    state.tutorial3GuideDot.scale.setScalar(0.8 + pulse * 0.4);
+  }
+}
+
+// チュートリアル4用のキャンバスとテクスチャ
+let tutorial4Canvas = null;
+let tutorial4Texture = null;
+
+// チュートリアル4ウィンドウを作成
+export function createTutorial4Window() {
+  if (state.tutorial4Window) return;
+
+  playWindowOpenSound();
+
+  // キャンバス作成
+  const canvas = document.createElement('canvas');
+  canvas.width = 600;
+  canvas.height = 400;
+  tutorial4Canvas = canvas;
+
+  // テクスチャ作成
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  tutorial4Texture = texture;
+
+  // 初期描画
+  redrawTutorial4Window();
+
+  // メッシュ作成
+  const geometry = new THREE.PlaneGeometry(0.6, 0.4);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  state.scene.add(mesh);
+  state.setTutorial4Window(mesh);
+  state.setIsTutorial4Visible(true);
+
+  // アニメーション開始
+  state.setTutorial4AnimProgress(0);
+  state.setTutorial4Animating(true);
+  state.setTutorial4AnimDirection(1);
+}
+
+// チュートリアル4ウィンドウを再描画
+function redrawTutorial4Window() {
+  if (!tutorial4Canvas) return;
+
+  const canvas = tutorial4Canvas;
+  const ctx = canvas.getContext('2d');
+
+  // キャンバスをクリア
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 背景（半透明）
+  ctx.fillStyle = 'rgba(10, 10, 26, 0.85)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 枠線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+
+  // 内側の光彩効果
+  const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  gradient.addColorStop(0, 'rgba(0, 200, 255, 0.1)');
+  gradient.addColorStop(0.5, 'rgba(255, 107, 107, 0.05)');
+  gradient.addColorStop(1, 'rgba(0, 200, 255, 0.1)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(4, 4, canvas.width - 8, canvas.height - 8);
+
+  // ステップ番号
+  ctx.font = 'bold 20px Arial';
+  ctx.fillStyle = '#ffcc00';
+  ctx.textAlign = 'center';
+  ctx.fillText(t('tutorial4', 'step'), canvas.width / 2, 35);
+
+  // タイトル（日本語）
+  ctx.font = 'bold 36px Arial';
+  ctx.fillStyle = '#00c8ff';
+  ctx.shadowColor = 'rgba(0, 200, 255, 0.8)';
+  ctx.shadowBlur = 15;
+  ctx.fillText(t('tutorial4', 'title'), canvas.width / 2, 75);
+  ctx.shadowBlur = 0;
+
+  // タイトル（英語）
+  ctx.font = '18px Arial';
+  ctx.fillStyle = 'rgba(0, 200, 255, 0.7)';
+  ctx.fillText(t('tutorial4', 'titleEn'), canvas.width / 2, 100);
+
+  // 区切り線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(40, 120);
+  ctx.lineTo(canvas.width - 40, 120);
+  ctx.stroke();
+
+  // 説明文1行目（日本語）
+  ctx.font = '22px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fillText(t('tutorial4', 'instruction1'), canvas.width / 2, 155);
+
+  // 説明文2行目（日本語）
+  ctx.font = 'bold 26px Arial';
+  ctx.fillStyle = '#ffff00';
+  ctx.shadowColor = 'rgba(255, 255, 0, 0.5)';
+  ctx.shadowBlur = 10;
+  ctx.fillText(t('tutorial4', 'instruction2'), canvas.width / 2, 195);
+  ctx.shadowBlur = 0;
+
+  // 説明文（英語）
+  ctx.font = '16px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.fillText(t('tutorial4', 'instruction1En'), canvas.width / 2, 235);
+  ctx.fillText(t('tutorial4', 'instruction2En'), canvas.width / 2, 255);
+
+  // 区切り線
+  ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)';
+  ctx.beginPath();
+  ctx.moveTo(40, 280);
+  ctx.lineTo(canvas.width - 40, 280);
+  ctx.stroke();
+
+  // 次へ説明（日本語）- 右寄せ
+  ctx.font = 'bold 24px Arial';
+  ctx.fillStyle = '#00ff00';
+  ctx.shadowColor = 'rgba(0, 255, 0, 0.5)';
+  ctx.shadowBlur = 10;
+  ctx.textAlign = 'right';
+  ctx.fillText(t('tutorial4', 'nextWithA'), canvas.width - 40, 325);
+  ctx.shadowBlur = 0;
+
+  // 次へ説明（英語）- 右寄せ
+  ctx.font = '16px Arial';
+  ctx.fillStyle = 'rgba(0, 255, 0, 0.7)';
+  ctx.fillText(t('tutorial4', 'nextWithAEn'), canvas.width - 40, 350);
+  ctx.textAlign = 'center';
+
+  // テクスチャを更新
+  if (tutorial4Texture) {
+    tutorial4Texture.needsUpdate = true;
+  }
+}
+
+// チュートリアル4ウィンドウを削除（アニメーション開始）
+export function removeTutorial4Window() {
+  if (!state.tutorial4Window || !state.isTutorial4Visible) return;
+
+  playWindowCloseSound();
+  state.setTutorial4AnimDirection(-1);
+  state.setTutorial4Animating(true);
+}
+
+// チュートリアル4ウィンドウのアニメーション更新
+function updateTutorial4WindowAnimation() {
+  if (!state.tutorial4Animating) return;
+
+  const speed = 0.08;
+  let progress = state.tutorial4AnimProgress;
+
+  if (state.tutorial4AnimDirection === 1) {
+    progress += speed;
+    if (progress >= 1) {
+      progress = 1;
+      state.setTutorial4Animating(false);
+    }
+  } else {
+    progress -= speed;
+    if (progress <= 0) {
+      progress = 0;
+      state.setTutorial4Animating(false);
+      // 完全に閉じたらメッシュを削除
+      if (state.tutorial4Window) {
+        state.scene.remove(state.tutorial4Window);
+        if (state.tutorial4Window.geometry) state.tutorial4Window.geometry.dispose();
+        if (state.tutorial4Window.material) {
+          if (state.tutorial4Window.material.map) state.tutorial4Window.material.map.dispose();
+          state.tutorial4Window.material.dispose();
+        }
+        state.setTutorial4Window(null);
+        state.setIsTutorial4Visible(false);
+        tutorial4Canvas = null;
+        tutorial4Texture = null;
+      }
+      // ガイドラインとドットも削除
+      if (state.tutorial4GuideLine) {
+        state.scene.remove(state.tutorial4GuideLine);
+        if (state.tutorial4GuideLine.geometry) state.tutorial4GuideLine.geometry.dispose();
+        if (state.tutorial4GuideLine.material) state.tutorial4GuideLine.material.dispose();
+        state.setTutorial4GuideLine(null);
+      }
+      if (state.tutorial4GuideDot) {
+        state.scene.remove(state.tutorial4GuideDot);
+        if (state.tutorial4GuideDot.geometry) state.tutorial4GuideDot.geometry.dispose();
+        if (state.tutorial4GuideDot.material) state.tutorial4GuideDot.material.dispose();
+        state.setTutorial4GuideDot(null);
+      }
+    }
+  }
+
+  state.setTutorial4AnimProgress(progress);
+
+  // メッシュのスケールとアルファを更新
+  if (state.tutorial4Window) {
+    const eased = easeOutBack(progress);
+    state.tutorial4Window.scale.set(eased, eased, 1);
+    if (state.tutorial4Window.material) {
+      state.tutorial4Window.material.opacity = progress;
+    }
+  }
+}
+
+// チュートリアル4ウィンドウの更新（毎フレーム呼び出し）
+export function updateTutorial4Window() {
+  // アニメーション更新
+  updateTutorial4WindowAnimation();
+
+  if (!state.tutorial4Window || !state.xrSession) return;
+
+  const frame = state.renderer.xr.getFrame();
+  const referenceSpace = state.renderer.xr.getReferenceSpace();
+
+  if (!frame || !referenceSpace) return;
+
+  // カメラ位置を取得
+  const cameraPos = new THREE.Vector3();
+  const cameraQuat = new THREE.Quaternion();
+  state.camera.getWorldPosition(cameraPos);
+  state.camera.getWorldQuaternion(cameraQuat);
+
+  // カメラの前方向
+  const forward = new THREE.Vector3(0, 0, -1);
+  forward.applyQuaternion(cameraQuat);
+
+  // ウィンドウの位置（カメラの前方1m、少し下に）
+  const windowPos = cameraPos.clone().add(forward.clone().multiplyScalar(1.0));
+  windowPos.y -= 0.15; // 少し下に配置
+  state.tutorial4Window.position.copy(windowPos);
+
+  // Y軸回転のみでカメラの方を向く
+  const direction = new THREE.Vector3();
+  direction.subVectors(cameraPos, windowPos);
+  direction.y = 0;
+  direction.normalize();
+
+  const angle = Math.atan2(direction.x, direction.z);
+  state.tutorial4Window.rotation.set(0, angle, 0);
+
+  // 左コントローラーの位置を取得してラインを描画（Yボタンは左コントローラー）
+  let leftControllerPos = null;
+  const inputSources = state.xrSession.inputSources;
+  for (const source of inputSources) {
+    if (source.handedness === 'left' && source.gripSpace) {
+      const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+      if (gripPose) {
+        leftControllerPos = new THREE.Vector3().setFromMatrixPosition(
+          new THREE.Matrix4().fromArray(gripPose.transform.matrix)
+        );
+        break;
+      }
+    }
+  }
+
+  if (leftControllerPos) {
+    // ウィンドウの左下からコントローラーへのライン
+    const lineStartOffset = new THREE.Vector3(-0.2, -0.15, 0); // ウィンドウの左下
+    lineStartOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+    const lineStart = windowPos.clone().add(lineStartOffset);
+    const lineEnd = leftControllerPos.clone();
+
+    // ガイドラインの作成/更新
+    if (!state.tutorial4GuideLine) {
+      const lineGeometry = new THREE.BufferGeometry();
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: 0xffff00,
+        transparent: true,
+        opacity: 0.8
+      });
+      const line = new THREE.Line(lineGeometry, lineMaterial);
+      state.scene.add(line);
+      state.setTutorial4GuideLine(line);
+    }
+
+    // ラインの頂点を更新
+    const positions = new Float32Array([
+      lineStart.x, lineStart.y, lineStart.z,
+      lineEnd.x, lineEnd.y, lineEnd.z
+    ]);
+    state.tutorial4GuideLine.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    state.tutorial4GuideLine.geometry.attributes.position.needsUpdate = true;
+
+    // ドット（Yボタン位置を示す点滅する球）の作成/更新
+    if (!state.tutorial4GuideDot) {
+      const dotGeometry = new THREE.SphereGeometry(0.015, 16, 16);
+      const dotMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffff00,
+        transparent: true
+      });
+      const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+      state.scene.add(dot);
+      state.setTutorial4GuideDot(dot);
+    }
+
+    // ドットの位置を更新（コントローラー位置）
+    state.tutorial4GuideDot.position.copy(leftControllerPos);
+
+    // ドットの点滅アニメーション
+    const pulseSpeed = 3.0;
+    const pulse = (Math.sin(Date.now() * 0.001 * pulseSpeed) + 1) / 2;
+    state.tutorial4GuideDot.material.opacity = 0.3 + pulse * 0.7;
+    state.tutorial4GuideDot.scale.setScalar(0.8 + pulse * 0.4);
   }
 }

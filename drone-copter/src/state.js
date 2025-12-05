@@ -56,6 +56,53 @@ export let controllerGuideAnimDirection = 1; // 1: 開く, -1: 閉じる
 export let settingsMenuAnimProgress = 0;
 export let settingsMenuAnimating = false;
 export let settingsMenuAnimDirection = 1; // 1: 開く, -1: 閉じる
+
+// チュートリアル（ウェルカム）ウィンドウ用変数
+export let welcomeWindow = null;
+export let isWelcomeWindowVisible = false;
+export let welcomeWindowAnimProgress = 0;
+export let welcomeWindowAnimating = false;
+export let welcomeWindowAnimDirection = 1; // 1: 開く, -1: 閉じる
+export let rightAButtonPressedForWelcome = false;
+export let welcomeGuideLine = null;
+export let welcomeGuideDot = null;
+export let tutorialStep = 1; // 1: 最初のウェルカム, 2: コントロールガイドの案内
+
+// チュートリアル2用変数
+export let tutorial2Window = null;
+export let isTutorial2Visible = false;
+export let tutorial2AnimProgress = 0;
+export let tutorial2Animating = false;
+export let tutorial2AnimDirection = 1;
+export let tutorial2GuideLine = null;
+export let tutorial2GuideDot = null;
+
+// チュートリアル3用変数（設定ウィンドウの案内）
+export let tutorial3Window = null;
+export let isTutorial3Visible = false;
+export let tutorial3AnimProgress = 0;
+export let tutorial3Animating = false;
+export let tutorial3AnimDirection = 1;
+export let tutorial3GuideLine = null;
+export let tutorial3GuideDot = null;
+
+// チュートリアル4用変数（ドローン起動の案内）
+export let tutorial4Window = null;
+export let isTutorial4Visible = false;
+export let tutorial4AnimProgress = 0;
+export let tutorial4Animating = false;
+export let tutorial4AnimDirection = 1;
+export let tutorial4GuideLine = null;
+export let tutorial4GuideDot = null;
+
+// チュートリアル3用Xボタン押下フラグ
+export let leftXButtonPressedForTutorial3 = false;
+
+// チュートリアル完了フラグ（一度完了したら再度表示しない）
+export let tutorialCompleted = false;
+// チュートリアル再開フラグ（設定から再開する場合）
+export let restartTutorial = false;
+
 export let trackingLostText = null;
 export let isLeftControllerTracked = true;
 export let isRightControllerTracked = true;
@@ -235,6 +282,39 @@ export function setControllerGuideAnimDirection(value) { controllerGuideAnimDire
 export function setSettingsMenuAnimProgress(value) { settingsMenuAnimProgress = value; }
 export function setSettingsMenuAnimating(value) { settingsMenuAnimating = value; }
 export function setSettingsMenuAnimDirection(value) { settingsMenuAnimDirection = value; }
+export function setWelcomeWindow(value) { welcomeWindow = value; }
+export function setIsWelcomeWindowVisible(value) { isWelcomeWindowVisible = value; }
+export function setWelcomeWindowAnimProgress(value) { welcomeWindowAnimProgress = value; }
+export function setWelcomeWindowAnimating(value) { welcomeWindowAnimating = value; }
+export function setWelcomeWindowAnimDirection(value) { welcomeWindowAnimDirection = value; }
+export function setRightAButtonPressedForWelcome(value) { rightAButtonPressedForWelcome = value; }
+export function setWelcomeGuideLine(value) { welcomeGuideLine = value; }
+export function setWelcomeGuideDot(value) { welcomeGuideDot = value; }
+export function setTutorialStep(value) { tutorialStep = value; }
+export function setTutorial2Window(value) { tutorial2Window = value; }
+export function setIsTutorial2Visible(value) { isTutorial2Visible = value; }
+export function setTutorial2AnimProgress(value) { tutorial2AnimProgress = value; }
+export function setTutorial2Animating(value) { tutorial2Animating = value; }
+export function setTutorial2AnimDirection(value) { tutorial2AnimDirection = value; }
+export function setTutorial2GuideLine(value) { tutorial2GuideLine = value; }
+export function setTutorial2GuideDot(value) { tutorial2GuideDot = value; }
+export function setTutorial3Window(value) { tutorial3Window = value; }
+export function setIsTutorial3Visible(value) { isTutorial3Visible = value; }
+export function setTutorial3AnimProgress(value) { tutorial3AnimProgress = value; }
+export function setTutorial3Animating(value) { tutorial3Animating = value; }
+export function setTutorial3AnimDirection(value) { tutorial3AnimDirection = value; }
+export function setTutorial3GuideLine(value) { tutorial3GuideLine = value; }
+export function setTutorial3GuideDot(value) { tutorial3GuideDot = value; }
+export function setTutorial4Window(value) { tutorial4Window = value; }
+export function setIsTutorial4Visible(value) { isTutorial4Visible = value; }
+export function setTutorial4AnimProgress(value) { tutorial4AnimProgress = value; }
+export function setTutorial4Animating(value) { tutorial4Animating = value; }
+export function setTutorial4AnimDirection(value) { tutorial4AnimDirection = value; }
+export function setTutorial4GuideLine(value) { tutorial4GuideLine = value; }
+export function setTutorial4GuideDot(value) { tutorial4GuideDot = value; }
+export function setLeftXButtonPressedForTutorial3(value) { leftXButtonPressedForTutorial3 = value; }
+export function setTutorialCompleted(value) { tutorialCompleted = value; }
+export function setRestartTutorial(value) { restartTutorial = value; }
 export function setTrackingLostText(value) { trackingLostText = value; }
 export function setIsLeftControllerTracked(value) { isLeftControllerTracked = value; }
 export function setIsRightControllerTracked(value) { isRightControllerTracked = value; }

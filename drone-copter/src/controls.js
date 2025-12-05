@@ -7,7 +7,8 @@ import {
   createAutoReturnText, createAutoReturnRightControllerText, removeAutoReturnText,
   createSpeedText, createVolumeText, createCollisionText, createTrackingLostText,
   createSequenceStatusText, removeSequenceStatusText, toggleControllerGuideMenu,
-  toggleSettingsMenu
+  toggleSettingsMenu, removeWelcomeWindow, createTutorial2Window, removeTutorial2Window,
+  createTutorial3Window, removeTutorial3Window, removeTutorial4Window
 } from './ui.js';
 
 // 自動帰還モードの処理
@@ -148,14 +149,49 @@ export function handleRightControllerButtons() {
       const buttons = source.gamepad.buttons;
 
       // Aボタンでコントローラーガイドメニュー（常に利用可能）
+      // チュートリアル中は段階的に進む: 1→2→ガイド→3→完了
       const aButton = buttons[4];
       const isAPressed = aButton && aButton.pressed;
 
-      if (isAPressed && !state.rightAButtonPressedForGuide) {
-        toggleControllerGuideMenu();
-        console.log('コントローラーガイドメニュー:', state.isControllerGuideVisible ? '表示' : '非表示');
+      if (isAPressed && !state.rightAButtonPressedForGuide && !state.rightAButtonPressedForWelcome) {
+        if (state.isWelcomeWindowVisible && state.tutorialStep === 1) {
+          // チュートリアル1を閉じてチュートリアル2を開く
+          removeWelcomeWindow();
+          state.setTutorialStep(2);
+          // 少し遅延してチュートリアル2を表示
+          setTimeout(() => {
+            createTutorial2Window();
+          }, 300);
+          console.log('チュートリアル1を閉じ、チュートリアル2を表示');
+          state.setRightAButtonPressedForWelcome(true);
+        } else if (state.isTutorial2Visible && state.tutorialStep === 2) {
+          // チュートリアル2を閉じてコントローラーガイドを開く
+          removeTutorial2Window();
+          state.setTutorialStep(3); // 次はチュートリアル3（ガイドを閉じた後）
+          // 少し遅延してコントローラーガイドを表示
+          setTimeout(() => {
+            toggleControllerGuideMenu();
+          }, 300);
+          console.log('チュートリアル2を閉じ、コントローラーガイドを表示');
+          state.setRightAButtonPressedForWelcome(true);
+        } else if (state.isControllerGuideVisible && state.tutorialStep === 3) {
+          // チュートリアル中にコントローラーガイドを閉じる→チュートリアル3を表示
+          toggleControllerGuideMenu();
+          // 少し遅延してチュートリアル3を表示
+          setTimeout(() => {
+            createTutorial3Window();
+          }, 300);
+          console.log('コントローラーガイドを閉じ、チュートリアル3を表示');
+          state.setRightAButtonPressedForWelcome(true);
+        } else if (!state.isWelcomeWindowVisible && !state.isTutorial2Visible && !state.isTutorial3Visible) {
+          toggleControllerGuideMenu();
+          console.log('コントローラーガイドメニュー:', state.isControllerGuideVisible ? '表示' : '非表示');
+        }
       }
 
+      if (!isAPressed) {
+        state.setRightAButtonPressedForWelcome(false);
+      }
       state.setRightAButtonPressedForGuide(isAPressed);
     }
   }
@@ -245,16 +281,36 @@ export function handleLeftControllerButtons() {
     if (source.handedness === 'left' && source.gamepad) {
       const buttons = source.gamepad.buttons;
 
-      // Yボタンで設定メニュー（常に利用可能）
-      const yButton = buttons[4];
-      const isYPressed = yButton && yButton.pressed;
+      // Xボタン(buttons[4])の処理
+      const xButton = buttons[4];
+      const isXPressed = xButton && xButton.pressed;
 
-      if (isYPressed && !state.leftYButtonPressedForSettings) {
-        toggleSettingsMenu();
-        console.log('設定メニュー:', state.isSettingsMenuVisible ? '表示' : '非表示');
+      if (isXPressed && !state.leftXButtonPressedForTutorial3) {
+        if (state.isTutorial3Visible && state.tutorialStep === 3) {
+          // チュートリアル3を閉じて設定ウィンドウを開く
+          removeTutorial3Window();
+          state.setTutorialStep(4); // チュートリアル4へ（設定ウィンドウを閉じた後に表示）
+          // 少し遅延して設定メニューを表示
+          setTimeout(() => {
+            toggleSettingsMenu();
+          }, 300);
+          console.log('チュートリアル3を閉じ、設定ウィンドウを表示');
+          state.setLeftXButtonPressedForTutorial3(true);
+        } else if (state.isSettingsMenuVisible && state.tutorialStep === 4) {
+          // チュートリアル中に設定ウィンドウを閉じる（チュートリアル4表示へ）
+          toggleSettingsMenu();
+          console.log('設定ウィンドウを閉じる（チュートリアル4へ）');
+          state.setLeftXButtonPressedForTutorial3(true);
+        } else if (!state.isTutorial3Visible && state.tutorialStep !== 4) {
+          // 通常時：設定メニューをトグル
+          toggleSettingsMenu();
+          console.log('設定メニュー:', state.isSettingsMenuVisible ? '表示' : '非表示');
+          state.setLeftXButtonPressedForTutorial3(true);
+        }
       }
-
-      state.setLeftYButtonPressedForSettings(isYPressed);
+      if (!isXPressed) {
+        state.setLeftXButtonPressedForTutorial3(false);
+      }
     }
   }
 }
@@ -262,6 +318,32 @@ export function handleLeftControllerButtons() {
 // 左コントローラーの起動/終了シーケンス処理
 export function handleStartupSequence() {
   if (!state.xrSession || !state.droneSound) return;
+
+  // チュートリアル1-3の間は起動/終了を無効に（設定ウィンドウが開いている場合も含む）
+  if (state.isWelcomeWindowVisible || state.isTutorial2Visible || state.isTutorial3Visible) return;
+  if (state.tutorialStep >= 1 && state.tutorialStep <= 3) return;
+  if (state.tutorialStep === 4 && state.isSettingsMenuVisible) return;
+
+  // チュートリアル4表示中にYボタン(buttons[5])を押したら、チュートリアル4を閉じてから起動
+  if (state.isTutorial4Visible && state.tutorialStep === 4) {
+    const inputSources = state.xrSession.inputSources;
+    for (const source of inputSources) {
+      if (source.handedness === 'left' && source.gamepad) {
+        const buttons = source.gamepad.buttons;
+        const yButton = buttons[5]; // 起動ボタン
+        const isYPressed = yButton && yButton.pressed;
+        if (isYPressed && !state.leftXButtonPressed) {
+          removeTutorial4Window();
+          state.setTutorialStep(0); // チュートリアル完了
+          state.setTutorialCompleted(true);
+          localStorage.setItem('tutorialCompleted', 'true');
+          console.log('チュートリアル4を閉じ、チュートリアル完了');
+          // 起動シーケンスは次のフレームで実行されるようにreturn
+        }
+      }
+    }
+    return;
+  }
 
   const inputSources = state.xrSession.inputSources;
 

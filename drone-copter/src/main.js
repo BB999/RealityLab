@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 import * as state from './state.js';
 import { updateInfo } from './utils.js';
 import { loadDroneModel, updateMaxSpeed } from './drone.js';
@@ -7,7 +8,11 @@ import {
   updateAutoReturnText, updateSpeedText, updateVolumeText, updateCollisionText,
   updateTrackingLostText, updateSequenceStatusText,
   updateDroneLocationArrow, createTrackingLostText, removeTrackingLostText,
-  removeSequenceStatusText, updateControllerGuideMenu, updateSettingsMenu
+  removeSequenceStatusText, updateControllerGuideMenu, updateSettingsMenu,
+  createWelcomeWindow, updateWelcomeWindow, removeWelcomeWindow,
+  createTutorial2Window, updateTutorial2Window, removeTutorial2Window,
+  createTutorial3Window, updateTutorial3Window, removeTutorial3Window,
+  createTutorial4Window, updateTutorial4Window, removeTutorial4Window
 } from './ui.js';
 import { checkPlaneCollision, updatePreStartupPhysics, updateHoverAnimation, updateReturnToHover } from './physics.js';
 import { createVREnvironment, removeVREnvironment, createMRShadow, removeMRShadow, processDepthInformation, updatePlanes, createDepthVisualization, positionDrone } from './vr.js';
@@ -78,6 +83,10 @@ function render() {
   updateSequenceStatusText();
   updateControllerGuideMenu();
   updateSettingsMenu();
+  updateWelcomeWindow();
+  updateTutorial2Window();
+  updateTutorial3Window();
+  updateTutorial4Window();
 
   // ドローンがカメラ外にいる時の方向ガイド（常に更新）
   updateDroneLocationArrow();
@@ -755,6 +764,27 @@ async function startXR() {
 
     updateInfo('MRセッション開始');
 
+    // チュートリアル完了フラグをlocalStorageから読み込み
+    const tutorialCompletedStorage = localStorage.getItem('tutorialCompleted');
+    const restartTutorialStorage = localStorage.getItem('restartTutorial');
+
+    // チュートリアルを受けるボタンが押された場合はリセット
+    if (restartTutorialStorage === 'true') {
+      localStorage.removeItem('restartTutorial');
+      localStorage.removeItem('tutorialCompleted');
+      state.setTutorialCompleted(false);
+      state.setRestartTutorial(false);
+      state.setTutorialStep(1);
+      createWelcomeWindow();
+    } else if (tutorialCompletedStorage === 'true') {
+      // チュートリアル完了済みの場合はスキップ
+      state.setTutorialCompleted(true);
+      state.setTutorialStep(0);
+    } else {
+      // 初回はチュートリアルを表示
+      createWelcomeWindow();
+    }
+
     if (xrSession.depthUsage) {
       console.log('深度センサー有効:', xrSession.depthUsage);
       updateInfo('MRセッション開始 (深度センサー有効)');
@@ -843,6 +873,15 @@ async function startVR() {
     state.setRightController(rightController);
     state.setLeftController(leftController);
 
+    // コントローラーモデルを追加（VRモード用）
+    const controllerModelFactory = new XRControllerModelFactory();
+    const rightControllerGrip = state.renderer.xr.getControllerGrip(0);
+    const leftControllerGrip = state.renderer.xr.getControllerGrip(1);
+    rightControllerGrip.add(controllerModelFactory.createControllerModel(rightControllerGrip));
+    leftControllerGrip.add(controllerModelFactory.createControllerModel(leftControllerGrip));
+    state.scene.add(rightControllerGrip);
+    state.scene.add(leftControllerGrip);
+
     const hand1 = state.renderer.xr.getHand(0);
     const hand2 = state.renderer.xr.getHand(1);
     state.scene.add(hand1);
@@ -879,6 +918,27 @@ async function startVR() {
     window.dispatchEvent(new Event('xr-session-start'));
 
     updateInfo('VRセッション開始');
+
+    // チュートリアル完了フラグをlocalStorageから読み込み
+    const tutorialCompletedStorageVR = localStorage.getItem('tutorialCompleted');
+    const restartTutorialStorageVR = localStorage.getItem('restartTutorial');
+
+    // チュートリアルを受けるボタンが押された場合はリセット
+    if (restartTutorialStorageVR === 'true') {
+      localStorage.removeItem('restartTutorial');
+      localStorage.removeItem('tutorialCompleted');
+      state.setTutorialCompleted(false);
+      state.setRestartTutorial(false);
+      state.setTutorialStep(1);
+      createWelcomeWindow();
+    } else if (tutorialCompletedStorageVR === 'true') {
+      // チュートリアル完了済みの場合はスキップ
+      state.setTutorialCompleted(true);
+      state.setTutorialStep(0);
+    } else {
+      // 初回はチュートリアルを表示
+      createWelcomeWindow();
+    }
 
     xrSession.addEventListener('end', () => {
       state.setXrSession(null);
