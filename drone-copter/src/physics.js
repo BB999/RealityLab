@@ -112,6 +112,142 @@ export function checkPlaneCollision() {
     }
   }
 
+  // VR障害物との衝突判定
+  if (state.vrObstacles && state.vrObstacles.length > 0) {
+    state.vrObstacles.forEach(obstacle => {
+      if (!obstacle.userData.isObstacle) return;
+
+      const obstaclePos = obstacle.position.clone();
+      const toDrone = new THREE.Vector3().subVectors(dronePos, obstaclePos);
+
+      if (obstacle.userData.type === 'cube') {
+        // キューブとの衝突（AABB）
+        const halfSize = obstacle.userData.size / 2;
+        const minDist = state.droneCollisionRadius.horizontal;
+
+        // 各軸での距離を計算
+        const dx = Math.max(0, Math.abs(toDrone.x) - halfSize);
+        const dy = Math.max(0, Math.abs(toDrone.y) - halfSize);
+        const dz = Math.max(0, Math.abs(toDrone.z) - halfSize);
+
+        // ドローンがボックスの拡張範囲内にいるか
+        if (dx < minDist && dy < minDist && dz < minDist) {
+          hasCollision = true;
+
+          // 最も近い面の方向に押し出す
+          const overlapX = halfSize + minDist - Math.abs(toDrone.x);
+          const overlapY = halfSize + minDist - Math.abs(toDrone.y);
+          const overlapZ = halfSize + minDist - Math.abs(toDrone.z);
+
+          let pushDir = new THREE.Vector3();
+          let pushAmount = 0;
+
+          if (overlapX <= overlapY && overlapX <= overlapZ) {
+            pushDir.set(Math.sign(toDrone.x), 0, 0);
+            pushAmount = overlapX;
+          } else if (overlapY <= overlapX && overlapY <= overlapZ) {
+            pushDir.set(0, Math.sign(toDrone.y), 0);
+            pushAmount = overlapY;
+          } else {
+            pushDir.set(0, 0, Math.sign(toDrone.z));
+            pushAmount = overlapZ;
+          }
+
+          state.drone.position.add(pushDir.clone().multiplyScalar(pushAmount));
+          if (state.drone.userData.basePosition) {
+            state.drone.userData.basePosition.add(pushDir.clone().multiplyScalar(pushAmount));
+          }
+
+          // 速度反転
+          const velocityAlongPush = state.velocity.dot(pushDir);
+          if (velocityAlongPush < 0) {
+            state.velocity.sub(pushDir.clone().multiplyScalar(velocityAlongPush * 1.5));
+          }
+
+          if (!state.isColliding) {
+            state.setIsColliding(true);
+            playCrashSound();
+          }
+        }
+      } else if (obstacle.userData.type === 'pole') {
+        // ポール（円柱）との衝突 - 水平距離のみ
+        const horizontalDist = Math.sqrt(toDrone.x * toDrone.x + toDrone.z * toDrone.z);
+        const minDist = obstacle.userData.radius + state.droneCollisionRadius.horizontal;
+        const poleBottom = obstaclePos.y - obstacle.userData.height / 2;
+        const poleTop = obstaclePos.y + obstacle.userData.height / 2;
+
+        if (horizontalDist < minDist && dronePos.y > poleBottom && dronePos.y < poleTop) {
+          hasCollision = true;
+          const pushDir = new THREE.Vector3(toDrone.x, 0, toDrone.z).normalize();
+          const pushAmount = minDist - horizontalDist;
+          state.drone.position.add(pushDir.multiplyScalar(pushAmount));
+          if (state.drone.userData.basePosition) {
+            state.drone.userData.basePosition.add(pushDir.clone().multiplyScalar(pushAmount));
+          }
+
+          // 速度反転
+          const velocityAlongPush = state.velocity.dot(pushDir);
+          if (velocityAlongPush < 0) {
+            state.velocity.sub(pushDir.clone().multiplyScalar(velocityAlongPush * 1.5));
+          }
+
+          if (!state.isColliding) {
+            state.setIsColliding(true);
+            playCrashSound();
+          }
+        }
+      } else if (obstacle.userData.type === 'torus') {
+        // トーラスのチューブ部分との衝突
+        const outerRadius = obstacle.userData.outerRadius;
+        const tubeRadius = obstacle.userData.tubeRadius;
+
+        // トーラスのローカル座標系に変換
+        const localPos = toDrone.clone();
+        const invQuat = obstacle.quaternion.clone().invert();
+        localPos.applyQuaternion(invQuat);
+
+        // THREE.jsのトーラスはXY平面に配置される
+        // XY平面でのリング中心からの距離
+        const ringDist = Math.sqrt(localPos.x * localPos.x + localPos.y * localPos.y);
+        // リング上の最近点までの距離（Z軸方向が厚み）
+        const toRingCenter = ringDist - outerRadius;
+        const distToTube = Math.sqrt(toRingCenter * toRingCenter + localPos.z * localPos.z);
+        const minDist = tubeRadius + state.droneCollisionRadius.horizontal;
+
+        if (distToTube < minDist) {
+          hasCollision = true;
+
+          // 押し戻し方向を計算
+          const ringAngle = Math.atan2(localPos.y, localPos.x);
+          const ringPoint = new THREE.Vector3(
+            Math.cos(ringAngle) * outerRadius,
+            Math.sin(ringAngle) * outerRadius,
+            0
+          );
+          const pushDir = localPos.clone().sub(ringPoint).normalize();
+          pushDir.applyQuaternion(obstacle.quaternion);
+
+          const pushAmount = minDist - distToTube;
+          state.drone.position.add(pushDir.multiplyScalar(pushAmount));
+          if (state.drone.userData.basePosition) {
+            state.drone.userData.basePosition.add(pushDir.clone().multiplyScalar(pushAmount));
+          }
+
+          // 速度反転
+          const velocityAlongPush = state.velocity.dot(pushDir);
+          if (velocityAlongPush < 0) {
+            state.velocity.sub(pushDir.clone().multiplyScalar(velocityAlongPush * 1.5));
+          }
+
+          if (!state.isColliding) {
+            state.setIsColliding(true);
+            playCrashSound();
+          }
+        }
+      }
+    });
+  }
+
   if (!hasCollision) {
     state.setIsColliding(false);
   }

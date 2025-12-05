@@ -12,7 +12,104 @@ export function createVREnvironment() {
   state.scene.add(gridHelper);
   state.setGridHelper(gridHelper);
 
+  // 練習用障害物を配置
+  createTrainingObstacles();
+
   console.log('VR環境を作成しました');
+}
+
+// 練習用障害物を作成
+function createTrainingObstacles() {
+  const obstacles = [];
+
+  // キューブ障害物（ランダム配置）
+  const cubePositions = [
+    { x: 3, y: 1.5, z: -5 },
+    { x: -4, y: 2, z: -8 },
+    { x: 6, y: 1, z: 3 },
+    { x: -2, y: 2.5, z: 5 },
+    { x: 5, y: 1.8, z: -3 },
+    { x: -6, y: 1.2, z: -4 },
+  ];
+
+  cubePositions.forEach((pos, i) => {
+    const size = 0.5 + Math.random() * 0.5;
+    const geometry = new THREE.BoxGeometry(size, size, size);
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(i / cubePositions.length, 0.7, 0.5),
+      roughness: 0.5,
+      metalness: 0.3
+    });
+    const cube = new THREE.Mesh(geometry, material);
+    cube.position.set(pos.x, pos.y, pos.z);
+    cube.userData.isObstacle = true;
+    cube.userData.type = 'cube';
+    cube.userData.size = size;
+
+    state.scene.add(cube);
+    obstacles.push(cube);
+  });
+
+  // ドーナツ（トーラス）ゲート - くぐる練習用
+  const torusPositions = [
+    { x: 0, y: 1.5, z: -6, rotY: 0 },
+    { x: -5, y: 2, z: 0, rotY: Math.PI / 2 },
+    { x: 4, y: 1.8, z: 4, rotY: Math.PI / 4 },
+    { x: -3, y: 2.5, z: -10, rotY: 0 },
+    { x: 7, y: 1.5, z: -7, rotY: -Math.PI / 3 },
+  ];
+
+  torusPositions.forEach((pos, i) => {
+    const outerRadius = 1.0 + Math.random() * 0.5;
+    const tubeRadius = 0.1;
+    const geometry = new THREE.TorusGeometry(outerRadius, tubeRadius, 16, 32);
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(0.1 + i * 0.15, 0.8, 0.6),
+      roughness: 0.3,
+      metalness: 0.5
+    });
+    const torus = new THREE.Mesh(geometry, material);
+    torus.position.set(pos.x, pos.y, pos.z);
+    torus.rotation.y = pos.rotY;
+    torus.userData.isObstacle = true;
+    torus.userData.type = 'torus';
+    torus.userData.outerRadius = outerRadius;
+    torus.userData.tubeRadius = tubeRadius;
+
+    state.scene.add(torus);
+    obstacles.push(torus);
+  });
+
+  // ポール障害物（縦長の円柱）
+  const polePositions = [
+    { x: 2, z: -2 },
+    { x: -3, z: -6 },
+    { x: 5, z: 1 },
+    { x: -5, z: 3 },
+  ];
+
+  polePositions.forEach((pos, i) => {
+    const height = 3 + Math.random() * 2;
+    const radius = 0.15;
+    const geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xff4444,
+      roughness: 0.4,
+      metalness: 0.2
+    });
+    const pole = new THREE.Mesh(geometry, material);
+    pole.position.set(pos.x, height / 2, pos.z);
+    pole.userData.isObstacle = true;
+    pole.userData.type = 'pole';
+    pole.userData.radius = radius;
+    pole.userData.height = height;
+
+    state.scene.add(pole);
+    obstacles.push(pole);
+  });
+
+  state.setVrObstacles(obstacles);
+  console.log('練習用障害物を配置:', obstacles.length, '個');
 }
 
 // VR環境を削除
@@ -23,6 +120,14 @@ export function removeVREnvironment() {
     state.scene.remove(state.gridHelper);
     state.setGridHelper(null);
   }
+
+  // 障害物を削除
+  state.vrObstacles.forEach(obstacle => {
+    state.scene.remove(obstacle);
+    if (obstacle.geometry) obstacle.geometry.dispose();
+    if (obstacle.material) obstacle.material.dispose();
+  });
+  state.setVrObstacles([]);
 
   console.log('VR環境を削除しました');
 }

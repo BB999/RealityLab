@@ -100,6 +100,9 @@ export let detectedPlanes = new Map();
 // VR用背景とグリッド
 export let vrBackground = null;
 export let gridHelper = null;
+export let vrObstacles = [];
+
+export function setVrObstacles(value) { vrObstacles = value; }
 
 // ハンドトラッキングとグリップ機能用変数
 export let hand1 = null;
