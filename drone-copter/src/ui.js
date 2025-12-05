@@ -70,10 +70,12 @@ const i18n = {
     // ステータステキスト
     status: {
       autoReturn: '自動帰還中',
-      volumeOn: 'Volume On',
-      volumeOff: 'Volume Off',
-      collisionOn: 'Collision On',
-      collisionOff: 'Collision Off',
+      volumeOn: '音量 ON',
+      volumeOff: '音量 OFF',
+      collisionOn: '当たり判定 ON',
+      collisionOff: '当たり判定 OFF',
+      startingUp: '起動中',
+      shuttingDown: '終了中',
       trackingLostBoth: 'Controllers Tracking Lost',
       trackingLostLeft: 'Left Controller Tracking Lost',
       trackingLostRight: 'Right Controller Tracking Lost'
@@ -194,6 +196,8 @@ const i18n = {
       volumeOff: 'Volume Off',
       collisionOn: 'Collision On',
       collisionOff: 'Collision Off',
+      startingUp: 'STARTING UP',
+      shuttingDown: 'SHUTTING DOWN',
       trackingLostBoth: 'Controllers Tracking Lost',
       trackingLostLeft: 'Left Controller Tracking Lost',
       trackingLostRight: 'Right Controller Tracking Lost'
@@ -245,7 +249,7 @@ const i18n = {
 };
 
 // 現在の言語でテキストを取得するヘルパー関数
-function t(category, key) {
+export function t(category, key) {
   const lang = state.currentLanguage || 'ja';
   return i18n[lang][category][key] || i18n['ja'][category][key] || key;
 }
@@ -263,7 +267,7 @@ export function createAutoReturnText() {
   context.font = 'bold 60px Arial';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.fillText('自動帰還中', canvas.width / 2, canvas.height / 2);
+  context.fillText(t('status', 'autoReturn'), canvas.width / 2, canvas.height / 2);
 
   const texture = new THREE.CanvasTexture(canvas);
   const geometry = new THREE.PlaneGeometry(0.15, 0.0375);
@@ -292,7 +296,7 @@ export function createAutoReturnRightControllerText() {
   context.font = 'bold 60px Arial';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.fillText('自動帰還中', canvas.width / 2, canvas.height / 2);
+  context.fillText(t('status', 'autoReturn'), canvas.width / 2, canvas.height / 2);
 
   const texture = new THREE.CanvasTexture(canvas);
   const geometry = new THREE.PlaneGeometry(0.15, 0.0375);
@@ -321,7 +325,7 @@ export function createAutoReturnLeftControllerText() {
   context.font = 'bold 60px Arial';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.fillText('自動帰還中', canvas.width / 2, canvas.height / 2);
+  context.fillText(t('status', 'autoReturn'), canvas.width / 2, canvas.height / 2);
 
   const texture = new THREE.CanvasTexture(canvas);
   const geometry = new THREE.PlaneGeometry(0.15, 0.0375);
@@ -507,7 +511,7 @@ export function createVolumeText(isOn) {
   context.font = 'bold 60px Arial';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  const text = isOn ? 'Volume On' : 'Volume Off';
+  const text = isOn ? t('status', 'volumeOn') : t('status', 'volumeOff');
   context.fillText(text, canvas.width / 2, canvas.height / 2);
 
   const texture = new THREE.CanvasTexture(canvas);
@@ -573,7 +577,7 @@ export function createCollisionText(isOn) {
   context.font = 'bold 60px Arial';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  const text = isOn ? 'Collision On' : 'Collision Off';
+  const text = isOn ? t('status', 'collisionOn') : t('status', 'collisionOff');
   context.fillText(text, canvas.width / 2, canvas.height / 2);
 
   const texture = new THREE.CanvasTexture(canvas);

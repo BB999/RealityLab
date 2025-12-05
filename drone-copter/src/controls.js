@@ -8,7 +8,7 @@ import {
   createSpeedText, createVolumeText, createCollisionText, createTrackingLostText,
   createSequenceStatusText, removeSequenceStatusText, toggleControllerGuideMenu,
   toggleSettingsMenu, removeWelcomeWindow, createTutorial2Window, removeTutorial2Window,
-  createTutorial3Window, removeTutorial3Window, removeTutorial4Window
+  createTutorial3Window, removeTutorial3Window, removeTutorial4Window, t
 } from './ui.js';
 
 // 自動帰還モードの処理
@@ -361,7 +361,7 @@ export function handleStartupSequence() {
         state.setHasLanded(false);
         console.log('起動シーケンス開始');
         updateInfo('Drone Starting...');
-        createSequenceStatusText('STARTING UP');
+        createSequenceStatusText(t('status', 'startingUp'));
         playButtonSound();
 
         // ドローン音を低ピッチで再生開始
@@ -416,7 +416,7 @@ export function handleStartupSequence() {
         state.setIsStartupComplete(false);
         console.log('=== 終了シーケンス開始 - 降下を開始 ===');
         updateInfo('Shutting Down...');
-        createSequenceStatusText('SHUTTING DOWN');
+        createSequenceStatusText(t('status', 'shuttingDown'));
         playButtonSound();
       }
 
