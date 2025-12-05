@@ -22,7 +22,7 @@ export default defineConfig({
         description: 'Mixed Reality Drone Simulator for Quest 3 / Quest Pro',
         start_url: '/RealityLab/drone-copter/dist/',
         display: 'standalone',
-        background_color: '#0a0a1a',
+        background_color: '#000000',
         theme_color: '#00c8ff',
         orientation: 'any',
         icons: [
