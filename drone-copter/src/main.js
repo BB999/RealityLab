@@ -104,11 +104,20 @@ function render() {
     let leftFound = false;
     let rightFound = false;
 
-    for (const source of inputSources) {
-      if (source.handedness === 'left' && source.gripSpace) {
-        leftFound = true;
-      } else if (source.handedness === 'right' && source.gripSpace) {
-        rightFound = true;
+    if (frame && referenceSpace) {
+      for (const source of inputSources) {
+        if (source.handedness === 'left' && source.gripSpace) {
+          // 実際にポーズが取得できるかチェック
+          const pose = frame.getPose(source.gripSpace, referenceSpace);
+          if (pose) {
+            leftFound = true;
+          }
+        } else if (source.handedness === 'right' && source.gripSpace) {
+          const pose = frame.getPose(source.gripSpace, referenceSpace);
+          if (pose) {
+            rightFound = true;
+          }
+        }
       }
     }
 

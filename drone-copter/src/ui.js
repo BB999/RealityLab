@@ -7,7 +7,7 @@ const i18n = {
   ja: {
     // 設定ウィンドウ
     settings: {
-      title: 'SETTINGS',
+      title: '設定',
       language: '言語',
       languageDesc: '表示言語を選択',
       deadzone: 'デッドゾーン',
@@ -35,7 +35,7 @@ const i18n = {
     },
     // コントローラーガイド
     guide: {
-      title: 'CONTROLLER GUIDE',
+      title: '操作ガイド',
       leftController: '左コントローラー',
       rightController: '右コントローラー',
       stickUpDown: 'スティック↑↓',
@@ -1989,10 +1989,18 @@ function handleSettingsButtonClick(button) {
     // 日本語を選択
     item.setValue('ja');
     playButtonSound();
+    // コントローラーガイドメニューが開いていれば再描画
+    if (state.controllerGuideMenu) {
+      redrawControllerGuideMenu({});
+    }
   } else if (button.type === 'langEn') {
     // 英語を選択
     item.setValue('en');
     playButtonSound();
+    // コントローラーガイドメニューが開いていれば再描画
+    if (state.controllerGuideMenu) {
+      redrawControllerGuideMenu({});
+    }
   } else if (button.type === 'toggle') {
     // トグル切り替え
     const currentValue = item.getValue();
