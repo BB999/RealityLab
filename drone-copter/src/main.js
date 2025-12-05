@@ -133,9 +133,9 @@ function render() {
   // プロペラ回転
   state.propellers.forEach((propeller) => {
     if (state.isStartupComplete && !state.isShuttingDown) {
-      propeller.rotation.y += 0.5;
+      propeller.rotation.y += state.propellerRotationSpeed;
     } else {
-      propeller.rotation.y += 0.5 * state.propellerSpeedMultiplier;
+      propeller.rotation.y += state.propellerRotationSpeed * state.propellerSpeedMultiplier;
     }
   });
 

@@ -1129,6 +1129,19 @@ const settingsItems = [
     format: (v) => (v * 100).toFixed(0) + '%'
   },
   {
+    name: 'プロペラ速度',
+    description: 'プロペラの回転速度',
+    key: 'propellerSpeed',
+    type: 'value',
+    getValue: () => state.propellerRotationSpeed,
+    setValue: (v) => state.setPropellerRotationSpeed(v),
+    defaultValue: 1.0,
+    min: 0.1,
+    max: 2.0,
+    step: 0.1,
+    format: (v) => (v * 100).toFixed(0) + '%'
+  },
+  {
     name: 'FPVモード',
     description: 'ドローン視点で操縦',
     key: 'fpvMode',
