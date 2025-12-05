@@ -1,6 +1,6 @@
 {
-  "name": "DOROCON - MR Drone Simulator",
-  "short_name": "DOROCON",
+  "name": "DROCON - MR Drone Simulator",
+  "short_name": "DROCON",
   "description": "Mixed Reality Drone Simulator for Quest 3 / Quest Pro",
   "start_url": "/",
   "display": "standalone",

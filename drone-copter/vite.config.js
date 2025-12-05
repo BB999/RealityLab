@@ -17,8 +17,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['doron.glb', 'doron.blend', '*.mp3', 'icons/*.png'],
       manifest: {
-        name: 'DOROCON - MR Drone Simulator',
-        short_name: 'DOROCON',
+        name: 'DROCON - MR Drone Simulator',
+        short_name: 'DROCON',
         description: 'Mixed Reality Drone Simulator for Quest 3 / Quest Pro',
         start_url: '/RealityLab/drone-copter/dist/',
         display: 'standalone',
