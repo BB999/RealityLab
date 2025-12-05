@@ -132,8 +132,8 @@ export function updatePreStartupPhysics() {
   const floorHeight = 0;
   const dt = 0.016;
 
-  // まず着地可能な平面の高さを計算
-  let landingPlaneHeight = floorHeight;
+  // まず着地可能な平面の高さを計算（床の高さ + ドローンの半径）
+  let landingPlaneHeight = floorHeight + state.droneCollisionRadius.vertical;
 
   state.detectedPlanes.forEach((planeData) => {
     const { position, quaternion, polygon } = planeData;
@@ -203,23 +203,40 @@ export function updatePreStartupPhysics() {
   // 速度から位置を更新
   state.drone.position.add(state.dronePhysicsVelocity.clone().multiplyScalar(dt));
 
-  // 地面または平面との衝突判定
+  // 地面または平面との衝突判定（終了シーケンスと同じ処理）
   if (state.drone.position.y <= landingPlaneHeight) {
+    const impactVelocity = Math.abs(state.dronePhysicsVelocity.y);
     state.drone.position.y = landingPlaneHeight;
 
-    if (Math.abs(state.dronePhysicsVelocity.y) > 0.3) {
-      // 強い衝突の場合のみバウンド
-      state.dronePhysicsVelocity.y = -state.dronePhysicsVelocity.y * 0.3;
+    // 下向きの速度がある場合は跳ね返る（終了シーケンスと同じ条件）
+    if (state.dronePhysicsVelocity.y < 0) {
+      state.dronePhysicsVelocity.y = -state.dronePhysicsVelocity.y * 0.5;
       state.droneAngularVelocity.x += (Math.random() - 0.5) * 1.0;
       state.droneAngularVelocity.z += (Math.random() - 0.5) * 1.0;
+
+      // 衝突音と触覚フィードバック（終了シーケンスと同じ）
+      if (impactVelocity > 0.5 && !state.isColliding) {
+        state.setIsColliding(true);
+        playCrashSound();
+        if (state.xrSession) {
+          const inputSources = state.xrSession.inputSources;
+          for (const source of inputSources) {
+            if (source.gamepad && source.gamepad.hapticActuators && source.gamepad.hapticActuators.length > 0) {
+              const impactStrength = Math.min(Math.max(impactVelocity * 0.5, 0.3), 1.0);
+              source.gamepad.hapticActuators[0].pulse(impactStrength, 33);
+            }
+          }
+        }
+      }
     } else {
-      // 弱い衝突は即座に停止
-      state.dronePhysicsVelocity.set(0, 0, 0);
+      state.setIsColliding(false);
     }
 
     state.dronePhysicsVelocity.x *= 0.7;
     state.dronePhysicsVelocity.z *= 0.7;
     state.droneAngularVelocity.multiplyScalar(0.7);
+  } else {
+    state.setIsColliding(false);
   }
 
   // 角速度を回転に適用

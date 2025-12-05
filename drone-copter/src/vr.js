@@ -165,9 +165,27 @@ export function positionDrone() {
     console.log('床をy=0に設定 (カメラ位置:', cameraPos.y, ')');
   }
 
-  const dronePos = cameraPos.clone()
-    .add(cameraDirection.multiplyScalar(0.3));
-  dronePos.y = floorY + 0.05;
+  // 右コントローラーの位置を取得してドローンを配置
+  let dronePos = null;
+  const inputSources = state.xrSession.inputSources;
+  for (const source of inputSources) {
+    if (source.handedness === 'right' && source.gripSpace) {
+      const gripPose = frame.getPose(source.gripSpace, referenceSpace);
+      if (gripPose) {
+        dronePos = new THREE.Vector3().setFromMatrixPosition(
+          new THREE.Matrix4().fromArray(gripPose.transform.matrix)
+        );
+        console.log('右コントローラーの位置にドローンを配置:', dronePos);
+        break;
+      }
+    }
+  }
+
+  // 右コントローラーが見つからない場合は次のフレームまで待つ
+  if (!dronePos) {
+    console.log('右コントローラー待機中... inputSources:', inputSources.length);
+    return; // 配置しない、次のフレームで再試行
+  }
 
   state.drone.position.copy(dronePos);
 

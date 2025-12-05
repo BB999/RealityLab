@@ -445,6 +445,7 @@ export function handleControllerGrab() {
               if (distance < 0.08) {
                 state.setIsGrabbedByController(true);
                 state.setGrabbingInputSource(source);
+                state.setHasLanded(false);
 
                 state.smoothedControllerPosition.copy(controllerPos);
 
@@ -485,6 +486,7 @@ export function handleControllerGrab() {
               if (distance < 0.08) {
                 state.setIsGrabbedByController(true);
                 state.setGrabbingInputSource(source);
+                state.setHasLanded(false);
 
                 state.smoothedControllerPosition.copy(controllerPos);
 
@@ -603,6 +605,7 @@ export function handleHandGrab() {
       if (isPinching && !state.isGrabbedByHand && distanceToDrone < 0.08) {
         state.setIsGrabbedByHand(true);
         state.setGrabbingHand(hand);
+        state.setHasLanded(false);
 
         state.grabOffset.copy(dronePos).sub(handCenter);
         state.smoothedHandPosition.copy(handCenter);
