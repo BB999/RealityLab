@@ -1478,8 +1478,10 @@ export function createSettingsMenu() {
   state.setSettingsMenuAnimating(true);
   state.setSettingsMenuAnimDirection(1);
 
-  // レーザーライン作成（非表示）
-  // createSettingsLaser();
+  // レーザーライン作成（チュートリアル中は非表示）
+  if (state.tutorialStep === 0 || state.tutorialStep > 4) {
+    createSettingsLaser();
+  }
 }
 
 // 設定メニューを再描画
