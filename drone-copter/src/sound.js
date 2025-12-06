@@ -20,6 +20,12 @@ let cursorSoundBuffer = null;
 let crashSound = null;
 let crashSoundBuffer = null;
 
+// チュートリアルBGM用のAudioオブジェクト
+let tutorialBGM = null;
+let tutorialBGMBuffer = null;
+let isTutorialBGMPlaying = false;
+let tutorialBGMFadeInterval = null;
+
 // ボタン音の初期化
 export function setupButtonSound() {
   if (!state.audioListener) {
@@ -197,6 +203,74 @@ export function playCrashSound() {
     crashSound.stop();
   }
   crashSound.play();
+}
+
+// チュートリアルBGMの初期化
+export function setupTutorialBGM() {
+  if (!state.audioListener) {
+    console.error('オーディオリスナーが未初期化');
+    return;
+  }
+
+  tutorialBGM = new THREE.Audio(state.audioListener);
+
+  const audioLoader = new THREE.AudioLoader();
+  audioLoader.load(
+    './maou_bgm.mp3',
+    (buffer) => {
+      tutorialBGMBuffer = buffer;
+      tutorialBGM.setBuffer(buffer);
+      tutorialBGM.setLoop(true);
+      tutorialBGM.setVolume(0.2);
+      console.log('チュートリアルBGM読み込み完了');
+    },
+    undefined,
+    (error) => {
+      console.error('チュートリアルBGMファイルの読み込みエラー:', error);
+    }
+  );
+}
+
+// チュートリアルBGMを再生
+export function playTutorialBGM() {
+  if (!tutorialBGM || !tutorialBGMBuffer) return;
+  if (isTutorialBGMPlaying) return;
+
+  // フェードアウト中なら停止
+  if (tutorialBGMFadeInterval) {
+    clearInterval(tutorialBGMFadeInterval);
+    tutorialBGMFadeInterval = null;
+  }
+
+  tutorialBGM.setVolume(0.2);
+  tutorialBGM.play();
+  isTutorialBGMPlaying = true;
+  console.log('チュートリアルBGM再生開始');
+}
+
+// チュートリアルBGMをフェードアウト
+export function fadeOutTutorialBGM(duration = 2000) {
+  if (!tutorialBGM || !isTutorialBGMPlaying) return;
+
+  const startVolume = tutorialBGM.getVolume();
+  const fadeSteps = 20;
+  const stepTime = duration / fadeSteps;
+  const volumeStep = startVolume / fadeSteps;
+  let currentStep = 0;
+
+  tutorialBGMFadeInterval = setInterval(() => {
+    currentStep++;
+    const newVolume = Math.max(0, startVolume - (volumeStep * currentStep));
+    tutorialBGM.setVolume(newVolume);
+
+    if (currentStep >= fadeSteps) {
+      clearInterval(tutorialBGMFadeInterval);
+      tutorialBGMFadeInterval = null;
+      tutorialBGM.stop();
+      isTutorialBGMPlaying = false;
+      console.log('チュートリアルBGMフェードアウト完了');
+    }
+  }, stepTime);
 }
 
 // ドローン音声の設定

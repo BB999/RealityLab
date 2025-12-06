@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as state from './state.js';
-import { playWindowOpenSound, playWindowCloseSound, playCursorSound, playButtonSound } from './sound.js';
+import { playWindowOpenSound, playWindowCloseSound, playCursorSound, playButtonSound, playTutorialBGM, fadeOutTutorialBGM } from './sound.js';
 
 // 多言語テキスト定義
 const i18n = {
@@ -2445,6 +2445,7 @@ export function createWelcomeWindow() {
   if (state.welcomeWindow) return;
 
   playWindowOpenSound();
+  playTutorialBGM();
 
   // キャンバス作成
   const canvas = document.createElement('canvas');
@@ -2578,6 +2579,7 @@ export function removeWelcomeWindow() {
   if (!state.welcomeWindow || !state.isWelcomeWindowVisible) return;
 
   playWindowCloseSound();
+  fadeOutTutorialBGM(2000);
   state.setWelcomeWindowAnimDirection(-1);
   state.setWelcomeWindowAnimating(true);
 }

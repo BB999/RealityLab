@@ -639,7 +639,7 @@
     // BGM設定
     const bgm = new Audio('./mainBGM.mp3');
     bgm.loop = true;
-    bgm.volume = 0.3;
+    bgm.volume = 0.2;
     let isBgmPlaying = false;
 
     // BGMボタン
@@ -710,7 +710,7 @@
           clearInterval(fadeInterval);
           bgm.pause();
           bgm.currentTime = 0;
-          bgm.volume = 0.3;
+          bgm.volume = 0.2;
           bgmBtn.classList.remove('playing');
           isBgmPlaying = false;
         }
