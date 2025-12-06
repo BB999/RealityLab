@@ -230,7 +230,13 @@ export let fpvInitialDroneRotationY = 0;
 export let wasFpvMode = false;
 
 // 言語設定（'ja': 日本語, 'en': 英語）
-export let currentLanguage = 'ja';
+// デバイスの言語設定を自動検出
+function detectLanguage() {
+  const browserLang = navigator.language || navigator.userLanguage || 'en';
+  // 日本語環境の場合は'ja'、それ以外は'en'
+  return browserLang.startsWith('ja') ? 'ja' : 'en';
+}
+export let currentLanguage = detectLanguage();
 
 // セッター関数群
 export function setScene(value) { scene = value; }
