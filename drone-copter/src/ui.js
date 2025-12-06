@@ -2579,7 +2579,6 @@ export function removeWelcomeWindow() {
   if (!state.welcomeWindow || !state.isWelcomeWindowVisible) return;
 
   playWindowCloseSound();
-  fadeOutTutorialBGM(2000);
   state.setWelcomeWindowAnimDirection(-1);
   state.setWelcomeWindowAnimating(true);
 }
@@ -3498,6 +3497,7 @@ export function removeTutorial4Window() {
   if (!state.tutorial4Window || !state.isTutorial4Visible) return;
 
   playWindowCloseSound();
+  fadeOutTutorialBGM(2000);
   state.setTutorial4AnimDirection(-1);
   state.setTutorial4Animating(true);
 }
