@@ -4,8 +4,8 @@ import path from 'path';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  // 本番用: '/' に変更。GitHub Pages等の場合は '/repo-name/' に設定
-  base: '/',
+  // GitHub Pages用: https://bb999.github.io/drone-copter/
+  base: '/drone-copter/',
   server: {
     https: {
       key: fs.readFileSync(path.resolve(__dirname, '.cert/key.pem')),
@@ -21,33 +21,33 @@ export default defineConfig({
         name: 'DROCON - MR Drone Simulator',
         short_name: 'DROCON',
         description: 'Mixed Reality Drone Simulator for Quest 3 / Quest Pro',
-        start_url: '/',
-        scope: '/',
+        start_url: '/drone-copter/',
+        scope: '/drone-copter/',
         display: 'standalone',
         background_color: '#000000',
         theme_color: '#00c8ff',
         orientation: 'any',
         icons: [
           {
-            src: '/icons/icon-192.png',
+            src: '/drone-copter/icons/icon-192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any'
           },
           {
-            src: '/icons/icon-512.png',
+            src: '/drone-copter/icons/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any'
           },
           {
-            src: '/icons/icon-192-maskable.png',
+            src: '/drone-copter/icons/icon-192-maskable.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'maskable'
           },
           {
-            src: '/icons/icon-512-maskable.png',
+            src: '/drone-copter/icons/icon-512-maskable.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable'
