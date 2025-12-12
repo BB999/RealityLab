@@ -1,5 +1,5 @@
 node_modules/
-dist/
+# dist/ # GitHub Pagesで公開するため除外しない
 .cert/
 *.log
 .DS_Store
