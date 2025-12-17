@@ -861,7 +861,16 @@ function updatePlaneShadowMesh(xrPlane, position, quaternion, polygon) {
 
 // ドローンの初期配置
 export function positionDrone() {
-  if (!state.xrSession || !state.drone || state.dronePositioned) return;
+  if (!state.xrSession) {
+    return;
+  }
+  if (!state.drone) {
+    console.log('positionDrone: state.droneがまだ設定されていない');
+    return;
+  }
+  if (state.dronePositioned) {
+    return;
+  }
 
   const frame = state.renderer.xr.getFrame();
   const referenceSpace = state.renderer.xr.getReferenceSpace();

@@ -25,6 +25,50 @@ export let collisionParticles = [];
 export let lastCollisionTime = 0;
 export let isColliding = false;
 
+// Aボタン用フォーメーション切り替え（K → MU → I → (^_^) → 元）
+// 0: 元, 1: K, 2: MU, 3: I, 4: (^_^)
+export let formationIndex = 0;
+export let formationAnimating = false;
+export let formationStartTime = null;
+export function setFormationStartTime(value) { formationStartTime = value; }
+export let droneChildren = [];
+export let droneOriginalPositions = [];
+export let droneKPositions = [];
+export let droneMUPositions = [];
+export let droneIPositions = [];
+export let droneSmilePositions = []; // (^_^)
+export let rightAButtonPressed = false;
+export function setFormationIndex(value) { formationIndex = value; }
+export function setFormationAnimating(value) { formationAnimating = value; }
+export function setDroneChildren(value) { droneChildren = value; }
+export function setDroneOriginalPositions(value) { droneOriginalPositions = value; }
+export function setDroneKPositions(value) { droneKPositions = value; }
+export function setDroneMUPositions(value) { droneMUPositions = value; }
+export function setDroneIPositions(value) { droneIPositions = value; }
+export function setDroneSmilePositions(value) { droneSmilePositions = value; }
+export function setRightAButtonPressed(value) { rightAButtonPressed = value; }
+
+// Xボタン用フォーメーション切り替え（猫 → メビウス → 泣き顔 → 波 → 元）
+// 0: 元, 1: 猫, 2: メビウス(八の字), 3: 泣き顔, 4: 波
+export let formationIndexX = 0;
+export let formationAnimatingX = false;
+export let formationStartTimeX = null;
+export let formationAnimationTimeX = 0;
+export let droneCatPositions = [];
+export let droneMobiusPositions = [];
+export let droneCryingPositions = [];
+export let droneWavePositions = [];
+export let leftXButtonPressedForFormation = false;
+export function setFormationIndexX(value) { formationIndexX = value; }
+export function setFormationAnimatingX(value) { formationAnimatingX = value; }
+export function setFormationStartTimeX(value) { formationStartTimeX = value; }
+export function setFormationAnimationTimeX(value) { formationAnimationTimeX = value; }
+export function setDroneCatPositions(value) { droneCatPositions = value; }
+export function setDroneMobiusPositions(value) { droneMobiusPositions = value; }
+export function setDroneCryingPositions(value) { droneCryingPositions = value; }
+export function setDroneWavePositions(value) { droneWavePositions = value; }
+export function setLeftXButtonPressedForFormation(value) { leftXButtonPressedForFormation = value; }
+
 // 自動帰還モード用変数
 export let isAutoReturning = false;
 export let autoReturnTarget = new THREE.Vector3();
@@ -175,8 +219,8 @@ export let rightGripPressed = false;
 export let leftGripPressed = false;
 export let bothGripsPressed = false;
 export let initialControllerDistance = 0;
-export let initialDroneScale = 0.3;
-export let currentDroneScale = 0.3;
+export let initialDroneScale = 0.03;
+export let currentDroneScale = 0.03; // 1/10サイズ
 export let smoothedHandPosition = new THREE.Vector3();
 export let smoothedHandRotation = new THREE.Quaternion();
 export const handSmoothingFactor = 0.3;

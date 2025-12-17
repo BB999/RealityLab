@@ -1,22 +1,17 @@
 import * as THREE from 'three';
-import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 import * as state from './state.js';
 import { updateInfo } from './utils.js';
 import { loadDroneModel, updateMaxSpeed } from './drone.js';
 import { updateDroneSoundPitch } from './sound.js';
 import {
-  updateAutoReturnText, updateSpeedText, updateVolumeText, updateCollisionText,
+  updateAutoReturnText, updateSpeedText,
   updateTrackingLostText, updateSequenceStatusText,
-  updateDroneLocationArrow, createTrackingLostText, removeTrackingLostText,
-  removeSequenceStatusText, updateControllerGuideMenu, updateSettingsMenu,
-  createWelcomeWindow, updateWelcomeWindow, removeWelcomeWindow,
-  createTutorial2Window, updateTutorial2Window, removeTutorial2Window,
-  createTutorial3Window, updateTutorial3Window, removeTutorial3Window,
-  createTutorial4Window, updateTutorial4Window, removeTutorial4Window,
+  createTrackingLostText, removeTrackingLostText,
+  removeSequenceStatusText,
   loadSettingsFromStorage
 } from './ui.js';
 import { checkPlaneCollision, updatePreStartupPhysics, updateHoverAnimation, updateReturnToHover } from './physics.js';
-import { createVREnvironment, removeVREnvironment, createMRShadow, removeMRShadow, processDepthInformation, updatePlanes, createDepthVisualization, positionDrone } from './vr.js';
+import { createMRShadow, removeMRShadow, processDepthInformation, updatePlanes, createDepthVisualization, positionDrone } from './vr.js';
 import {
   updateAutoReturn, handleSpeedChange, handleRightControllerButtons,
   handleStartupSequence, handleSizeChange, handleControllerGrab, handleHandGrab,
@@ -63,8 +58,7 @@ function init() {
   directionalLight.position.set(1, 1, 1);
   scene.add(directionalLight);
 
-  // ドローンモデルの読み込み
-  loadDroneModel();
+  // ドローンモデルの読み込みはXRセッション開始時に行う（リソース節約のため）
 
   // ウィンドウリサイズ対応
   window.addEventListener('resize', onWindowResize);
@@ -81,19 +75,8 @@ function render() {
   // UI更新
   updateAutoReturnText();
   updateSpeedText();
-  updateVolumeText();
-  updateCollisionText();
   updateTrackingLostText();
   updateSequenceStatusText();
-  updateControllerGuideMenu();
-  updateSettingsMenu();
-  updateWelcomeWindow();
-  updateTutorial2Window();
-  updateTutorial3Window();
-  updateTutorial4Window();
-
-  // ドローンがカメラ外にいる時の方向ガイド（常に更新）
-  updateDroneLocationArrow();
 
   // XRセッション中の処理
   if (state.xrSession) {
@@ -166,6 +149,9 @@ function render() {
   updateLiftSequence();
   updatePreStartupPhysics();
   updateHoverAnimation();
+  updateFormationAnimation();    // Aボタン用（K → MU → I → (^_^)）
+  updateFormationAnimationX();   // Xボタン用（猫 → メビウス → 泣き顔 → 波）
+  logFormationState();
 
   // コントローラー入力処理
   handleSizeChange();
@@ -424,6 +410,435 @@ function updateDecelerationSequence() {
     console.log('終了シーケンス完了');
     updateInfo('ドローン停止 - Xボタンで再起動');
     removeSequenceStatusText();
+  }
+}
+
+// Aボタン用フォーメーション（K → MU → I → (^_^)）の位置配列を取得
+function getTargetPositionsA() {
+  switch (state.formationIndex) {
+    case 1: return state.droneKPositions;
+    case 2: return state.droneMUPositions;
+    case 3: return state.droneIPositions;
+    case 4: return state.droneSmilePositions;
+    default: return state.droneOriginalPositions;
+  }
+}
+
+// Xボタン用フォーメーション（猫 → メビウス → 泣き顔 → 波）の位置配列を取得
+function getTargetPositionsX() {
+  switch (state.formationIndexX) {
+    case 1: return state.droneCatPositions;
+    case 2: return state.droneMobiusPositions;
+    case 3: return state.droneCryingPositions;
+    case 4: return state.droneWavePositions;
+    default: return state.droneOriginalPositions;
+  }
+}
+
+// アニメーション付きフォーメーションの位置を計算（Xボタン用）
+function getAnimatedPositionX(basePos, index, animTime) {
+  const pos = { x: basePos.x, y: basePos.y || 0, z: basePos.z || 0 };
+
+  // 猫の尻尾振りアニメーション
+  if (basePos.isTail && state.formationIndexX === 1) {
+    const tailWave = Math.sin(animTime * 3 + basePos.tailIndex * 0.3) * 0.03;
+    pos.x = basePos.x + tailWave * (basePos.tailIndex / 7);
+    pos.y = basePos.y + Math.sin(animTime * 2 + basePos.tailIndex * 0.5) * 0.01;
+  }
+
+  // 八の字（メビウス）の循環アニメーション
+  if (basePos.mobiusT !== undefined && state.formationIndexX === 2) {
+    const t = basePos.mobiusT + animTime * 0.8; // 循環速度
+    const a = 0.20;
+    const denom = 1 + Math.sin(t) * Math.sin(t);
+    pos.x = a * Math.cos(t) / denom;
+    pos.y = a * Math.sin(t) * Math.cos(t) / denom;
+    pos.z = 0;
+  }
+
+  // 泣き顔の涙アニメーション
+  if (basePos.isTear && state.formationIndexX === 3) {
+    const tearOffset = (animTime * 0.8 + basePos.tearIndex * 0.2) % 1.0;
+    const baseY = 0.02;
+    const tearLength = 0.16;
+    pos.y = baseY - tearOffset * tearLength;
+    pos.tearAlpha = 1.0 - tearOffset;
+  }
+
+  // 動く波のアニメーション
+  if (basePos.wavePhase !== undefined && state.formationIndexX === 4) {
+    const phase = basePos.wavePhase + animTime * 2;
+    pos.y = Math.sin(phase) * 0.12;
+  }
+
+  return pos;
+}
+
+// Aボタン用フォーメーションアニメーション処理（K → MU → I → (^_^)）
+function updateFormationAnimation() {
+  if (!state.formationAnimating || state.droneChildren.length === 0) return;
+
+  const targetPositions = getTargetPositionsA();
+  let allReached = true;
+  const now = Date.now();
+
+  // フォーメーション開始時刻を記録
+  if (!state.formationStartTime) {
+    state.setFormationStartTime(now);
+    const formationNames = ['Normal', 'K', 'MU', 'I', '(^_^)'];
+    console.log('Aボタン フォーメーション開始 -', formationNames[state.formationIndex]);
+  }
+
+  // 基本物理パラメータ（慣性を重視）
+  const baseAcceleration = 0.0012; // 緩やかな加速
+  const baseMaxSpeed = 0.010; // 最高速度
+  const arrivalThreshold = 0.012; // 到着判定距離
+  const baseFriction = 0.94; // 慣性を維持する高めの摩擦
+
+  // タイムアウト: 開始から8秒経過したら強制完了
+  const elapsed = now - state.formationStartTime;
+  const timeout = 8000;
+
+  state.droneChildren.forEach((drone, index) => {
+    if (!drone || !targetPositions[index]) return;
+
+    const target = targetPositions[index];
+    const current = drone.position;
+
+    // 個体パラメータ初期化
+    if (!drone.userData.flightParams) {
+      drone.userData.flightParams = {
+        // 各機体固有の特性
+        speedMultiplier: 0.8 + Math.random() * 0.4, // 0.8〜1.2
+        accelMultiplier: 0.8 + Math.random() * 0.4, // 0.8〜1.2
+        wobbleFreq: 2 + Math.random() * 2, // 揺れの周波数 2〜4Hz
+        wobbleAmp: 0.0008 + Math.random() * 0.001, // 揺れの振幅
+        wobblePhase: Math.random() * Math.PI * 2, // 揺れの位相
+        driftX: (Math.random() - 0.5) * 0.0001, // 微妙なドリフト
+        driftZ: (Math.random() - 0.5) * 0.0001,
+        hasArrived: false, // 到着フラグ
+      };
+    }
+    const params = drone.userData.flightParams;
+
+    const vel = drone.userData.velocity || { x: 0, y: 0, z: 0 };
+    const inertia = drone.userData.inertia || 1.0;
+    const reactionDelay = (drone.userData.reactionDelay || 0) * 1000;
+
+    // タイムラグ
+    if (elapsed < reactionDelay) {
+      allReached = false;
+      // 待機中もホバリング
+      const wobble = Math.sin(now * 0.003 * params.wobbleFreq + params.wobblePhase) * params.wobbleAmp * 0.3;
+      current.y += wobble;
+      return;
+    }
+
+    // タイムアウト: 強制的に到着扱い
+    if (elapsed > timeout && !params.hasArrived) {
+      params.hasArrived = true;
+      drone.userData.velocity = { x: 0, y: 0, z: 0 };
+      current.x = target.x;
+      current.y = target.y || 0;
+      current.z = target.z || 0;
+      return;
+    }
+
+    // 既に到着済みの場合はホバリングのみ
+    if (params.hasArrived) {
+      const wobbleTime = now * 0.001;
+      const wobbleX = Math.sin(wobbleTime * params.wobbleFreq + params.wobblePhase) * params.wobbleAmp;
+      const wobbleY = Math.sin(wobbleTime * params.wobbleFreq * 1.3 + params.wobblePhase + 1) * params.wobbleAmp * 0.5;
+      const wobbleZ = Math.cos(wobbleTime * params.wobbleFreq * 0.8 + params.wobblePhase) * params.wobbleAmp;
+
+      current.x = target.x + wobbleX;
+      current.y = (target.y || 0) + wobbleY;
+      current.z = (target.z || 0) + wobbleZ;
+
+      // (^_^)フォーメーションの場合はドローンを立てる
+      if (state.formationIndex === 4) {
+        drone.rotation.x = -Math.PI / 2;
+      } else {
+        drone.rotation.x = 0;
+      }
+      return;
+    }
+
+    // 目標への差分
+    const dx = target.x - current.x;
+    const dy = (target.y || 0) - current.y;
+    const dz = (target.z || 0) - current.z;
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    // 到着判定
+    if (distance < arrivalThreshold) {
+      params.hasArrived = true;
+      drone.userData.velocity = { x: 0, y: 0, z: 0 };
+      current.x = target.x;
+      current.y = target.y || 0;
+      current.z = target.z || 0;
+
+      // (^_^)フォーメーションの場合はドローンを立てる
+      if (state.formationIndex === 4) {
+        drone.rotation.x = -Math.PI / 2;
+      } else {
+        drone.rotation.x = 0;
+      }
+    } else {
+      allReached = false;
+
+      // 慣性を考慮した加速度（重いほど加速しにくい）
+      const accel = baseAcceleration * params.accelMultiplier / inertia;
+
+      // 目標方向への加速
+      if (distance > 0.001) {
+        vel.x += (dx / distance) * accel;
+        vel.y += (dy / distance) * accel;
+        vel.z += (dz / distance) * accel;
+      }
+
+      // 微妙なドリフト（風の影響）
+      vel.x += params.driftX;
+      vel.z += params.driftZ;
+
+      // 飛行中の揺れ
+      const wobbleTime = now * 0.001;
+      const flyingWobble = Math.sin(wobbleTime * params.wobbleFreq + params.wobblePhase) * params.wobbleAmp * 0.2;
+      vel.y += flyingWobble;
+
+      // 速度制限（慣性が大きいほど最高速度が高い）
+      const maxSpeed = baseMaxSpeed * params.speedMultiplier * (0.9 + inertia * 0.2);
+      const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
+      if (speed > maxSpeed) {
+        const scale = maxSpeed / speed;
+        vel.x *= scale;
+        vel.y *= scale;
+        vel.z *= scale;
+      }
+
+      // 摩擦（慣性が大きいほど摩擦が小さい = 止まりにくい）
+      let friction = baseFriction + (inertia - 1.0) * 0.02;
+      // 近づくと減速
+      if (distance < 0.04) {
+        friction = Math.max(0.88, friction - 0.04);
+      }
+      friction = Math.max(0.88, Math.min(0.96, friction));
+
+      vel.x *= friction;
+      vel.y *= friction;
+      vel.z *= friction;
+
+      // 位置更新
+      current.x += vel.x;
+      current.y += vel.y;
+      current.z += vel.z;
+
+      drone.userData.velocity = vel;
+    }
+  });
+
+  if (allReached) {
+    state.setFormationAnimating(false);
+    state.setFormationStartTime(null);
+    const formationNames = ['Normal', 'K', 'MU', 'I', '(^_^)'];
+    console.log('Aボタン フォーメーションアニメーション完了 -', formationNames[state.formationIndex]);
+  }
+}
+
+// デバッグ用：フォーメーション状態を定期的にログ
+let lastFormationLogTime = 0;
+function logFormationState() {
+  const isAnimating = state.formationAnimating || state.formationAnimatingX;
+  if (!isAnimating) return;
+  const now = Date.now();
+  if (now - lastFormationLogTime > 2000) {
+    lastFormationLogTime = now;
+    const targetPositions = state.formationAnimating ? getTargetPositionsA() : getTargetPositionsX();
+    let notReachedCount = 0;
+    const totalCount = state.droneChildren.length;
+    state.droneChildren.forEach((drone, index) => {
+      if (!drone || !targetPositions[index]) return;
+      const params = drone.userData.flightParams;
+      if (params && !params.hasArrived) notReachedCount++;
+    });
+    if (notReachedCount > 0) {
+      const formationNamesA = ['Normal', 'K', 'MU', 'I', '(^_^)'];
+      const formationNamesX = ['Normal', 'Cat🐱', '∞Mobius', 'Crying;_;', 'Wave〜'];
+      const name = state.formationAnimating ? formationNamesA[state.formationIndex] : formationNamesX[state.formationIndexX];
+      console.log('フォーメーション進行中 (' + name + ') - 未到着:', notReachedCount, '/', totalCount);
+    }
+  }
+}
+
+// Xボタン用フォーメーションアニメーション処理（猫 → メビウス → 泣き顔 → 波）
+function updateFormationAnimationX() {
+  if (!state.formationAnimatingX || state.droneChildren.length === 0) return;
+
+  const targetPositions = getTargetPositionsX();
+  let allReached = true;
+  const now = Date.now();
+
+  // フォーメーション開始時刻を記録
+  if (!state.formationStartTimeX) {
+    state.setFormationStartTimeX(now);
+    const formationNames = ['Normal', 'Cat🐱', '∞Mobius', 'Crying;_;', 'Wave〜'];
+    console.log('Xボタン フォーメーション開始 -', formationNames[state.formationIndexX]);
+  }
+
+  // アニメーション時間を更新
+  const animTime = (now - state.formationStartTimeX) / 1000;
+
+  // 基本物理パラメータ
+  const baseAcceleration = 0.0012;
+  const baseMaxSpeed = 0.010;
+  const arrivalThreshold = 0.012;
+  const baseFriction = 0.94;
+
+  // タイムアウト: 8秒
+  const elapsed = now - state.formationStartTimeX;
+  const timeout = 8000;
+
+  state.droneChildren.forEach((drone, index) => {
+    if (!drone || !targetPositions[index]) return;
+
+    const target = targetPositions[index];
+    const current = drone.position;
+
+    // 個体パラメータ初期化
+    if (!drone.userData.flightParams) {
+      drone.userData.flightParams = {
+        speedMultiplier: 0.8 + Math.random() * 0.4,
+        accelMultiplier: 0.8 + Math.random() * 0.4,
+        wobbleFreq: 2 + Math.random() * 2,
+        wobbleAmp: 0.0008 + Math.random() * 0.001,
+        wobblePhase: Math.random() * Math.PI * 2,
+        driftX: (Math.random() - 0.5) * 0.0001,
+        driftZ: (Math.random() - 0.5) * 0.0001,
+        hasArrived: false,
+      };
+    }
+    const params = drone.userData.flightParams;
+
+    const vel = drone.userData.velocity || { x: 0, y: 0, z: 0 };
+    const inertia = drone.userData.inertia || 1.0;
+    const reactionDelay = (drone.userData.reactionDelay || 0) * 1000;
+
+    // タイムラグ
+    if (elapsed < reactionDelay) {
+      allReached = false;
+      const wobble = Math.sin(now * 0.003 * params.wobbleFreq + params.wobblePhase) * params.wobbleAmp * 0.3;
+      current.y += wobble;
+      return;
+    }
+
+    // タイムアウト: 強制到着
+    if (elapsed > timeout && !params.hasArrived) {
+      params.hasArrived = true;
+      drone.userData.velocity = { x: 0, y: 0, z: 0 };
+      const animatedTarget = getAnimatedPositionX(target, index, animTime);
+      current.x = animatedTarget.x;
+      current.y = animatedTarget.y;
+      current.z = animatedTarget.z;
+      return;
+    }
+
+    // 到着済みの場合はアニメーション付きホバリング
+    if (params.hasArrived) {
+      const animatedTarget = getAnimatedPositionX(target, index, animTime);
+      const wobbleTime = now * 0.001;
+      const wobbleX = Math.sin(wobbleTime * params.wobbleFreq + params.wobblePhase) * params.wobbleAmp;
+      const wobbleY = Math.sin(wobbleTime * params.wobbleFreq * 1.3 + params.wobblePhase + 1) * params.wobbleAmp * 0.5;
+      const wobbleZ = Math.cos(wobbleTime * params.wobbleFreq * 0.8 + params.wobblePhase) * params.wobbleAmp;
+
+      current.x = animatedTarget.x + wobbleX;
+      current.y = animatedTarget.y + wobbleY;
+      current.z = animatedTarget.z + wobbleZ;
+
+      // 猫(1)と泣き顔(3)はドローンを縦にする
+      if (state.formationIndexX === 1 || state.formationIndexX === 3) {
+        drone.rotation.x = -Math.PI / 2;
+      } else {
+        drone.rotation.x = 0;
+      }
+      return;
+    }
+
+    // 目標への差分
+    const dx = target.x - current.x;
+    const dy = (target.y || 0) - current.y;
+    const dz = (target.z || 0) - current.z;
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    // 到着判定
+    if (distance < arrivalThreshold) {
+      params.hasArrived = true;
+      drone.userData.velocity = { x: 0, y: 0, z: 0 };
+      const animatedTarget = getAnimatedPositionX(target, index, animTime);
+      current.x = animatedTarget.x;
+      current.y = animatedTarget.y;
+      current.z = animatedTarget.z;
+
+      // 猫(1)と泣き顔(3)はドローンを縦にする
+      if (state.formationIndexX === 1 || state.formationIndexX === 3) {
+        drone.rotation.x = -Math.PI / 2;
+      } else {
+        drone.rotation.x = 0;
+      }
+    } else {
+      allReached = false;
+
+      const accel = baseAcceleration * params.accelMultiplier / inertia;
+
+      if (distance > 0.001) {
+        vel.x += (dx / distance) * accel;
+        vel.y += (dy / distance) * accel;
+        vel.z += (dz / distance) * accel;
+      }
+
+      vel.x += params.driftX;
+      vel.z += params.driftZ;
+
+      const wobbleTime = now * 0.001;
+      const flyingWobble = Math.sin(wobbleTime * params.wobbleFreq + params.wobblePhase) * params.wobbleAmp * 0.2;
+      vel.y += flyingWobble;
+
+      const maxSpeed = baseMaxSpeed * params.speedMultiplier * (0.9 + inertia * 0.2);
+      const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z);
+      if (speed > maxSpeed) {
+        const scale = maxSpeed / speed;
+        vel.x *= scale;
+        vel.y *= scale;
+        vel.z *= scale;
+      }
+
+      let friction = baseFriction + (inertia - 1.0) * 0.02;
+      if (distance < 0.04) {
+        friction = Math.max(0.88, friction - 0.04);
+      }
+      friction = Math.max(0.88, Math.min(0.96, friction));
+
+      vel.x *= friction;
+      vel.y *= friction;
+      vel.z *= friction;
+
+      current.x += vel.x;
+      current.y += vel.y;
+      current.z += vel.z;
+
+      // 猫(1)と泣き顔(3)は移動中も徐々に回転
+      const targetRotX = (state.formationIndexX === 1 || state.formationIndexX === 3) ? -Math.PI / 2 : 0;
+      drone.rotation.x += (targetRotX - drone.rotation.x) * 0.05;
+
+      drone.userData.velocity = vel;
+    }
+  });
+
+  // Xボタンフォーメーションはアニメーションが継続するため、formationAnimatingXをtrueのまま維持
+  // ただし、Normalに戻った場合は完了とする
+  if (allReached && state.formationIndexX === 0) {
+    state.setFormationAnimatingX(false);
+    state.setFormationStartTimeX(null);
+    console.log('Xボタン フォーメーションアニメーション完了 - Normal');
   }
 }
 
@@ -724,6 +1139,11 @@ async function startXR() {
     // MR用の影設定を作成
     createMRShadow();
 
+    // ドローンモデルの読み込み（XRセッション開始時に行う）
+    if (!state.drone) {
+      loadDroneModel();
+    }
+
     const rightController = state.renderer.xr.getController(0);
     const leftController = state.renderer.xr.getController(1);
     state.scene.add(rightController);
@@ -759,35 +1179,10 @@ async function startXR() {
     if (button) {
       button.style.display = 'none';
     }
-    const vrButton = document.getElementById('vr-button');
-    if (vrButton) {
-      vrButton.style.display = 'none';
-    }
 
     window.dispatchEvent(new Event('xr-session-start'));
 
     updateInfo('MRセッション開始');
-
-    // チュートリアル完了フラグをlocalStorageから読み込み
-    const tutorialCompletedStorage = localStorage.getItem('tutorialCompleted');
-    const restartTutorialStorage = localStorage.getItem('restartTutorial');
-
-    // チュートリアルを受けるボタンが押された場合はリセット
-    if (restartTutorialStorage === 'true') {
-      localStorage.removeItem('restartTutorial');
-      localStorage.removeItem('tutorialCompleted');
-      state.setTutorialCompleted(false);
-      state.setRestartTutorial(false);
-      state.setTutorialStep(1);
-      createWelcomeWindow();
-    } else if (tutorialCompletedStorage === 'true') {
-      // チュートリアル完了済みの場合はスキップ
-      state.setTutorialCompleted(true);
-      state.setTutorialStep(0);
-    } else {
-      // 初回はチュートリアルを表示
-      createWelcomeWindow();
-    }
 
     if (xrSession.depthUsage) {
       console.log('深度センサー有効:', xrSession.depthUsage);
@@ -828,152 +1223,12 @@ async function startXR() {
       if (button) {
         button.style.display = 'block';
       }
-      if (vrButton) {
-        vrButton.style.display = 'block';
-      }
     });
 
   } catch (error) {
     console.error('XRセッション開始エラー:', error);
     updateInfo('エラー: ' + (error.message || error.name || 'Unknown error'));
     alert('MRセッションを開始できませんでした: ' + (error.message || error.name || 'Unknown error'));
-  }
-}
-
-// VRセッション開始
-async function startVR() {
-  if (!navigator.xr) {
-    updateInfo('WebXRがサポートされていません');
-    alert('このデバイスはWebXRをサポートしていません');
-    return;
-  }
-
-  try {
-    updateInfo('VRセッションを開始中...');
-
-    const supported = await navigator.xr.isSessionSupported('immersive-vr');
-
-    if (!supported) {
-      updateInfo('immersive-VRがサポートされていません');
-      alert('このデバイスはVR機能をサポートしていません');
-      return;
-    }
-
-    const xrSession = await navigator.xr.requestSession('immersive-vr', {
-      requiredFeatures: [],
-      optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
-    });
-
-    state.setXrSession(xrSession);
-
-    await state.renderer.xr.setSession(xrSession);
-
-    createVREnvironment();
-
-    const rightController = state.renderer.xr.getController(0);
-    const leftController = state.renderer.xr.getController(1);
-    state.scene.add(rightController);
-    state.scene.add(leftController);
-    state.setRightController(rightController);
-    state.setLeftController(leftController);
-
-    // コントローラーモデルを追加（VRモード用）
-    const controllerModelFactory = new XRControllerModelFactory();
-    const rightControllerGrip = state.renderer.xr.getControllerGrip(0);
-    const leftControllerGrip = state.renderer.xr.getControllerGrip(1);
-    rightControllerGrip.add(controllerModelFactory.createControllerModel(rightControllerGrip));
-    leftControllerGrip.add(controllerModelFactory.createControllerModel(leftControllerGrip));
-    state.scene.add(rightControllerGrip);
-    state.scene.add(leftControllerGrip);
-
-    const hand1 = state.renderer.xr.getHand(0);
-    const hand2 = state.renderer.xr.getHand(1);
-    state.scene.add(hand1);
-    state.scene.add(hand2);
-    state.setHand1(hand1);
-    state.setHand2(hand2);
-
-    // フラグをリセット
-    state.setDronePositioned(false);
-    state.setIsStartupComplete(false);
-    state.setIsStartingUp(false);
-    state.setPropellerSpeedMultiplier(0);
-    state.setLiftStartTime(null);
-    state.setLiftStartPos(null);
-    state.setLiftTargetHeight(null);
-    state.dronePhysicsVelocity.set(0, 0, 0);
-    state.droneAngularVelocity.set(0, 0, 0);
-    state.dronePreviousPosition.set(0, 0, 0);
-
-    if (state.droneSound && state.droneSound.isPlaying) {
-      state.droneSound.stop();
-      console.log('ドローン音声停止');
-    }
-
-    const button = document.getElementById('start-button');
-    if (button) {
-      button.style.display = 'none';
-    }
-    const vrButton = document.getElementById('vr-button');
-    if (vrButton) {
-      vrButton.style.display = 'none';
-    }
-
-    window.dispatchEvent(new Event('xr-session-start'));
-
-    updateInfo('VRセッション開始');
-
-    // チュートリアル完了フラグをlocalStorageから読み込み
-    const tutorialCompletedStorageVR = localStorage.getItem('tutorialCompleted');
-    const restartTutorialStorageVR = localStorage.getItem('restartTutorial');
-
-    // チュートリアルを受けるボタンが押された場合はリセット
-    if (restartTutorialStorageVR === 'true') {
-      localStorage.removeItem('restartTutorial');
-      localStorage.removeItem('tutorialCompleted');
-      state.setTutorialCompleted(false);
-      state.setRestartTutorial(false);
-      state.setTutorialStep(1);
-      createWelcomeWindow();
-    } else if (tutorialCompletedStorageVR === 'true') {
-      // チュートリアル完了済みの場合はスキップ
-      state.setTutorialCompleted(true);
-      state.setTutorialStep(0);
-    } else {
-      // 初回はチュートリアルを表示
-      createWelcomeWindow();
-    }
-
-    xrSession.addEventListener('end', () => {
-      state.setXrSession(null);
-      state.setBaseReferenceSpace(null);
-      state.setIsFpvMode(false);
-      state.setWasFpvMode(false);
-      state.setFpvInitialCameraPos(null);
-      state.setFpvInitialDronePos(null);
-
-      removeVREnvironment();
-
-      if (state.droneSound && state.droneSound.isPlaying) {
-        state.droneSound.stop();
-        console.log('ドローン音声停止');
-      }
-
-      window.dispatchEvent(new Event('xr-session-end'));
-
-      updateInfo('VRセッション終了');
-      if (button) {
-        button.style.display = 'block';
-      }
-      if (vrButton) {
-        vrButton.style.display = 'block';
-      }
-    });
-
-  } catch (error) {
-    console.error('VRセッション開始エラー:', error);
-    updateInfo('エラー: ' + (error.message || error.name || 'Unknown error'));
-    alert('VRセッションを開始できませんでした: ' + (error.message || error.name || 'Unknown error'));
   }
 }
 
@@ -984,11 +1239,6 @@ init();
 const startButton = document.getElementById('start-button');
 if (startButton) {
   startButton.addEventListener('click', startXR);
-}
-
-const vrButton = document.getElementById('vr-button');
-if (vrButton) {
-  vrButton.addEventListener('click', startVR);
 }
 
 // 深度表示切り替えボタン

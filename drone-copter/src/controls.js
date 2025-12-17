@@ -5,10 +5,8 @@ import { updateDroneScale, updateMaxSpeed } from './drone.js';
 import { updateDroneSoundPitch, playButtonSound, playCursorSound } from './sound.js';
 import {
   createAutoReturnText, createAutoReturnRightControllerText, removeAutoReturnText,
-  createSpeedText, createVolumeText, createCollisionText, createTrackingLostText,
-  createSequenceStatusText, removeSequenceStatusText, toggleControllerGuideMenu,
-  toggleSettingsMenu, removeWelcomeWindow, createTutorial2Window, removeTutorial2Window,
-  createTutorial3Window, removeTutorial3Window, removeTutorial4Window, t
+  createSpeedText, createTrackingLostText,
+  createSequenceStatusText, removeSequenceStatusText, t
 } from './ui.js';
 
 // 自動帰還モードの処理
@@ -86,122 +84,53 @@ export function updateAutoReturn() {
   }
 }
 
-// 速度レベル変更処理
+// 速度レベル変更処理（無効化）
 export function handleSpeedChange() {
-  if (!state.xrSession || !state.drone || !state.dronePositioned) return;
-  if (!state.isStartupComplete || state.bothGripsPressed) return;
-  // 設定メニュー表示中は無効（レーザー操作用にトリガーを使うため）
-  if (state.isSettingsMenuVisible) return;
-
-  const inputSources = state.xrSession.inputSources;
-
-  for (const source of inputSources) {
-    if (source.gamepad) {
-      const buttons = source.gamepad.buttons;
-      const triggerButton = buttons[0];
-      const isTriggerPressed = triggerButton && triggerButton.pressed;
-
-      if (source.handedness === 'left' && isTriggerPressed && !state.leftTriggerPressed) {
-        if (state.speedLevel > 1) {
-          state.setSpeedLevel(state.speedLevel - 1);
-          updateMaxSpeed();
-          createSpeedText();
-          updateInfo(`速度レベル: ${state.speedLevel}`);
-          playButtonSound();
-        } else {
-          createSpeedText();
-          updateInfo(`速度レベル: ${state.speedLevel} (最小)`);
-          playButtonSound();
-        }
-        state.setLeftTriggerPressed(true);
-      } else if (source.handedness === 'left' && !isTriggerPressed) {
-        state.setLeftTriggerPressed(false);
-      }
-
-      if (source.handedness === 'right' && isTriggerPressed && !state.rightTriggerPressed) {
-        if (state.speedLevel < 30) {
-          state.setSpeedLevel(state.speedLevel + 1);
-          updateMaxSpeed();
-          createSpeedText();
-          updateInfo(`速度レベル: ${state.speedLevel}`);
-          playButtonSound();
-        } else {
-          createSpeedText();
-          updateInfo(`速度レベル: ${state.speedLevel} (最大)`);
-          playButtonSound();
-        }
-        state.setRightTriggerPressed(true);
-      } else if (source.handedness === 'right' && !isTriggerPressed) {
-        state.setRightTriggerPressed(false);
-      }
-    }
-  }
+  // 機能削除
 }
 
-// 右コントローラーのボタン処理（自動帰還、音量オンオフ、コントローラーガイド）
+// 右コントローラーのボタン処理（自動帰還、フォーメーション切り替え）
 export function handleRightControllerButtons() {
   if (!state.xrSession || !state.drone || !state.dronePositioned) return;
 
-  // コントローラーガイドは常に利用可能（開始シーケンス前でも）
+  // 起動完了後のみ
+  if (!state.isStartupComplete || state.isGrabbedByController || state.isGrabbedByHand || state.bothGripsPressed) return;
+
   const inputSources = state.xrSession.inputSources;
   for (const source of inputSources) {
     if (source.handedness === 'right' && source.gamepad) {
       const buttons = source.gamepad.buttons;
 
-      // Aボタンでコントローラーガイドメニュー（常に利用可能）
-      // チュートリアル中は段階的に進む: 1→2→ガイド→3→完了
+      // Aボタンでフォーメーション切り替え（K → MU → I → (^_^) → 元 のループ）
+      // アニメーション中でも押せる
       const aButton = buttons[4];
       const isAPressed = aButton && aButton.pressed;
 
-      if (isAPressed && !state.rightAButtonPressedForGuide && !state.rightAButtonPressedForWelcome) {
-        if (state.isWelcomeWindowVisible && state.tutorialStep === 1) {
-          // チュートリアル1を閉じてチュートリアル2を開く
-          removeWelcomeWindow();
-          state.setTutorialStep(2);
-          // 少し遅延してチュートリアル2を表示
-          setTimeout(() => {
-            createTutorial2Window();
-          }, 300);
-          console.log('チュートリアル1を閉じ、チュートリアル2を表示');
-          state.setRightAButtonPressedForWelcome(true);
-        } else if (state.isTutorial2Visible && state.tutorialStep === 2) {
-          // チュートリアル2を閉じてコントローラーガイドを開く
-          removeTutorial2Window();
-          state.setTutorialStep(3); // 次はチュートリアル3（ガイドを閉じた後）
-          // 少し遅延してコントローラーガイドを表示
-          setTimeout(() => {
-            toggleControllerGuideMenu();
-          }, 300);
-          console.log('チュートリアル2を閉じ、コントローラーガイドを表示');
-          state.setRightAButtonPressedForWelcome(true);
-        } else if (state.isControllerGuideVisible && state.tutorialStep === 3) {
-          // チュートリアル中にコントローラーガイドを閉じる→チュートリアル3を表示
-          toggleControllerGuideMenu();
-          // 少し遅延してチュートリアル3を表示
-          setTimeout(() => {
-            createTutorial3Window();
-          }, 300);
-          console.log('コントローラーガイドを閉じ、チュートリアル3を表示');
-          state.setRightAButtonPressedForWelcome(true);
-        } else if (!state.isWelcomeWindowVisible && !state.isTutorial2Visible && !state.isTutorial3Visible) {
-          toggleControllerGuideMenu();
-          console.log('コントローラーガイドメニュー:', state.isControllerGuideVisible ? '表示' : '非表示');
-        }
+      if (isAPressed && !state.rightAButtonPressed) {
+        // Xボタンフォーメーションをリセット
+        state.setFormationIndexX(0);
+        state.setFormationAnimatingX(false);
+        // フォーメーションインデックスを進める (0: 元, 1: K, 2: MU, 3: I, 4: (^_^))
+        const nextIndex = (state.formationIndex + 1) % 5;
+        state.setFormationIndex(nextIndex);
+        state.setFormationAnimating(true);
+        state.setFormationStartTime(null);
+        // 各ドローンの速度をリセット＆反応遅延を再設定＆到着フラグをリセット
+        state.droneChildren.forEach((drone) => {
+          if (drone) {
+            drone.userData.velocity = { x: 0, y: 0, z: 0 };
+            drone.userData.reactionDelay = Math.random() * 1.0;
+            if (drone.userData.flightParams) {
+              drone.userData.flightParams.hasArrived = false;
+            }
+          }
+        });
+        playButtonSound();
+        const formationNames = ['Normal', 'K', 'MU', 'I', '(^_^)'];
+        updateInfo(formationNames[nextIndex] + ' Formation');
+        console.log('Aボタン フォーメーション切り替え:', formationNames[nextIndex]);
       }
-
-      if (!isAPressed) {
-        state.setRightAButtonPressedForWelcome(false);
-      }
-      state.setRightAButtonPressedForGuide(isAPressed);
-    }
-  }
-
-  // 以下は起動完了後のみ
-  if (!state.isStartupComplete || state.isGrabbedByController || state.isGrabbedByHand || state.bothGripsPressed) return;
-
-  for (const source of inputSources) {
-    if (source.handedness === 'right' && source.gamepad) {
-      const buttons = source.gamepad.buttons;
+      state.setRightAButtonPressed(isAPressed);
 
       // Bボタンで自動帰還（FPVモード中は無効）
       const bButton = buttons[5];
@@ -244,106 +173,18 @@ export function handleRightControllerButtons() {
       }
 
       state.setRightBButtonPressed(isBPressed);
-
-      // 右スティック押し込みで音量オンオフ
-      const rightStickButton = buttons[3];
-      const isRightStickPressed = rightStickButton && rightStickButton.pressed;
-
-      if (isRightStickPressed && !state.rightStickButtonPressed) {
-        state.setIsSoundMuted(!state.isSoundMuted);
-
-        if (state.isSoundMuted) {
-          if (state.droneSound) state.droneSound.setVolume(0);
-          console.log('ドローン音声: ミュート');
-          updateInfo('ドローン音声: ミュート');
-          createVolumeText(false);
-        } else {
-          updateDroneSoundPitch();
-          console.log('ドローン音声: オン');
-          updateInfo('ドローン音声: オン');
-          createVolumeText(true);
-        }
-        playButtonSound();
-      }
-
-      state.setRightStickButtonPressed(isRightStickPressed);
     }
   }
 }
 
-// 左コントローラーの設定メニュー処理
+// 左コントローラーのボタン処理（設定メニュー削除済み）
 export function handleLeftControllerButtons() {
-  if (!state.xrSession || !state.drone || !state.dronePositioned) return;
-
-  // 設定メニューは常に利用可能（開始シーケンス前でも）
-  const inputSources = state.xrSession.inputSources;
-  for (const source of inputSources) {
-    if (source.handedness === 'left' && source.gamepad) {
-      const buttons = source.gamepad.buttons;
-
-      // Xボタン(buttons[4])の処理
-      const xButton = buttons[4];
-      const isXPressed = xButton && xButton.pressed;
-
-      if (isXPressed && !state.leftXButtonPressedForTutorial3) {
-        if (state.isTutorial3Visible && state.tutorialStep === 3) {
-          // チュートリアル3を閉じて設定ウィンドウを開く
-          removeTutorial3Window();
-          state.setTutorialStep(4); // チュートリアル4へ（設定ウィンドウを閉じた後に表示）
-          // 少し遅延して設定メニューを表示
-          setTimeout(() => {
-            toggleSettingsMenu();
-          }, 300);
-          console.log('チュートリアル3を閉じ、設定ウィンドウを表示');
-          state.setLeftXButtonPressedForTutorial3(true);
-        } else if (state.isSettingsMenuVisible && state.tutorialStep === 4) {
-          // チュートリアル中に設定ウィンドウを閉じる（チュートリアル4表示へ）
-          toggleSettingsMenu();
-          console.log('設定ウィンドウを閉じる（チュートリアル4へ）');
-          state.setLeftXButtonPressedForTutorial3(true);
-        } else if (!state.isTutorial3Visible && state.tutorialStep !== 4) {
-          // 通常時：設定メニューをトグル
-          toggleSettingsMenu();
-          console.log('設定メニュー:', state.isSettingsMenuVisible ? '表示' : '非表示');
-          state.setLeftXButtonPressedForTutorial3(true);
-        }
-      }
-      if (!isXPressed) {
-        state.setLeftXButtonPressedForTutorial3(false);
-      }
-    }
-  }
+  // 設定メニュー削除済み - 空関数
 }
 
 // 左コントローラーの起動/終了シーケンス処理
 export function handleStartupSequence() {
   if (!state.xrSession || !state.droneSound) return;
-
-  // チュートリアル1-3の間は起動/終了を無効に（設定ウィンドウが開いている場合も含む）
-  if (state.isWelcomeWindowVisible || state.isTutorial2Visible || state.isTutorial3Visible) return;
-  if (state.tutorialStep >= 1 && state.tutorialStep <= 3) return;
-  if (state.tutorialStep === 4 && state.isSettingsMenuVisible) return;
-
-  // チュートリアル4表示中にYボタン(buttons[5])を押したら、チュートリアル4を閉じてから起動
-  if (state.isTutorial4Visible && state.tutorialStep === 4) {
-    const inputSources = state.xrSession.inputSources;
-    for (const source of inputSources) {
-      if (source.handedness === 'left' && source.gamepad) {
-        const buttons = source.gamepad.buttons;
-        const yButton = buttons[5]; // 起動ボタン
-        const isYPressed = yButton && yButton.pressed;
-        if (isYPressed && !state.leftXButtonPressed) {
-          removeTutorial4Window();
-          state.setTutorialStep(0); // チュートリアル完了
-          state.setTutorialCompleted(true);
-          localStorage.setItem('tutorialCompleted', 'true');
-          console.log('チュートリアル4を閉じ、チュートリアル完了');
-          // 起動シーケンスは次のフレームで実行されるようにreturn
-        }
-      }
-    }
-    return;
-  }
 
   const inputSources = state.xrSession.inputSources;
 
@@ -409,35 +250,36 @@ export function handleStartupSequence() {
         }, 16);
       }
 
-      // 起動完了後：Xボタンで終了シーケンス
-      if (isXPressed && !state.leftXButtonPressed && state.isStartupComplete && !state.isShuttingDown) {
-        state.setIsShuttingDown(true);
-        state.setDescentStartTime(Date.now());
-        state.setIsStartupComplete(false);
-        console.log('=== 終了シーケンス開始 - 降下を開始 ===');
-        updateInfo('Shutting Down...');
-        createSequenceStatusText(t('status', 'shuttingDown'));
+      // 起動完了後：Xボタンでフォーメーション切り替え（猫 → メビウス → 泣き顔 → 波 → 元）
+      // アニメーション中でも押せる
+      if (isXPressed && !state.leftXButtonPressedForFormation && state.isStartupComplete && !state.isShuttingDown) {
+        // Aボタンフォーメーションをリセット
+        state.setFormationIndex(0);
+        state.setFormationAnimating(false);
+        // フォーメーションインデックスを進める (0: 元, 1: 猫, 2: メビウス, 3: 泣き顔, 4: 波)
+        const nextIndex = (state.formationIndexX + 1) % 5;
+        state.setFormationIndexX(nextIndex);
+        state.setFormationAnimatingX(true);
+        state.setFormationStartTimeX(null);
+        state.setFormationAnimationTimeX(0);
+        // 各ドローンの速度をリセット＆反応遅延を再設定＆到着フラグをリセット
+        state.droneChildren.forEach((drone) => {
+          if (drone) {
+            drone.userData.velocity = { x: 0, y: 0, z: 0 };
+            drone.userData.reactionDelay = Math.random() * 1.0;
+            if (drone.userData.flightParams) {
+              drone.userData.flightParams.hasArrived = false;
+            }
+          }
+        });
         playButtonSound();
+        const formationNames = ['Normal', 'Cat🐱', '∞Mobius', 'Crying;_;', 'Wave〜'];
+        updateInfo(formationNames[nextIndex] + ' Formation');
+        console.log('Xボタン フォーメーション切り替え:', formationNames[nextIndex]);
       }
+      state.setLeftXButtonPressedForFormation(isXPressed);
 
       state.setLeftXButtonPressed(isXPressed);
-
-      // 起動完了後のみ他のボタンを受け付ける
-      if (state.isStartupComplete && !state.isShuttingDown) {
-        // 左スティック押し込みで当たり判定オンオフ
-        const leftStickButton = buttons[3];
-        const isLeftStickPressed = leftStickButton && leftStickButton.pressed;
-
-        if (isLeftStickPressed && !state.leftStickButtonPressed) {
-          state.setIsCollisionEnabled(!state.isCollisionEnabled);
-          createCollisionText(state.isCollisionEnabled);
-          updateInfo(state.isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
-          console.log(state.isCollisionEnabled ? '当たり判定オン' : '当たり判定オフ');
-          playButtonSound();
-        }
-
-        state.setLeftStickButtonPressed(isLeftStickPressed);
-      }
     }
   }
 }
