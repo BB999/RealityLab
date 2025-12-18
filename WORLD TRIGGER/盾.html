@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Thin Shield</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 0, 5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+
+        // 1. ライティング
+        const ambientLight = new THREE.AmbientLight(0x004433, 0.5); 
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 60, 100);
+        pointLight.position.set(2, 3, 4);
+        scene.add(pointLight);
+
+        // 2. シールド作成
+        
+        // --- 変更点 ---
+        // 第3引数（高さ=厚み）を 0.2 から 0.05 に変更
+        // これで薄いガラス板のような厚みになります
+        const geometry = new THREE.CylinderGeometry(1.5, 1.5, 0.05, 6);
+
+        const material = new THREE.MeshPhongMaterial({
+            color: 0x00ff88,       // ネオングリーン
+            emissive: 0x003322,    // 自己発光
+            specular: 0xffffff,    // 反射光
+            shininess: 90,         // 光沢
+            
+            transparent: true,
+            opacity: 0.6,          // 均等な半透明
+            
+            side: THREE.DoubleSide,
+            depthWrite: false,     // 重なり描画最適化
+            blending: THREE.AdditiveBlending 
+        });
+
+        const shield = new THREE.Mesh(geometry, material);
+
+        // 向きの調整（板として正面に向ける）
+        shield.rotation.x = Math.PI / 2;
+        shield.rotation.z = Math.PI / 2;
+
+        scene.add(shield);
+
+        // 3. 輪郭線
+        const edges = new THREE.EdgesGeometry(geometry);
+        const lineMaterial = new THREE.LineBasicMaterial({
+            color: 0xccffee, 
+            linewidth: 2,
+            transparent: true,
+            opacity: 0.8
+        });
+        const border = new THREE.LineSegments(edges, lineMaterial);
+        shield.add(border);
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+
+            // 浮遊
+            shield.position.y = Math.sin(time) * 0.1;
+
+            // 厚みが薄くても側面が見えるよう、少し回転させておく
+            shield.rotation.y = Math.sin(time * 0.5) * 0.2; 
+
+            // ライト移動
+            pointLight.position.x = Math.sin(time * 0.7) * 4;
+            pointLight.position.z = Math.cos(time * 0.7) * 4;
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

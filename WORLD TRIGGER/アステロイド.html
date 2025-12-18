@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>World Trigger Asteroid - Scattered Split</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: #ffffff;
+            font-family: sans-serif;
+            pointer-events: none;
+            text-shadow: 0 0 5px #00ffff;
+            font-size: 1.2rem;
+            letter-spacing: 0.1rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">CLICK to Shoot (Scattered Deployment)</div>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- シーン設定 ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050510, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(5, 4, 12); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.toneMapping = THREE.ReinhardToneMapping;
+        document.body.appendChild(renderer.domElement);
+
+        // --- ブルーム設定 ---
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.strength = 2.2;
+        bloomPass.radius = 0.5;
+        bloomPass.threshold = 0;
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+        
+        const gridHelper = new THREE.GridHelper(100, 50, 0x004444, 0x001111);
+        scene.add(gridHelper);
+
+        const objects = [];
+        const TRION_COLOR = 0xFFAA00; 
+        const material = new THREE.MeshBasicMaterial({ color: TRION_COLOR });
+
+        const BIG_CUBE_SIZE = 2.5;
+        const SPLIT_COUNT = 3; 
+
+        // --- クラス定義 ---
+
+        class BigCube {
+            constructor(spawnPos, targetPos) {
+                this.geometry = new THREE.BoxGeometry(BIG_CUBE_SIZE, BIG_CUBE_SIZE, BIG_CUBE_SIZE);
+                this.mesh = new THREE.Mesh(this.geometry, material);
+                this.mesh.position.copy(spawnPos);
+                
+                this.mesh.lookAt(targetPos);
+                this.targetPos = targetPos;
+                
+                this.mesh.scale.set(0, 0, 0);
+                this.timer = 0;
+                this.active = true;
+                this.lifeTime = 60; 
+
+                this.rotAxis = new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize();
+
+                scene.add(this.mesh);
+            }
+
+            update() {
+                this.timer++;
+
+                if (this.timer < 15) {
+                    const s = (this.timer / 15);
+                    const ease = s * (2 - s);
+                    this.mesh.scale.set(ease, ease, ease);
+                } else {
+                    this.mesh.scale.set(1, 1, 1);
+                }
+
+                this.mesh.rotateOnAxis(this.rotAxis, 0.01);
+
+                if (this.timer >= this.lifeTime) {
+                    this.split();
+                }
+            }
+
+            split() {
+                this.active = false;
+                scene.remove(this.mesh);
+                this.geometry.dispose();
+                spawnBullets3D(this.mesh.position, this.targetPos, this.mesh.quaternion);
+            }
+        }
+
+        class AsteroidBullet {
+            constructor(startPos, finalPos, startScale, initialQuat, targetPos, shootDelay) {
+                this.geometry = new THREE.BoxGeometry(1, 1, 1);
+                this.mesh = new THREE.Mesh(this.geometry, material);
+                
+                this.startPos = startPos.clone();
+                this.finalPos = finalPos.clone();
+                
+                this.mesh.position.copy(this.startPos);
+                this.mesh.scale.set(startScale, startScale, startScale);
+                
+                // 親の回転を継承
+                this.mesh.quaternion.copy(initialQuat);
+                
+                this.targetPos = targetPos.clone();
+                
+                this.active = true;
+                this.timer = 0;
+                
+                this.spreadDuration = 30; // 展開時間を少しゆっくりに
+                this.shootDelay = shootDelay;
+                this.velocity = new THREE.Vector3();
+                this.speed = 3.5; 
+
+                // 待機中の微回転（不揃い感を出すため少し強めに）
+                this.rotSpeed = {
+                    x: (Math.random() - 0.5) * 0.05,
+                    y: (Math.random() - 0.5) * 0.05,
+                    z: (Math.random() - 0.5) * 0.05
+                };
+
+                scene.add(this.mesh);
+            }
+
+            update() {
+                this.timer++;
+
+                // 1. 拡散 & 待機
+                if (this.timer < this.spreadDuration + this.shootDelay) {
+                    
+                    if (this.timer <= this.spreadDuration) {
+                        const t = this.timer / this.spreadDuration;
+                        // EaseOutBack (少し行き過ぎて戻る動き) を入れて、ふわっと感を出す
+                        const c1 = 1.70158;
+                        const c3 = c1 + 1;
+                        const ease = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+                        
+                        // ※単純なEaseOutでも良いが、パラパラ感を強調するため単純なLerpを使用
+                        // const ease = 1 - Math.pow(1 - t, 3);
+
+                        this.mesh.position.lerpVectors(this.startPos, this.finalPos, ease);
+                        
+                        // サイズ調整
+                        const s = (BIG_CUBE_SIZE / SPLIT_COUNT) * (1.0 - (0.3 * (t))); // 線形で小さく
+                        this.mesh.scale.set(s, s, s);
+                    } 
+                    else {
+                        this.mesh.position.copy(this.finalPos);
+                        const s = (BIG_CUBE_SIZE / SPLIT_COUNT) * 0.7;
+                        this.mesh.scale.set(s, s, s);
+                    }
+
+                    // 待機中の回転（ランダムにゆらゆら）
+                    this.mesh.rotation.x += this.rotSpeed.x;
+                    this.mesh.rotation.y += this.rotSpeed.y;
+                    this.mesh.rotation.z += this.rotSpeed.z;
+                }
+                // 2. 発射
+                else {
+                    if (this.velocity.lengthSq() === 0) {
+                        this.velocity.subVectors(this.targetPos, this.mesh.position).normalize().multiplyScalar(this.speed);
+                        
+                        this.mesh.rotation.set(0,0,0);
+                        this.mesh.lookAt(this.targetPos); 
+                        this.mesh.scale.set(0.2, 0.2, 6.0); 
+                    }
+                    this.mesh.position.add(this.velocity);
+                    
+                    if (this.mesh.position.distanceTo(camera.position) > 200) {
+                        this.dispose();
+                    }
+                }
+            }
+
+            dispose() {
+                this.active = false;
+                scene.remove(this.mesh);
+                this.geometry.dispose();
+            }
+        }
+
+        // --- ロジック ---
+
+        function startAsteroidSequence() {
+            const spawnPos = new THREE.Vector3(0, 0.5, -4).applyMatrix4(camera.matrixWorld);
+            const targetPos = new THREE.Vector3(0, 0, -100).applyMatrix4(camera.matrixWorld);
+            objects.push(new BigCube(spawnPos, targetPos));
+        }
+
+        function spawnBullets3D(centerPos, targetPos, parentQuat) {
+            
+            const smallSize = BIG_CUBE_SIZE / SPLIT_COUNT;
+            const packedSpacing = smallSize; 
+            const spreadSpacing = 1.4; // 少し広めに展開
+            
+            let totalCount = SPLIT_COUNT * SPLIT_COUNT * SPLIT_COUNT;
+            let order = [];
+            for(let i=0; i<totalCount; i++) order.push(i);
+            order.sort(() => Math.random() - 0.5);
+
+            let counter = 0;
+
+            for (let z = 0; z < SPLIT_COUNT; z++) {
+                for (let y = 0; y < SPLIT_COUNT; y++) {
+                    for (let x = 0; x < SPLIT_COUNT; x++) {
+                        
+                        const xIdx = x - (SPLIT_COUNT - 1) / 2;
+                        const yIdx = y - (SPLIT_COUNT - 1) / 2;
+                        const zIdx = z - (SPLIT_COUNT - 1) / 2;
+
+                        // 1. 密集位置（これは整列していないと「割れた」ように見えないのでそのまま）
+                        const packedOffset = new THREE.Vector3(xIdx * packedSpacing, yIdx * packedSpacing, zIdx * packedSpacing);
+                        
+                        // 2. 展開位置（★ここでパラパラにする）
+                        // 基本のグリッド位置に「ランダムなズレ」を加算する
+                        const jitterAmount = 0.6; // ズレの大きさ
+                        const randomOffset = new THREE.Vector3(
+                            (Math.random() - 0.5) * jitterAmount,
+                            (Math.random() - 0.5) * jitterAmount,
+                            (Math.random() - 0.5) * jitterAmount
+                        );
+                        
+                        // グリッド展開位置 + ランダムズレ
+                        const spreadOffset = new THREE.Vector3(xIdx * spreadSpacing, yIdx * spreadSpacing, zIdx * spreadSpacing)
+                            .add(randomOffset);
+
+                        // 回転を適用
+                        packedOffset.applyQuaternion(parentQuat);
+                        spreadOffset.applyQuaternion(parentQuat);
+
+                        const startPos = centerPos.clone().add(packedOffset);
+                        const finalPos = centerPos.clone().add(spreadOffset);
+
+                        const baseWait = 50; 
+                        const interval = 4; 
+                        const shootDelay = baseWait + (order[counter] * interval);
+                        
+                        objects.push(new AsteroidBullet(startPos, finalPos, smallSize, parentQuat, targetPos, shootDelay));
+                        counter++;
+                    }
+                }
+            }
+        }
+
+        window.addEventListener('click', startAsteroidSequence);
+        window.addEventListener('resize', onWindowResize, false);
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            for (let i = objects.length - 1; i >= 0; i--) {
+                objects[i].update();
+                if (!objects[i].active) {
+                    objects.splice(i, 1);
+                }
+            }
+
+            controls.update();
+            composer.render();
+        }
+
+        animate();
+    </script>
+</body>
+</html>

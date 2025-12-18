@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Seamless Crystal Shield</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 0, 7);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; 
+
+        // 1. ライティング
+        const ambientLight = new THREE.AmbientLight(0x004433, 0.5); 
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 80, 100);
+        pointLight.position.set(2, 3, 5);
+        scene.add(pointLight);
+
+        // 2. マテリアル
+        const material = new THREE.MeshPhongMaterial({
+            color: 0x00ff88,       
+            emissive: 0x003322,    
+            specular: 0xffffff,    
+            shininess: 100,        
+            flatShading: true,     
+            
+            transparent: true,
+            opacity: 0.7,          
+            
+            side: THREE.DoubleSide, // 蓋を消したので、裏面描画が必須
+            depthWrite: false,     
+            blending: THREE.AdditiveBlending 
+        });
+
+        // 3. クリスタル形状（蓋なしで作成）
+        
+        const radius = 1.2;       
+        const segments = 6;       
+        const bodyHeight = 3.5 * (2/3); // 約2.33
+
+        // CylinderGeometryの引数:
+        // (上半径, 下半径, 高さ, 分割数, 高さ分割数, ★蓋なしフラグ)
+        // 第6引数を true にすると、上底・下底の面が作られません
+
+        // A. 中央の柱（上下の蓋なし）
+        const bodyGeo = new THREE.CylinderGeometry(radius, radius, bodyHeight, segments, 1, true);
+        
+        // B. 上の三角（底面の蓋なし）
+        const topHeight = 0.8;
+        const topGeo = new THREE.CylinderGeometry(0, radius, topHeight, segments, 1, true);
+        topGeo.translate(0, bodyHeight / 2 + topHeight / 2, 0);
+
+        // C. 下の三角（上面の蓋なし）
+        const bottomHeight = 1.2;
+        const bottomGeo = new THREE.CylinderGeometry(radius, 0, bottomHeight, segments, 1, true);
+        bottomGeo.translate(0, -(bodyHeight / 2 + bottomHeight / 2), 0);
+
+        // 結合（内部に重なる面がない状態で1つにする）
+        const combinedGeo = BufferGeometryUtils.mergeGeometries([bodyGeo, topGeo, bottomGeo]);
+        
+        // 頂点の結合処理（見た目を綺麗にするため、重なった頂点を1つにマージ）
+        // ※これをしないと光の反射が継ぎ目で途切れることがあります
+        const smoothGeo = BufferGeometryUtils.mergeVertices(combinedGeo);
+
+        const crystal = new THREE.Mesh(smoothGeo, material);
+        scene.add(crystal);
+
+        // 4. 輪郭線
+        const edges = new THREE.EdgesGeometry(smoothGeo); // マージ後のジオメトリから線を抽出
+        const lineMaterial = new THREE.LineBasicMaterial({
+            color: 0xccffee, 
+            linewidth: 2,
+            transparent: true,
+            opacity: 0.5
+        });
+        const border = new THREE.LineSegments(edges, lineMaterial);
+        crystal.add(border);
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+
+            crystal.rotation.y = time * 0.3;
+            crystal.position.y = Math.sin(time * 0.5) * 0.2;
+
+            pointLight.position.x = Math.sin(time * 0.7) * 5;
+            pointLight.position.z = Math.cos(time * 0.7) * 5;
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
