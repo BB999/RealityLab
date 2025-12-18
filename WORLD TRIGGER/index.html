@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Magic Battle MR - 魔法バトル</title>
+  <title>WORLD TRIGGER MR</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Noto+Sans+JP:wght@400;700&display=swap');
 
@@ -18,36 +18,242 @@
       min-height: 100vh;
       overflow-x: hidden;
       font-family: 'Noto Sans JP', system-ui, -apple-system, sans-serif;
-      background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0d0d2a 100%);
-      color: #e0e0ff;
+      background: linear-gradient(135deg, #000000 0%, #0a1a15 50%, #051510 100%);
+      color: #ccffe6;
     }
 
-    /* Magical particles background */
-    .particles {
+    /* World Trigger style background */
+    .wt-background {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
       pointer-events: none;
-      overflow: hidden;
       z-index: 0;
+      overflow: hidden;
     }
 
-    .particle {
+    /* Radar sweep effect */
+    .radar-sweep {
       position: absolute;
-      width: 4px;
-      height: 4px;
-      background: radial-gradient(circle, #8b5cf6 0%, transparent 70%);
-      border-radius: 50%;
-      animation: float 8s infinite ease-in-out;
+      top: 50%;
+      left: 50%;
+      width: 200vmax;
+      height: 200vmax;
+      transform: translate(-50%, -50%);
+      background: conic-gradient(
+        from 0deg,
+        transparent 0deg,
+        rgba(136, 255, 204, 0.15) 30deg,
+        transparent 60deg
+      );
+      animation: radarSpin 8s linear infinite;
     }
 
-    @keyframes float {
-      0%, 100% { transform: translateY(100vh) scale(0); opacity: 0; }
+    @keyframes radarSpin {
+      from { transform: translate(-50%, -50%) rotate(0deg); }
+      to { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+
+    /* Concentric hexagon rings */
+    .hex-rings {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .hex-ring {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border: 1px solid rgba(136, 255, 204, 0.2);
+      clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+      animation: hexRingPulse 4s ease-in-out infinite;
+    }
+
+    .hex-ring:nth-child(1) { width: 300px; height: 260px; animation-delay: 0s; }
+    .hex-ring:nth-child(2) { width: 500px; height: 433px; animation-delay: 0.5s; }
+    .hex-ring:nth-child(3) { width: 700px; height: 606px; animation-delay: 1s; }
+    .hex-ring:nth-child(4) { width: 900px; height: 779px; animation-delay: 1.5s; }
+    .hex-ring:nth-child(5) { width: 1100px; height: 952px; animation-delay: 2s; }
+
+    @keyframes hexRingPulse {
+      0%, 100% { opacity: 0.3; border-color: rgba(136, 255, 204, 0.2); }
+      50% { opacity: 0.8; border-color: rgba(136, 255, 204, 0.5); }
+    }
+
+    /* Data stream lines */
+    .data-streams {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .data-stream {
+      position: absolute;
+      width: 2px;
+      height: 100px;
+      background: linear-gradient(
+        to bottom,
+        transparent,
+        rgba(136, 255, 204, 0.8),
+        transparent
+      );
+      animation: dataFlow 3s linear infinite;
+    }
+
+    @keyframes dataFlow {
+      0% { transform: translateY(-100px); opacity: 0; }
       10% { opacity: 1; }
       90% { opacity: 1; }
-      100% { transform: translateY(-100px) scale(1); opacity: 0; }
+      100% { transform: translateY(100vh); opacity: 0; }
+    }
+
+    /* Trion cubes floating */
+    .trion-cubes {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .trion-cube {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(136, 255, 204, 0.6);
+      background: rgba(136, 255, 204, 0.1);
+      animation: cubeFloat 15s ease-in-out infinite;
+    }
+
+    .trion-cube::before {
+      content: '';
+      position: absolute;
+      top: -5px;
+      left: -5px;
+      right: -5px;
+      bottom: -5px;
+      border: 1px solid rgba(136, 255, 204, 0.3);
+    }
+
+    @keyframes cubeFloat {
+      0%, 100% {
+        transform: translateY(100vh) rotate(0deg) scale(0.5);
+        opacity: 0;
+      }
+      5% { opacity: 0.8; }
+      50% {
+        transform: translateY(50vh) rotate(180deg) scale(1);
+      }
+      95% { opacity: 0.8; }
+      100% {
+        transform: translateY(-50px) rotate(360deg) scale(0.5);
+        opacity: 0;
+      }
+    }
+
+    /* Scanning lines */
+    .scan-line {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(136, 255, 204, 0.5),
+        rgba(136, 255, 204, 0.8),
+        rgba(136, 255, 204, 0.5),
+        transparent
+      );
+      animation: scanMove 4s linear infinite;
+    }
+
+    .scan-line:nth-child(1) { animation-delay: 0s; }
+    .scan-line:nth-child(2) { animation-delay: 2s; }
+
+    @keyframes scanMove {
+      0% { top: -2px; opacity: 0; }
+      5% { opacity: 1; }
+      95% { opacity: 1; }
+      100% { top: 100%; opacity: 0; }
+    }
+
+    /* Corner brackets - Border style UI */
+    .corner-bracket {
+      position: fixed;
+      width: 80px;
+      height: 80px;
+      border-color: rgba(136, 255, 204, 0.4);
+      border-style: solid;
+      z-index: 1;
+    }
+
+    .corner-bracket-tl {
+      top: 30px;
+      left: 30px;
+      border-width: 3px 0 0 3px;
+    }
+
+    .corner-bracket-tr {
+      top: 30px;
+      right: 30px;
+      border-width: 3px 3px 0 0;
+    }
+
+    .corner-bracket-bl {
+      bottom: 30px;
+      left: 30px;
+      border-width: 0 0 3px 3px;
+    }
+
+    .corner-bracket-br {
+      bottom: 30px;
+      right: 30px;
+      border-width: 0 3px 3px 0;
+    }
+
+    /* Status text decoration */
+    .status-text {
+      position: fixed;
+      font-family: 'Cinzel', monospace;
+      font-size: 10px;
+      color: rgba(136, 255, 204, 0.5);
+      letter-spacing: 0.2em;
+      z-index: 1;
+    }
+
+    .status-text-top {
+      top: 35px;
+      left: 120px;
+    }
+
+    .status-text-bottom {
+      bottom: 35px;
+      right: 120px;
+    }
+
+    /* Vignette effect */
+    .vignette {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      background: radial-gradient(
+        ellipse at center,
+        transparent 0%,
+        transparent 50%,
+        rgba(0, 0, 0, 0.5) 100%
+      );
     }
 
     /* Main container */
@@ -81,236 +287,128 @@
       font-family: 'Cinzel', serif;
       font-size: clamp(2.5rem, 8vw, 4rem);
       font-weight: 700;
-      background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 30%, #7c3aed 60%, #c4b5fd 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      text-shadow: 0 0 60px rgba(139, 92, 246, 0.5);
+      color: #000000;
+      -webkit-text-stroke: 2px #88ffcc;
+      text-shadow:
+        0 0 10px rgba(136, 255, 204, 0.8),
+        0 0 20px rgba(136, 255, 204, 0.6),
+        0 0 40px rgba(136, 255, 204, 0.4);
       letter-spacing: 0.05em;
       margin-bottom: 10px;
     }
 
     .subtitle {
       font-size: clamp(1rem, 3vw, 1.3rem);
-      color: rgba(196, 181, 253, 0.8);
+      color: rgba(136, 255, 204, 0.8);
       letter-spacing: 0.3em;
       text-transform: uppercase;
-    }
-
-    /* Magic circle decoration */
-    .magic-circle {
-      position: absolute;
-      width: 600px;
-      height: 600px;
-      border: 1px solid rgba(139, 92, 246, 0.2);
-      border-radius: 50%;
-      animation: rotate 60s linear infinite;
-      pointer-events: none;
-    }
-
-    .magic-circle::before {
-      content: '';
-      position: absolute;
-      inset: 20px;
-      border: 1px solid rgba(139, 92, 246, 0.15);
-      border-radius: 50%;
-    }
-
-    .magic-circle::after {
-      content: '';
-      position: absolute;
-      inset: 50px;
-      border: 1px solid rgba(139, 92, 246, 0.1);
-      border-radius: 50%;
-    }
-
-    @keyframes rotate {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-
-    /* Controls section */
-    .controls-section {
-      background: rgba(15, 15, 35, 0.8);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(139, 92, 246, 0.3);
-      border-radius: 24px;
-      padding: 40px;
-      max-width: 800px;
-      width: 100%;
-      margin-bottom: 40px;
-      box-shadow:
-        0 0 60px rgba(139, 92, 246, 0.15),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    }
-
-    .section-title {
-      font-family: 'Cinzel', serif;
-      font-size: 1.5rem;
-      color: #c4b5fd;
-      margin-bottom: 30px;
-      text-align: center;
-      position: relative;
-    }
-
-    .section-title::after {
-      content: '';
-      display: block;
-      width: 60px;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, #8b5cf6, transparent);
-      margin: 15px auto 0;
-    }
-
-    .controls-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 30px;
-    }
-
-    .control-card {
-      background: rgba(139, 92, 246, 0.08);
-      border: 1px solid rgba(139, 92, 246, 0.2);
-      border-radius: 16px;
-      padding: 25px;
-      transition: all 0.3s ease;
-    }
-
-    .control-card:hover {
-      background: rgba(139, 92, 246, 0.12);
-      border-color: rgba(139, 92, 246, 0.4);
-      transform: translateY(-5px);
-      box-shadow: 0 10px 40px rgba(139, 92, 246, 0.2);
-    }
-
-    .control-header {
-      display: flex;
-      align-items: center;
-      gap: 15px;
-      margin-bottom: 15px;
-    }
-
-    .control-icon {
-      width: 50px;
-      height: 50px;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 24px;
-    }
-
-    .icon-right {
-      background: linear-gradient(135deg, #7c3aed, #a855f7);
-      box-shadow: 0 0 20px rgba(168, 85, 247, 0.5);
-    }
-
-    .icon-left {
-      background: linear-gradient(135deg, #06b6d4, #22d3ee);
-      box-shadow: 0 0 20px rgba(34, 211, 238, 0.5);
-    }
-
-    .control-name {
-      font-size: 1.2rem;
-      font-weight: 700;
-      color: #e0e0ff;
-    }
-
-    .control-name-en {
-      font-size: 0.85rem;
-      color: rgba(196, 181, 253, 0.6);
-      font-weight: 400;
-    }
-
-    .control-description {
-      color: rgba(224, 224, 255, 0.7);
-      line-height: 1.8;
-      font-size: 0.95rem;
-    }
-
-    .gesture {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(139, 92, 246, 0.2);
-      padding: 6px 12px;
-      border-radius: 8px;
-      margin-top: 12px;
-      font-size: 0.9rem;
-      color: #c4b5fd;
-    }
-
-    /* Feature highlights */
-    .features {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 15px;
-      justify-content: center;
-      margin-bottom: 40px;
-      max-width: 800px;
-    }
-
-    .feature-tag {
-      background: rgba(139, 92, 246, 0.15);
-      border: 1px solid rgba(139, 92, 246, 0.3);
-      padding: 10px 20px;
-      border-radius: 100px;
-      font-size: 0.9rem;
-      color: #c4b5fd;
-      display: flex;
-      align-items: center;
-      gap: 8px;
     }
 
     /* Buttons */
     .button-container {
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 25px;
       align-items: center;
     }
 
     .start-btn {
       position: relative;
-      padding: 20px 60px;
-      font-size: 1.3rem;
+      padding: 22px 70px;
+      font-size: 1.2rem;
       font-weight: 700;
       font-family: 'Noto Sans JP', sans-serif;
+      letter-spacing: 0.15em;
       border: none;
-      border-radius: 16px;
       cursor: pointer;
       transition: all 0.3s ease;
       overflow: hidden;
+      clip-path: polygon(
+        0 0,
+        calc(100% - 20px) 0,
+        100% 20px,
+        100% 100%,
+        20px 100%,
+        0 calc(100% - 20px)
+      );
+    }
+
+    .start-btn::before {
+      content: '';
+      position: absolute;
+      inset: 2px;
+      background: #000000;
+      clip-path: polygon(
+        0 0,
+        calc(100% - 18px) 0,
+        100% 18px,
+        100% 100%,
+        18px 100%,
+        0 calc(100% - 18px)
+      );
+      z-index: -1;
+    }
+
+    .start-btn::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(
+        135deg,
+        rgba(136, 255, 204, 0.1) 0%,
+        transparent 50%,
+        rgba(136, 255, 204, 0.05) 100%
+      );
+      pointer-events: none;
     }
 
     .btn-mr {
-      background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
-      color: white;
+      background: linear-gradient(135deg, #88ffcc 0%, #44ddaa 50%, #88ffcc 100%);
+      color: #88ffcc;
       box-shadow:
-        0 10px 40px rgba(124, 58, 237, 0.4),
-        0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+        0 0 30px rgba(136, 255, 204, 0.4),
+        0 0 60px rgba(136, 255, 204, 0.2),
+        inset 0 0 20px rgba(136, 255, 204, 0.1);
+      text-shadow:
+        0 0 10px rgba(136, 255, 204, 0.8),
+        0 0 20px rgba(136, 255, 204, 0.5);
     }
 
     .btn-mr:hover {
-      transform: translateY(-3px) scale(1.02);
+      transform: translateY(-5px) scale(1.03);
       box-shadow:
-        0 20px 60px rgba(124, 58, 237, 0.5),
-        0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+        0 0 50px rgba(136, 255, 204, 0.6),
+        0 0 100px rgba(136, 255, 204, 0.3),
+        inset 0 0 30px rgba(136, 255, 204, 0.2);
+      text-shadow:
+        0 0 15px rgba(136, 255, 204, 1),
+        0 0 30px rgba(136, 255, 204, 0.8);
     }
 
     .btn-vr {
-      background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%);
-      color: white;
+      background: linear-gradient(135deg, #66eebb 0%, #33bb88 50%, #66eebb 100%);
+      color: #66eebb;
       box-shadow:
-        0 10px 40px rgba(6, 182, 212, 0.4),
-        0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+        0 0 30px rgba(102, 238, 187, 0.4),
+        0 0 60px rgba(102, 238, 187, 0.2),
+        inset 0 0 20px rgba(102, 238, 187, 0.1);
+      text-shadow:
+        0 0 10px rgba(102, 238, 187, 0.8),
+        0 0 20px rgba(102, 238, 187, 0.5);
     }
 
     .btn-vr:hover {
-      transform: translateY(-3px) scale(1.02);
+      transform: translateY(-5px) scale(1.03);
       box-shadow:
-        0 20px 60px rgba(6, 182, 212, 0.5),
-        0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+        0 0 50px rgba(102, 238, 187, 0.6),
+        0 0 100px rgba(102, 238, 187, 0.3),
+        inset 0 0 30px rgba(102, 238, 187, 0.2);
+      text-shadow:
+        0 0 15px rgba(102, 238, 187, 1),
+        0 0 30px rgba(102, 238, 187, 0.8);
     }
 
     .start-btn:active {
@@ -323,13 +421,54 @@
       left: -100%;
       width: 100%;
       height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-      animation: shimmer 3s infinite;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(136, 255, 204, 0.4),
+        rgba(255, 255, 255, 0.6),
+        rgba(136, 255, 204, 0.4),
+        transparent
+      );
+      animation: shimmer 2.5s infinite;
     }
 
     @keyframes shimmer {
       0% { left: -100%; }
+      50% { left: 100%; }
       100% { left: 100%; }
+    }
+
+    /* Corner decorations */
+    .btn-corner {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-color: #88ffcc;
+      border-style: solid;
+    }
+
+    .btn-corner-tl {
+      top: 4px;
+      left: 4px;
+      border-width: 2px 0 0 2px;
+    }
+
+    .btn-corner-tr {
+      top: 4px;
+      right: 24px;
+      border-width: 2px 2px 0 0;
+    }
+
+    .btn-corner-bl {
+      bottom: 4px;
+      left: 24px;
+      border-width: 0 0 2px 2px;
+    }
+
+    .btn-corner-br {
+      bottom: 4px;
+      right: 4px;
+      border-width: 0 2px 2px 0;
     }
 
     /* Hidden elements for game mode */
@@ -337,14 +476,14 @@
       position: fixed;
       top: 20px;
       left: 20px;
-      color: white;
-      background: rgba(15, 15, 35, 0.9);
+      color: #88ffcc;
+      background: rgba(0, 0, 0, 0.9);
       backdrop-filter: blur(10px);
       padding: 15px 20px;
       border-radius: 12px;
       font-size: 14px;
       z-index: 100;
-      border: 1px solid rgba(139, 92, 246, 0.3);
+      border: 1px solid rgba(136, 255, 204, 0.3);
       display: none;
     }
 
@@ -354,13 +493,13 @@
       right: 20px;
       padding: 12px 24px;
       font-size: 16px;
-      background: linear-gradient(135deg, #7c3aed, #a855f7);
-      color: white;
+      background: linear-gradient(135deg, #225544, #88ffcc);
+      color: #000000;
       border: none;
       border-radius: 12px;
       cursor: pointer;
       font-weight: bold;
-      box-shadow: 0 4px 20px rgba(124, 58, 237, 0.4);
+      box-shadow: 0 4px 20px rgba(136, 255, 204, 0.4);
       transition: all 0.3s;
       z-index: 100;
       display: none;
@@ -368,27 +507,11 @@
 
     #depth-toggle:hover {
       transform: scale(1.05);
-      box-shadow: 0 6px 30px rgba(124, 58, 237, 0.5);
-    }
-
-    /* Footer */
-    .footer {
-      margin-top: 40px;
-      text-align: center;
-      color: rgba(196, 181, 253, 0.4);
-      font-size: 0.85rem;
+      box-shadow: 0 6px 30px rgba(136, 255, 204, 0.5);
     }
 
     /* Responsive */
     @media (max-width: 640px) {
-      .controls-section {
-        padding: 25px 20px;
-      }
-
-      .controls-grid {
-        grid-template-columns: 1fr;
-      }
-
       .start-btn {
         padding: 18px 50px;
         font-size: 1.1rem;
@@ -402,11 +525,43 @@
   </style>
 </head>
 <body>
-  <!-- Magical particles -->
-  <div class="particles" id="particles"></div>
+  <!-- World Trigger Background -->
+  <div class="wt-background">
+    <!-- Radar sweep -->
+    <div class="radar-sweep"></div>
 
-  <!-- Magic circle decoration -->
-  <div class="magic-circle"></div>
+    <!-- Hexagon rings -->
+    <div class="hex-rings">
+      <div class="hex-ring"></div>
+      <div class="hex-ring"></div>
+      <div class="hex-ring"></div>
+      <div class="hex-ring"></div>
+      <div class="hex-ring"></div>
+    </div>
+
+    <!-- Data streams -->
+    <div class="data-streams" id="data-streams"></div>
+
+    <!-- Trion cubes -->
+    <div class="trion-cubes" id="trion-cubes"></div>
+
+    <!-- Scan lines -->
+    <div class="scan-line"></div>
+    <div class="scan-line"></div>
+  </div>
+
+  <!-- Corner brackets -->
+  <div class="corner-bracket corner-bracket-tl"></div>
+  <div class="corner-bracket corner-bracket-tr"></div>
+  <div class="corner-bracket corner-bracket-bl"></div>
+  <div class="corner-bracket corner-bracket-br"></div>
+
+  <!-- Status text -->
+  <div class="status-text status-text-top">BORDER DEFENSE AGENCY</div>
+  <div class="status-text status-text-bottom">TRIGGER SYSTEM ACTIVE</div>
+
+  <!-- Vignette -->
+  <div class="vignette"></div>
 
   <!-- Three.js container -->
   <div id="app"></div>
@@ -414,86 +569,28 @@
   <!-- Landing page -->
   <div class="landing-page" id="landing-page">
     <header class="header">
-      <h1 class="title">Magic Battle MR</h1>
-      <p class="subtitle">魔法バトル</p>
+      <h1 class="title">WORLD TRIGGER MR</h1>
+      <p class="subtitle">ワールドトリガー</p>
     </header>
-
-    <section class="controls-section">
-      <h2 class="section-title">操作方法 / Controls</h2>
-      <div class="controls-grid">
-        <div class="control-card">
-          <div class="control-header">
-            <div class="control-icon icon-right">✋</div>
-            <div>
-              <div class="control-name">右手 - ゾルトラーク</div>
-              <div class="control-name-en">Right Hand - Zoltraak</div>
-            </div>
-          </div>
-          <p class="control-description">
-            攻撃魔法を発動。手を開いて閉じると魔法弾が発射されます。敵を狙って撃ち抜け。
-          </p>
-          <div class="gesture">
-            <span>👋</span>
-            <span>→</span>
-            <span>✊</span>
-            <span>= 発射</span>
-          </div>
-        </div>
-
-        <div class="control-card">
-          <div class="control-header">
-            <div class="control-icon icon-left">🛡️</div>
-            <div>
-              <div class="control-name">左手 - シールド</div>
-              <div class="control-name-en">Left Hand - Shield</div>
-            </div>
-          </div>
-          <p class="control-description">
-            防御魔法を展開。手を開くと魔法障壁が出現。敵の攻撃を防ぎ、衝撃波を発生させます。
-          </p>
-          <div class="gesture">
-            <span>✊</span>
-            <span>→</span>
-            <span>👋</span>
-            <span>= 展開</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <div class="features">
-      <div class="feature-tag">
-        <span>🎯</span>
-        <span>ハンドトラッキング</span>
-      </div>
-      <div class="feature-tag">
-        <span>💥</span>
-        <span>衝撃波エフェクト</span>
-      </div>
-      <div class="feature-tag">
-        <span>🌊</span>
-        <span>魔法波動</span>
-      </div>
-      <div class="feature-tag">
-        <span>🔮</span>
-        <span>Quest 3 対応</span>
-      </div>
-    </div>
 
     <div class="button-container">
       <button class="start-btn btn-mr" id="start-button">
         <span class="btn-glow"></span>
-        MRモードで開始
+        <span class="btn-corner btn-corner-tl"></span>
+        <span class="btn-corner btn-corner-tr"></span>
+        <span class="btn-corner btn-corner-bl"></span>
+        <span class="btn-corner btn-corner-br"></span>
+        MR MODE
       </button>
       <button class="start-btn btn-vr" id="vr-button">
         <span class="btn-glow"></span>
-        VRモードで開始
+        <span class="btn-corner btn-corner-tl"></span>
+        <span class="btn-corner btn-corner-tr"></span>
+        <span class="btn-corner btn-corner-bl"></span>
+        <span class="btn-corner btn-corner-br"></span>
+        VR MODE
       </button>
     </div>
-
-    <footer class="footer">
-      <p>Quest 3 + ハンドトラッキング推奨</p>
-    </footer>
   </div>
 
   <!-- Game UI (hidden initially) -->
@@ -501,15 +598,30 @@
   <div id="info">ボックスを表示するには「MRを開始」または「VRを開始」をタップしてください</div>
 
   <script>
-    // Create magical particles
-    const particlesContainer = document.getElementById('particles');
-    for (let i = 0; i < 50; i++) {
-      const particle = document.createElement('div');
-      particle.className = 'particle';
-      particle.style.left = Math.random() * 100 + '%';
-      particle.style.animationDelay = Math.random() * 8 + 's';
-      particle.style.animationDuration = (5 + Math.random() * 5) + 's';
-      particlesContainer.appendChild(particle);
+    // Create data streams
+    const dataStreamsContainer = document.getElementById('data-streams');
+    for (let i = 0; i < 15; i++) {
+      const stream = document.createElement('div');
+      stream.className = 'data-stream';
+      stream.style.left = Math.random() * 100 + '%';
+      stream.style.animationDelay = Math.random() * 5 + 's';
+      stream.style.animationDuration = (2 + Math.random() * 3) + 's';
+      stream.style.height = (50 + Math.random() * 100) + 'px';
+      dataStreamsContainer.appendChild(stream);
+    }
+
+    // Create trion cubes
+    const trionCubesContainer = document.getElementById('trion-cubes');
+    for (let i = 0; i < 20; i++) {
+      const cube = document.createElement('div');
+      cube.className = 'trion-cube';
+      cube.style.left = Math.random() * 100 + '%';
+      cube.style.animationDelay = Math.random() * 15 + 's';
+      cube.style.animationDuration = (12 + Math.random() * 8) + 's';
+      const size = 10 + Math.random() * 20;
+      cube.style.width = size + 'px';
+      cube.style.height = size + 'px';
+      trionCubesContainer.appendChild(cube);
     }
 
     // Hide landing page when starting

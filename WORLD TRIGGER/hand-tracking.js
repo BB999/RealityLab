@@ -148,26 +148,31 @@ export function getLeftHandTransform(hand, frame, referenceSpace) {
   );
 
   // 手のひらの法線方向（手のひらが向いている方向）を計算
-  // 左手の場合、手のひらの法線は-Y方向（ローカル座標）で手のひら側を向く
-  const palmNormal = new THREE.Vector3(0, -1, 0);
+  // 左手の場合、手のひらの法線は+Y方向（ローカル座標）で手の甲側を向く
+  const palmNormal = new THREE.Vector3(0, 1, 0);
   palmNormal.applyQuaternion(quaternion);
 
-  // 上向きに角度を調整（palmNormalに上方向を加える）
-  const adjustedNormal = palmNormal.clone();
-  adjustedNormal.y += 0.4; // 上向きに調整
-  adjustedNormal.normalize();
-
-  // シールドを手のひらの前に配置（調整した法線方向に少しオフセット）
-  const offset = adjustedNormal.clone().multiplyScalar(0.001);
+  // シールドを手のひらの前に配置（手の甲の反対側 = 手のひら側）
+  const offset = palmNormal.clone().multiplyScalar(-0.08); // 手のひら側に少しオフセット
   const shieldPosition = palmCenter.clone().add(offset);
 
-  // シールドが手のひらを向くように回転を計算
-  // 調整した法線方向を向くクォータニオンを計算
+  // 手の指の方向を取得（手首から中指先端への方向）
+  const fingerDirection = new THREE.Vector3().subVectors(middleTipPosition, wristPosition).normalize();
+
+  // シールドの向きを20度上に傾ける
+  // 手のひらの法線に上方向成分を加える
+  const tiltAngle = 20 * (Math.PI / 180); // 20度をラジアンに変換
+  const adjustedNormal = palmNormal.clone();
+  adjustedNormal.y -= Math.sin(tiltAngle); // 上方向に傾ける（符号反転）
+  adjustedNormal.normalize();
+
+  // シールドが手のひらと同じ向きになるようにクォータニオンを計算
+  // シールドの法線が調整した法線方向を向くようにする
   const shieldQuaternion = new THREE.Quaternion();
-  const up = new THREE.Vector3(0, 1, 0);
   const lookMatrix = new THREE.Matrix4();
-  const lookTarget = shieldPosition.clone().sub(adjustedNormal);
-  lookMatrix.lookAt(shieldPosition, lookTarget, up);
+  // シールドの前面（-Z）が調整した法線方向を向くように
+  const lookTarget = shieldPosition.clone().add(adjustedNormal);
+  lookMatrix.lookAt(shieldPosition, lookTarget, fingerDirection);
   shieldQuaternion.setFromRotationMatrix(lookMatrix);
 
   return {

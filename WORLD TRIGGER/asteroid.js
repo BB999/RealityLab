@@ -9,7 +9,7 @@ let cancelProgress = 0;
 let chargeProgress = 0;
 
 // 定数
-const TRION_COLOR = 0xFFAA00;
+const TRION_COLOR = 0x88ffcc; // 白っぽいグリーン（シールドと同じ）
 const BIG_CUBE_SIZE = 0.15; // 手のひらサイズに合わせた大きさ
 const SPLIT_COUNT = 3;
 
