@@ -20,8 +20,12 @@ let bigCubeMaterial = null;
 // 分割された弾丸
 let bullets = [];
 
+// シーンとカメラへの参照
+let sceneRef = null;
+
 // アステロイドエフェクトを作成
 export function createAsteroid(scene) {
+  sceneRef = scene;
   asteroidGroup = new THREE.Group();
   asteroidGroup.visible = false;
   scene.add(asteroidGroup);
@@ -164,7 +168,7 @@ function spawnBullets() {
 }
 
 // アステロイドのアニメーション更新
-export function updateAsteroid(time) {
+export function updateAsteroid(time, camera) {
   if (!asteroidGroup) return;
 
   // チャージ中
@@ -237,18 +241,39 @@ export function updateAsteroid(time) {
       else {
         if (!bullet.fired) {
           bullet.fired = true;
-          // 発射方向（前方 = +Z方向）
-          bullet.velocity.set(0, 0, bullet.speed);
 
-          // 弾丸を細長く変形
-          bullet.mesh.rotation.set(0, 0, 0);
+          // カメラの正面方向をワールド座標で取得
+          const cameraDirection = new THREE.Vector3(0, 0, -1);
+          if (camera) {
+            camera.getWorldDirection(cameraDirection);
+          }
+
+          // 弾丸のワールド位置を取得
+          const bulletWorldPos = new THREE.Vector3();
+          bullet.mesh.getWorldPosition(bulletWorldPos);
+
+          // 発射方向（カメラの正面方向）をワールド座標で設定
+          bullet.worldVelocity = cameraDirection.clone().multiplyScalar(bullet.speed);
+
+          // 弾丸をカメラの方向に向ける（細長く変形）
+          const targetPos = bulletWorldPos.clone().add(cameraDirection);
+          bullet.mesh.lookAt(targetPos);
           bullet.mesh.scale.set(0.01, 0.01, 0.3);
+
+          // ワールド位置を保存
+          bullet.worldPos = bulletWorldPos.clone();
         }
 
-        bullet.mesh.position.add(bullet.velocity);
+        // ワールド座標で移動
+        bullet.worldPos.add(bullet.worldVelocity);
 
-        // 一定距離で非アクティブ化
-        if (bullet.mesh.position.z > 10) {
+        // ワールド座標からローカル座標に変換してメッシュに適用
+        const localPos = asteroidGroup.worldToLocal(bullet.worldPos.clone());
+        bullet.mesh.position.copy(localPos);
+
+        // 一定距離で非アクティブ化（ワールド座標で判定）
+        const distanceTraveled = bullet.worldPos.distanceTo(new THREE.Vector3());
+        if (distanceTraveled > 15) {
           bullet.active = false;
           bullet.mesh.visible = false;
         }

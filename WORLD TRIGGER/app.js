@@ -239,7 +239,7 @@ function animate(timestamp, frame) {
   updateShield(time, asteroidState.isFiring);
 
   // アステロイドのアニメーションを更新
-  updateAsteroid(time);
+  updateAsteroid(time, camera);
 
   renderer.render(scene, camera);
 }
