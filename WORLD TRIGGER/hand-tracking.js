@@ -112,6 +112,10 @@ export function isHandOpen(hand, frame, referenceSpace) {
   return extendedCount >= 3;
 }
 
+// シールドモードの状態を保持（ヒステリシス用）
+let leftShieldModeState = false;
+let rightShieldModeState = false;
+
 // 手のひらが前方（カメラから離れる方向）を向いているかを判定
 export function isPalmFacingForward(hand, frame, referenceSpace, camera, handedness) {
   if (!hand || !frame || !referenceSpace || !camera) return false;
@@ -136,23 +140,40 @@ export function isPalmFacingForward(hand, frame, referenceSpace, camera, handedn
   // 手のひらが下向きの場合はシールドモードにしない（ハウンド用）
   const downward = new THREE.Vector3(0, -1, 0);
   const dotDown = palmNormal.dot(downward);
-  if (dotDown > 0.5) {
-    return false; // 下向きなので前方ではない
+  if (dotDown > 0.6) {
+    // 下向きが明確なら即座にfalse
+    if (handedness === 'left') leftShieldModeState = false;
+    else rightShieldModeState = false;
+    return false;
   }
 
   // カメラの前方方向（カメラが見ている方向）
   const cameraForward = new THREE.Vector3(0, 0, -1);
-  camera.getWorldQuaternion(new THREE.Quaternion());
   const cameraQuaternion = new THREE.Quaternion();
   camera.getWorldQuaternion(cameraQuaternion);
   cameraForward.applyQuaternion(cameraQuaternion);
 
   // 手のひらの法線とカメラの前方方向の内積
-  // 手のひらが前方を向いている = 手のひらの法線とカメラの前方が同じ方向
   const dot = palmNormal.dot(cameraForward);
 
-  // 内積が0.3以上なら手のひらが前方を向いていると判定
-  return dot > 0.3;
+  // ヒステリシスを使用した判定
+  // 現在の状態を取得
+  const currentState = handedness === 'left' ? leftShieldModeState : rightShieldModeState;
+
+  let newState;
+  if (currentState) {
+    // シールドモード中: 0.2以下で解除（より緩い条件）
+    newState = dot > 0.2;
+  } else {
+    // シールドモードでない: 0.45以上で発動（より厳しい条件）
+    newState = dot > 0.45;
+  }
+
+  // 状態を更新
+  if (handedness === 'left') leftShieldModeState = newState;
+  else rightShieldModeState = newState;
+
+  return newState;
 }
 
 // 左手の位置と向きを取得（isHound: ハウンドモードの場合は手から離す）

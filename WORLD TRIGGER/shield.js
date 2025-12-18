@@ -243,11 +243,16 @@ export function updateShield(time, isFiring) {
 function updateSingleShield(shield, time) {
   if (!shield) return;
 
-  // プログレスをスムーズに変化
-  shield.progress += (shield.targetProgress - shield.progress) * 0.1;
+  // プログレスをスムーズに変化（少し遅めに）
+  shield.progress += (shield.targetProgress - shield.progress) * 0.15;
 
-  // シールドの表示/非表示
-  shield.group.visible = shield.progress > 0.01;
+  // シールドの表示/非表示（ヒステリシスを追加）
+  // 表示開始は0.1以上、非表示は0.05以下
+  if (shield.progress > 0.1) {
+    shield.group.visible = true;
+  } else if (shield.progress < 0.05) {
+    shield.group.visible = false;
+  }
 
   // シールドのスケールとオパシティをプログレスに連動
   const scale = shield.progress;
@@ -267,11 +272,15 @@ function updateSingleShield(shield, time) {
 function updateFixedShield(time) {
   if (!fixedShieldGroup) return;
 
-  // プログレスをスムーズに変化
-  fixedShieldProgress += (targetFixedShieldProgress - fixedShieldProgress) * 0.1;
+  // プログレスをスムーズに変化（少し遅めに）
+  fixedShieldProgress += (targetFixedShieldProgress - fixedShieldProgress) * 0.15;
 
-  // 表示/非表示
-  fixedShieldGroup.visible = fixedShieldProgress > 0.01;
+  // 表示/非表示（ヒステリシスを追加）
+  if (fixedShieldProgress > 0.1) {
+    fixedShieldGroup.visible = true;
+  } else if (fixedShieldProgress < 0.05) {
+    fixedShieldGroup.visible = false;
+  }
 
   // スケールとオパシティ
   const scale = fixedShieldProgress;
