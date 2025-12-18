@@ -6,21 +6,17 @@ import {
   updateShield,
   setTargetShieldProgress,
   resetShieldRandomDelays,
-  getShieldGroup,
-  getShieldCollisionMesh,
-  getShieldProgress,
-  setIsBeamHittingShield,
-  setImpactPoint
+  getShieldGroup
 } from './shield.js';
 
 import {
-  createZoltraak,
-  updateZoltraak,
-  castZoltraak,
-  cancelZoltraak,
-  getZoltraakGroup,
-  getZoltraakState
-} from './zoltraak.js';
+  createAsteroid,
+  updateAsteroid,
+  castAsteroid,
+  cancelAsteroid,
+  getAsteroidGroup,
+  getAsteroidState
+} from './asteroid.js';
 
 import {
   getRightHandTransform,
@@ -33,9 +29,7 @@ import {
   createVREnvironment,
   removeVREnvironment,
   updatePlaneMeshes,
-  getBeamHitDistance,
   toggleDepthVisualization,
-  getShowDepthVisualization,
   setShowDepthVisualization,
   cleanupDepth
 } from './vr-environment.js';
@@ -90,8 +84,8 @@ function init() {
   // シールドを作成
   createShield(scene);
 
-  // ゾルトラークエフェクトを作成
-  createZoltraak(scene);
+  // アステロイドエフェクトを作成
+  createAsteroid(scene);
 
   // リサイズ対応
   window.addEventListener('resize', onWindowResize);
@@ -111,20 +105,6 @@ function createBox() {
   box = new THREE.Mesh(geometry, material);
   box.position.set(0, 0, -2);
   scene.add(box);
-}
-
-// ビーム衝突判定用のラッパー関数
-function getBeamHitDistanceWrapper(beamOrigin, beamDirection) {
-  return getBeamHitDistance(
-    beamOrigin,
-    beamDirection,
-    getShieldCollisionMesh(),
-    getShieldGroup(),
-    isLeftHandOpen,
-    getShieldProgress(),
-    setIsBeamHittingShield,
-    setImpactPoint
-  );
 }
 
 // アニメーションループ
@@ -205,7 +185,7 @@ function animate(timestamp, frame) {
       }
     }
 
-    // 右手のハンドトラッキングをチェック（ゾルトラーク用）
+    // 右手のハンドトラッキングをチェック（アステロイド用）
     let rightHand = null;
     const sessionForRight = renderer.xr.getSession();
     if (sessionForRight) {
@@ -219,47 +199,47 @@ function animate(timestamp, frame) {
 
     if (rightHand) {
       const handOpen = isHandOpen(rightHand, frame, referenceSpace);
-      const zoltraakGroup = getZoltraakGroup();
-      const zoltraakState = getZoltraakState();
+      const asteroidGroup = getAsteroidGroup();
+      const asteroidState = getAsteroidState();
 
       if (handOpen !== isRightHandOpen) {
         isRightHandOpen = handOpen;
 
-        if (handOpen && zoltraakGroup) {
-          // 右手がパーになったらゾルトラーク発動
-          zoltraakGroup.visible = true;
-          castZoltraak();
-        } else if (!handOpen && zoltraakGroup && (zoltraakState.isCharging || zoltraakState.isFiring) && !zoltraakState.isCancelling) {
+        if (handOpen && asteroidGroup) {
+          // 右手がパーになったらアステロイド発動
+          asteroidGroup.visible = true;
+          castAsteroid();
+        } else if (!handOpen && asteroidGroup && (asteroidState.isCharging || asteroidState.isFiring) && !asteroidState.isCancelling) {
           // 右手を閉じたら魔法をキャンセル（フェードアウト）
-          cancelZoltraak();
+          cancelAsteroid();
         }
       }
 
-      // ゾルトラークの位置を右手の前に更新
-      const currentState = getZoltraakState();
-      if (zoltraakGroup && (currentState.isCharging || currentState.isFiring || currentState.isCancelling)) {
+      // アステロイドの位置を右手の前に更新
+      const currentState = getAsteroidState();
+      if (asteroidGroup && (currentState.isCharging || currentState.isFiring || currentState.isCancelling)) {
         const handTransform = getRightHandTransform(rightHand, frame, referenceSpace);
         if (handTransform) {
-          zoltraakGroup.position.copy(handTransform.position);
-          zoltraakGroup.quaternion.copy(handTransform.quaternion);
+          asteroidGroup.position.copy(handTransform.position);
+          asteroidGroup.quaternion.copy(handTransform.quaternion);
         }
       }
     }
 
-    // ゾルトラークが終了したら非表示に
-    const zoltraakGroup = getZoltraakGroup();
-    const finalState = getZoltraakState();
-    if (zoltraakGroup && !finalState.isCharging && !finalState.isFiring && !finalState.isCancelling && !isRightHandOpen) {
-      zoltraakGroup.visible = false;
+    // アステロイドが終了したら非表示に
+    const asteroidGroup = getAsteroidGroup();
+    const finalState = getAsteroidState();
+    if (asteroidGroup && !finalState.isCharging && !finalState.isFiring && !finalState.isCancelling && !isRightHandOpen) {
+      asteroidGroup.visible = false;
     }
   }
 
   // シールドのアニメーションを更新
-  const zoltraakState = getZoltraakState();
-  updateShield(time, zoltraakState.isFiring);
+  const asteroidState = getAsteroidState();
+  updateShield(time, asteroidState.isFiring);
 
-  // ゾルトラークのアニメーションを更新
-  updateZoltraak(time, getBeamHitDistanceWrapper);
+  // アステロイドのアニメーションを更新
+  updateAsteroid(time);
 
   renderer.render(scene, camera);
 }
