@@ -111,6 +111,42 @@ export function isHandOpen(hand, frame, referenceSpace) {
   return extendedCount >= 3;
 }
 
+// 手のひらが前方（カメラから離れる方向）を向いているかを判定
+export function isPalmFacingForward(hand, frame, referenceSpace, camera, handedness) {
+  if (!hand || !frame || !referenceSpace || !camera) return false;
+
+  const wristSpace = hand.get('wrist');
+  if (!wristSpace) return false;
+
+  const wristPose = frame.getJointPose(wristSpace, referenceSpace);
+  if (!wristPose) return false;
+
+  const quaternion = new THREE.Quaternion(
+    wristPose.transform.orientation.x,
+    wristPose.transform.orientation.y,
+    wristPose.transform.orientation.z,
+    wristPose.transform.orientation.w
+  );
+
+  // 手のひらの法線を取得（両手とも-Y方向が手のひら側）
+  const palmNormal = new THREE.Vector3(0, -1, 0);
+  palmNormal.applyQuaternion(quaternion);
+
+  // カメラの前方方向（カメラが見ている方向）
+  const cameraForward = new THREE.Vector3(0, 0, -1);
+  camera.getWorldQuaternion(new THREE.Quaternion());
+  const cameraQuaternion = new THREE.Quaternion();
+  camera.getWorldQuaternion(cameraQuaternion);
+  cameraForward.applyQuaternion(cameraQuaternion);
+
+  // 手のひらの法線とカメラの前方方向の内積
+  // 手のひらが前方を向いている = 手のひらの法線とカメラの前方が同じ方向
+  const dot = palmNormal.dot(cameraForward);
+
+  // 内積が0.3以上なら手のひらが前方を向いていると判定
+  return dot > 0.3;
+}
+
 // 左手の位置と向きを取得
 export function getLeftHandTransform(hand, frame, referenceSpace) {
   if (!hand || !frame || !referenceSpace) return null;

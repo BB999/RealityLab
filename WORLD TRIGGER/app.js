@@ -8,7 +8,12 @@ import {
   updateShield,
   setTargetShieldProgress,
   resetShieldRandomDelays,
-  getShieldGroup
+  getShieldGroup,
+  setTargetFixedShieldProgress,
+  setFixedShieldPosition,
+  addFixedShieldImpact,
+  checkFixedShieldCollision,
+  isFixedShieldActive
 } from './shield.js';
 
 import {
@@ -23,7 +28,8 @@ import {
 import {
   getRightHandTransform,
   getLeftHandTransform,
-  isHandOpen
+  isHandOpen,
+  isPalmFacingForward
 } from './hand-tracking.js';
 
 import {
@@ -96,6 +102,11 @@ const AUTO_SHIELD_RADIUS = 0.1; // 自動シールドの半径
 const AUTO_SHIELD_KICKBACK_DISTANCE = 0.05; // キックバック距離
 const AUTO_SHIELD_KICKBACK_SPEED = 2; // キックバック速度（戻る速度）
 let leftHandPosition = null; // 左手の位置を保存
+let rightHandPosition = null; // 右手の位置を保存
+
+// 両手のシールドモード
+let isLeftShieldMode = false; // 左手がシールドモードか
+let isRightShieldMode = false; // 右手がシールドモードか
 
 // シーンの初期化
 function init() {
@@ -546,8 +557,21 @@ function updateReplicaBullets(deltaTime) {
     // カメラとの距離をチェック
     const distToCamera = bullet.mesh.position.distanceTo(cameraPos);
 
-    // シールド発動中の場合（左手がパーで左手位置が取得できている）
-    if (isLeftHandOpen && leftHandPosition) {
+    // 固定シールドとの衝突判定（両手シールドモード時）
+    if (isFixedShieldActive()) {
+      if (checkFixedShieldCollision(bullet.mesh.position)) {
+        // 固定シールドに衝撃波を追加
+        addFixedShieldImpact(bullet.mesh.position.clone());
+        scene.remove(bullet.mesh);
+        bullet.active = false;
+        console.log('固定シールドで弾丸を防いだ！');
+        return;
+      }
+    }
+
+    // シールド発動中の場合（左手または右手がシールドモード）
+    const isShieldActive = (isLeftShieldMode && leftHandPosition) || (isRightShieldMode && rightHandPosition);
+    if (isShieldActive && !isFixedShieldActive()) {
       // まず既存のシールドとの衝突をチェック
       const existingShield = checkAutoShieldCollision(bullet.mesh.position);
       if (existingShield) {
@@ -558,10 +582,17 @@ function updateReplicaBullets(deltaTime) {
         return;
       }
 
-      // 手とカメラの距離を取得（手を前に出すほど遠くで発動）
-      const handToCamera = leftHandPosition.distanceTo(cameraPos);
+      // 両手の中で最も前に出ている手の距離でシールド発動
+      let maxHandDistance = 0;
+      if (isLeftShieldMode && leftHandPosition) {
+        maxHandDistance = Math.max(maxHandDistance, leftHandPosition.distanceTo(cameraPos));
+      }
+      if (isRightShieldMode && rightHandPosition) {
+        maxHandDistance = Math.max(maxHandDistance, rightHandPosition.distanceTo(cameraPos));
+      }
+
       // シールド発動距離 = 手とカメラの距離 + 少しの余裕
-      const shieldActivationDistance = handToCamera + 0.1;
+      const shieldActivationDistance = maxHandDistance + 0.1;
 
       // カメラからの距離がシールド発動距離に近づいたら発動
       if (distToCamera < shieldActivationDistance && distToCamera > 0.3) {
@@ -1083,99 +1114,280 @@ function animate(timestamp, frame) {
       }
     }
 
-    if (leftHand) {
-      const handOpen = isHandOpen(leftHand, frame, referenceSpace);
-
-      if (handOpen !== isLeftHandOpen) {
-        isLeftHandOpen = handOpen;
-        setTargetShieldProgress(handOpen ? 1 : 0);
-
-        if (handOpen) {
-          // シールド展開時にランダムディレイをリセット
-          resetShieldRandomDelays();
-        }
-      }
-
-      // シールドの位置を左手の前に更新
-      const shieldGroup = getShieldGroup();
-      const handTransform = getLeftHandTransform(leftHand, frame, referenceSpace);
-      if (handTransform) {
-        // 左手の位置を保存（自動シールド用）
-        leftHandPosition = handTransform.position.clone();
-
-        if (shieldGroup && isLeftHandOpen) {
-          shieldGroup.position.copy(handTransform.position);
-          shieldGroup.quaternion.copy(handTransform.quaternion);
-        }
-      }
-    } else {
-      leftHandPosition = null;
-    }
-
-    // 右手のハンドトラッキングをチェック（アステロイド用）
+    // 両手を取得
     let rightHand = null;
-    const sessionForRight = renderer.xr.getSession();
-    if (sessionForRight) {
-      for (const inputSource of sessionForRight.inputSources) {
+    const sessionForHands = renderer.xr.getSession();
+    if (sessionForHands) {
+      for (const inputSource of sessionForHands.inputSources) {
         if (inputSource.hand && inputSource.handedness === 'right') {
           rightHand = inputSource.hand;
-          break;
         }
       }
     }
 
-    if (rightHand) {
-      const handOpen = isHandOpen(rightHand, frame, referenceSpace);
-      const asteroidGroup = getAsteroidGroup();
-      const asteroidState = getAsteroidState();
-      const handTransform = getRightHandTransform(rightHand, frame, referenceSpace);
+    // === 左手の処理 ===
+    if (leftHand) {
+      const handOpen = isHandOpen(leftHand, frame, referenceSpace);
+      const palmForward = isPalmFacingForward(leftHand, frame, referenceSpace, camera, 'left');
+      const handTransform = getLeftHandTransform(leftHand, frame, referenceSpace);
 
-      if (handOpen !== isRightHandOpen) {
-        isRightHandOpen = handOpen;
+      // 左手の位置を保存
+      if (handTransform) {
+        leftHandPosition = handTransform.position.clone();
+      }
 
-        if (handOpen && asteroidGroup) {
-          // 右手がパーになったらアステロイド発動（チャージ開始）
-          asteroidGroup.visible = true;
-          castAsteroid();
-        } else if (!handOpen && asteroidGroup && asteroidState.isCharging && !asteroidState.isCancelling) {
-          // 右手を閉じたら発射（手のひらの法線とターゲット位置取得関数を渡す）
-          const palmNormal = handTransform ? handTransform.palmNormal : null;
-          // 各弾丸発射時にその時点のレプリカの位置を取得する関数
+      // シールドモード：パー + 手のひらが前向き
+      const newLeftShieldMode = handOpen && palmForward;
+      // アステロイドモード：パー + 手のひらが前向きでない
+      const leftAsteroidMode = handOpen && !palmForward;
+
+      // シールドモード変化
+      if (newLeftShieldMode !== isLeftShieldMode) {
+        isLeftShieldMode = newLeftShieldMode;
+      }
+
+      // 左手の状態変化（パー/グー）
+      if (handOpen !== isLeftHandOpen) {
+        const wasOpen = isLeftHandOpen;
+        isLeftHandOpen = handOpen;
+
+        const leftAsteroidGroup = getAsteroidGroup('left');
+        const leftAsteroidState = getAsteroidState('left');
+
+        // パーになった時
+        if (handOpen && leftAsteroidMode && leftAsteroidGroup && !leftAsteroidState.isCharging) {
+          // アステロイド発動
+          leftAsteroidGroup.visible = true;
+          castAsteroid('left');
+        }
+        // グーになった時（発射）
+        else if (!handOpen && wasOpen && leftAsteroidGroup && leftAsteroidState.isCharging && !leftAsteroidState.isCancelling) {
+          const palmNormal = handTransform ? new THREE.Vector3(0, 1, 0).applyQuaternion(
+            new THREE.Quaternion(
+              frame.getJointPose(leftHand.get('wrist'), referenceSpace).transform.orientation.x,
+              frame.getJointPose(leftHand.get('wrist'), referenceSpace).transform.orientation.y,
+              frame.getJointPose(leftHand.get('wrist'), referenceSpace).transform.orientation.z,
+              frame.getJointPose(leftHand.get('wrist'), referenceSpace).transform.orientation.w
+            )
+          ).negate() : null;
           const getTargetPos = () => {
             if (replicaModel && replicaModel.visible) {
               return replicaModel.position.clone();
             }
             return null;
           };
-          // レプリカにヒットした時のコールバック
           const onHitReplica = () => {
             triggerReplicaHitFlash();
           };
-          fireAsteroid(palmNormal, getTargetPos, onHitReplica);
+          fireAsteroid(palmNormal, getTargetPos, onHitReplica, 'left');
         }
       }
 
-      // アステロイドの位置を右手の前に更新
-      const currentState = getAsteroidState();
-      if (asteroidGroup && (currentState.isCharging || currentState.isFiring || currentState.isCancelling)) {
-        if (handTransform) {
-          asteroidGroup.position.copy(handTransform.position);
-          asteroidGroup.quaternion.copy(handTransform.quaternion);
+      // シールドの位置を左手に更新（両手シールドモードでないときのみ）
+      const leftShieldGroup = getShieldGroup('left');
+      if (leftShieldGroup && handTransform && isLeftShieldMode && !isRightShieldMode) {
+        leftShieldGroup.position.copy(handTransform.position);
+        leftShieldGroup.quaternion.copy(handTransform.quaternion);
+      }
+
+      // 左手でアステロイドモードの時、アステロイドの位置を更新
+      const leftAsteroidGroup = getAsteroidGroup('left');
+      const leftAsteroidState = getAsteroidState('left');
+      if (leftAsteroidGroup && handTransform && leftAsteroidMode && (leftAsteroidState.isCharging || leftAsteroidState.isFiring || leftAsteroidState.isCancelling)) {
+        // 左手用にアステロイド位置を計算
+        const wristPose = frame.getJointPose(leftHand.get('wrist'), referenceSpace);
+        const middleTipPose = frame.getJointPose(leftHand.get('middle-finger-tip'), referenceSpace);
+        if (wristPose && middleTipPose) {
+          const wristPos = new THREE.Vector3(wristPose.transform.position.x, wristPose.transform.position.y, wristPose.transform.position.z);
+          const tipPos = new THREE.Vector3(middleTipPose.transform.position.x, middleTipPose.transform.position.y, middleTipPose.transform.position.z);
+          const palmCenter = new THREE.Vector3().addVectors(wristPos, tipPos).multiplyScalar(0.5);
+
+          const quaternion = new THREE.Quaternion(
+            wristPose.transform.orientation.x,
+            wristPose.transform.orientation.y,
+            wristPose.transform.orientation.z,
+            wristPose.transform.orientation.w
+          );
+          const palmNormal = new THREE.Vector3(0, 1, 0);
+          palmNormal.applyQuaternion(quaternion);
+          palmNormal.negate();
+
+          const adjustedNormal = palmNormal.clone();
+          adjustedNormal.y += 0.4;
+          adjustedNormal.normalize();
+
+          const offset = adjustedNormal.clone().multiplyScalar(0.15);
+          const effectPosition = palmCenter.clone().add(offset);
+
+          const effectQuaternion = new THREE.Quaternion();
+          const up = new THREE.Vector3(0, 1, 0);
+          const lookMatrix = new THREE.Matrix4();
+          const lookFrom = effectPosition.clone().add(adjustedNormal);
+          lookMatrix.lookAt(lookFrom, effectPosition, up);
+          effectQuaternion.setFromRotationMatrix(lookMatrix);
+
+          leftAsteroidGroup.position.copy(effectPosition);
+          leftAsteroidGroup.quaternion.copy(effectQuaternion);
         }
       }
+
+      // 左手アステロイドが終了したら非表示
+      if (leftAsteroidGroup && !leftAsteroidState.isCharging && !leftAsteroidState.isFiring && !leftAsteroidState.isCancelling && !leftAsteroidMode) {
+        leftAsteroidGroup.visible = false;
+      }
+    } else {
+      leftHandPosition = null;
+      isLeftShieldMode = false;
     }
 
-    // アステロイドが終了したら非表示に
-    const asteroidGroup = getAsteroidGroup();
-    const finalState = getAsteroidState();
-    if (asteroidGroup && !finalState.isCharging && !finalState.isFiring && !finalState.isCancelling && !isRightHandOpen) {
-      asteroidGroup.visible = false;
+    // === 右手の処理 ===
+    if (rightHand) {
+      const handOpen = isHandOpen(rightHand, frame, referenceSpace);
+      const palmForward = isPalmFacingForward(rightHand, frame, referenceSpace, camera, 'right');
+      const handTransform = getRightHandTransform(rightHand, frame, referenceSpace);
+
+      // 右手の位置を保存
+      if (handTransform) {
+        rightHandPosition = handTransform.position.clone();
+      }
+
+      // シールドモード：パー + 手のひらが前向き
+      const newRightShieldMode = handOpen && palmForward;
+      // アステロイドモード：パー + 手のひらが前向きでない
+      const rightAsteroidMode = handOpen && !palmForward;
+
+      // シールドモード変化
+      if (newRightShieldMode !== isRightShieldMode) {
+        isRightShieldMode = newRightShieldMode;
+      }
+
+      // 右手の状態変化（パー/グー）
+      if (handOpen !== isRightHandOpen) {
+        const wasOpen = isRightHandOpen;
+        isRightHandOpen = handOpen;
+
+        const rightAsteroidGroup = getAsteroidGroup('right');
+        const rightAsteroidState = getAsteroidState('right');
+
+        // パーになった時
+        if (handOpen && rightAsteroidMode && rightAsteroidGroup && !rightAsteroidState.isCharging) {
+          // アステロイド発動
+          rightAsteroidGroup.visible = true;
+          castAsteroid('right');
+        }
+        // グーになった時（発射）
+        else if (!handOpen && wasOpen && rightAsteroidGroup && rightAsteroidState.isCharging && !rightAsteroidState.isCancelling) {
+          const palmNormal = handTransform ? handTransform.palmNormal : null;
+          const getTargetPos = () => {
+            if (replicaModel && replicaModel.visible) {
+              return replicaModel.position.clone();
+            }
+            return null;
+          };
+          const onHitReplica = () => {
+            triggerReplicaHitFlash();
+          };
+          fireAsteroid(palmNormal, getTargetPos, onHitReplica, 'right');
+        }
+      }
+
+      // 右手でシールドモードの時、シールドの位置を右手に更新（両手シールドモードでないときのみ）
+      const rightShieldGroup = getShieldGroup('right');
+      if (rightShieldGroup && isRightShieldMode && !isLeftShieldMode) {
+        // 右手用のシールド位置を計算（左手と完全に同じロジック）
+        const wristPose = frame.getJointPose(rightHand.get('wrist'), referenceSpace);
+        const middleTipPose = frame.getJointPose(rightHand.get('middle-finger-tip'), referenceSpace);
+        if (wristPose && middleTipPose) {
+          const wristPos = new THREE.Vector3(wristPose.transform.position.x, wristPose.transform.position.y, wristPose.transform.position.z);
+          const tipPos = new THREE.Vector3(middleTipPose.transform.position.x, middleTipPose.transform.position.y, middleTipPose.transform.position.z);
+          const palmCenter = new THREE.Vector3().addVectors(wristPos, tipPos).multiplyScalar(0.5);
+
+          const quaternion = new THREE.Quaternion(
+            wristPose.transform.orientation.x,
+            wristPose.transform.orientation.y,
+            wristPose.transform.orientation.z,
+            wristPose.transform.orientation.w
+          );
+
+          // 左手と同じロジック：+Y方向が手の甲側
+          const palmNormal = new THREE.Vector3(0, 1, 0);
+          palmNormal.applyQuaternion(quaternion);
+
+          // シールドを手のひらの前に配置（手の甲の反対側 = 手のひら側）
+          const offset = palmNormal.clone().multiplyScalar(-0.08);
+          const shieldPosition = palmCenter.clone().add(offset);
+
+          // 手の指の方向を取得
+          const fingerDirection = new THREE.Vector3().subVectors(tipPos, wristPos).normalize();
+
+          // シールドの向きを20度上に傾ける（左手と同じ）
+          const tiltAngle = 20 * (Math.PI / 180);
+          const adjustedNormal = palmNormal.clone();
+          adjustedNormal.y -= Math.sin(tiltAngle);
+          adjustedNormal.normalize();
+
+          const shieldQuaternion = new THREE.Quaternion();
+          const lookMatrix = new THREE.Matrix4();
+          const lookTarget = shieldPosition.clone().add(adjustedNormal);
+          lookMatrix.lookAt(shieldPosition, lookTarget, fingerDirection);
+          shieldQuaternion.setFromRotationMatrix(lookMatrix);
+
+          rightShieldGroup.position.copy(shieldPosition);
+          rightShieldGroup.quaternion.copy(shieldQuaternion);
+        }
+      }
+
+      // 右手でアステロイドモードの時、アステロイドの位置を更新
+      const rightAsteroidGroup = getAsteroidGroup('right');
+      const rightAsteroidState = getAsteroidState('right');
+      if (rightAsteroidGroup && handTransform && rightAsteroidMode && (rightAsteroidState.isCharging || rightAsteroidState.isFiring || rightAsteroidState.isCancelling)) {
+        rightAsteroidGroup.position.copy(handTransform.position);
+        rightAsteroidGroup.quaternion.copy(handTransform.quaternion);
+      }
+
+      // 右手アステロイドが終了したら非表示
+      if (rightAsteroidGroup && !rightAsteroidState.isCharging && !rightAsteroidState.isFiring && !rightAsteroidState.isCancelling && !rightAsteroidMode) {
+        rightAsteroidGroup.visible = false;
+      }
+    } else {
+      rightHandPosition = null;
+      isRightShieldMode = false;
+    }
+
+    // シールドのターゲット状態を更新（左右独立）
+    // 左手シールド
+    if (isLeftShieldMode && !isRightShieldMode) {
+      // 左手のみシールドモード
+      setTargetShieldProgress(1, 'left');
+      setTargetShieldProgress(0, 'right');
+      setTargetFixedShieldProgress(0);
+    } else if (isRightShieldMode && !isLeftShieldMode) {
+      // 右手のみシールドモード
+      setTargetShieldProgress(0, 'left');
+      setTargetShieldProgress(1, 'right');
+      setTargetFixedShieldProgress(0);
+    } else if (isLeftShieldMode && isRightShieldMode) {
+      // 両手シールドモード：固定シールドを表示、個別シールドは非表示
+      setTargetShieldProgress(0, 'left');
+      setTargetShieldProgress(0, 'right');
+      setTargetFixedShieldProgress(1);
+
+      // 固定シールドの位置をカメラ位置に設定
+      const cameraPos = new THREE.Vector3();
+      camera.getWorldPosition(cameraPos);
+      setFixedShieldPosition(cameraPos);
+    } else {
+      // どちらもシールドモードでない
+      setTargetShieldProgress(0, 'left');
+      setTargetShieldProgress(0, 'right');
+      setTargetFixedShieldProgress(0);
     }
   }
 
   // シールドのアニメーションを更新
-  const asteroidState = getAsteroidState();
-  updateShield(time, asteroidState.isFiring);
+  const leftAsteroidState = getAsteroidState('left');
+  const rightAsteroidState = getAsteroidState('right');
+  updateShield(time, leftAsteroidState.isFiring || rightAsteroidState.isFiring);
 
   // アステロイドのアニメーションを更新
   updateAsteroid(time, camera);
