@@ -128,10 +128,12 @@ export function updateDepthInfo(frame, referenceSpace, timestamp, scene, camera)
 
 // VR環境を作成
 export function createVREnvironment(scene) {
-  vrBackground = new THREE.Color(0x1a1a2e);
+  // 黒い背景
+  vrBackground = new THREE.Color(0x000000);
   scene.background = vrBackground;
 
-  gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+  // 黒基調のグリッド（トリオンカラーのライン）
+  gridHelper = new THREE.GridHelper(20, 20, 0x88ffcc, 0x225544);
   gridHelper.position.y = 0;
   scene.add(gridHelper);
 }

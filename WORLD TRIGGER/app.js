@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 
 // モジュールのインポート
 import {
@@ -13,7 +14,7 @@ import {
   createAsteroid,
   updateAsteroid,
   castAsteroid,
-  cancelAsteroid,
+  fireAsteroid,
   getAsteroidGroup,
   getAsteroidState
 } from './asteroid.js';
@@ -44,6 +45,9 @@ let boxPositioned = false;
 // ハンドトラッキング用変数
 let hand1 = null;
 let hand2 = null;
+let handModelFactory = null;
+let handModel1 = null;
+let handModel2 = null;
 
 // 手の状態
 let isLeftHandOpen = false;
@@ -201,24 +205,25 @@ function animate(timestamp, frame) {
       const handOpen = isHandOpen(rightHand, frame, referenceSpace);
       const asteroidGroup = getAsteroidGroup();
       const asteroidState = getAsteroidState();
+      const handTransform = getRightHandTransform(rightHand, frame, referenceSpace);
 
       if (handOpen !== isRightHandOpen) {
         isRightHandOpen = handOpen;
 
         if (handOpen && asteroidGroup) {
-          // 右手がパーになったらアステロイド発動
+          // 右手がパーになったらアステロイド発動（チャージ開始）
           asteroidGroup.visible = true;
           castAsteroid();
-        } else if (!handOpen && asteroidGroup && (asteroidState.isCharging || asteroidState.isFiring) && !asteroidState.isCancelling) {
-          // 右手を閉じたら魔法をキャンセル（フェードアウト）
-          cancelAsteroid();
+        } else if (!handOpen && asteroidGroup && asteroidState.isCharging && !asteroidState.isCancelling) {
+          // 右手を閉じたら発射（手のひらの法線を渡す）
+          const palmNormal = handTransform ? handTransform.palmNormal : null;
+          fireAsteroid(palmNormal);
         }
       }
 
       // アステロイドの位置を右手の前に更新
       const currentState = getAsteroidState();
       if (asteroidGroup && (currentState.isCharging || currentState.isFiring || currentState.isCancelling)) {
-        const handTransform = getRightHandTransform(rightHand, frame, referenceSpace);
         if (handTransform) {
           asteroidGroup.position.copy(handTransform.position);
           asteroidGroup.quaternion.copy(handTransform.quaternion);
@@ -385,6 +390,13 @@ async function startVR() {
     scene.add(hand1);
     scene.add(hand2);
 
+    // ハンドモデルを作成（VRモード用）
+    handModelFactory = new XRHandModelFactory();
+    handModel1 = handModelFactory.createHandModel(hand1, 'mesh');
+    handModel2 = handModelFactory.createHandModel(hand2, 'mesh');
+    hand1.add(handModel1);
+    hand2.add(handModel2);
+
     boxPositioned = false;
 
     const button = document.getElementById('start-button');
@@ -404,6 +416,17 @@ async function startVR() {
       xrSession = null;
 
       removeVREnvironment(scene);
+
+      // ハンドモデルをクリーンアップ
+      if (handModel1) {
+        hand1.remove(handModel1);
+        handModel1 = null;
+      }
+      if (handModel2) {
+        hand2.remove(handModel2);
+        handModel2 = null;
+      }
+      handModelFactory = null;
 
       window.dispatchEvent(new Event('xr-session-end'));
 
