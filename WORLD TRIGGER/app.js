@@ -1171,7 +1171,8 @@ function animate(timestamp, frame) {
             )
           ).negate() : null;
           const getTargetPos = () => {
-            if (replicaModel && replicaModel.visible) {
+            // replicaPositionedでチェック（点滅中もvisibleはfalseになるため）
+            if (replicaModel && replicaPositioned) {
               return replicaModel.position.clone();
             }
             return null;
@@ -1279,7 +1280,8 @@ function animate(timestamp, frame) {
         else if (!handOpen && wasOpen && rightAsteroidGroup && rightAsteroidState.isCharging && !rightAsteroidState.isCancelling) {
           const palmNormal = handTransform ? handTransform.palmNormal : null;
           const getTargetPos = () => {
-            if (replicaModel && replicaModel.visible) {
+            // replicaPositionedでチェック（点滅中もvisibleはfalseになるため）
+            if (replicaModel && replicaPositioned) {
               return replicaModel.position.clone();
             }
             return null;

@@ -167,26 +167,37 @@ function createFixedShield(scene) {
           vec3 impactPoint = impactPoints[i];
           float dist = distance(vPosition, impactPoint);
 
-          float waveWidth = 0.3;
+          // 波の幅（輪っかの太さ）
+          float waveWidth = 0.25;
 
-          // 複数の波を生成
+          // 3つの波を生成
           for (int j = 0; j < 3; j++) {
-            float delay = float(j) * 0.15;
-            float wavePos = progress * 3.0 - delay;
-            if (wavePos > 0.0 && wavePos < 4.0) {
+            float delay = float(j) * 0.35;
+            // 波の広がる速度と範囲（最大6m）
+            float wavePos = progress * 4.0 - delay;
+            if (wavePos > 0.0 && wavePos < 6.0) {
               float waveDist = abs(dist - wavePos);
               if (waveDist < waveWidth) {
+                // 波の強度（輪っかの中心が最も明るい）
                 float intensity = 1.0 - (waveDist / waveWidth);
-                intensity *= intensity;
-                intensity *= max(0.0, 1.0 - wavePos * 0.2);
-                color = mix(color, impactColor, intensity * 0.9);
+                // エッジをシャープに
+                intensity = pow(intensity, 1.5);
+                // 波が遠くなるほど弱くなる（ゆっくり減衰）
+                intensity *= max(0.0, 1.0 - wavePos * 0.1);
+                // 波の色（白＋シアン）
+                vec3 waveColor = vec3(0.8, 1.0, 1.0);
+                color = mix(color, waveColor, intensity * 0.9);
+                // 波の中心を特に明るく
+                if (waveDist < waveWidth * 0.4) {
+                  color += vec3(1.0, 1.0, 1.0) * intensity * 0.4;
+                }
               }
             }
           }
 
-          // 衝撃時の局所的な明るさ
-          float flashIntensity = max(0.0, 1.0 - progress * 3.0) * max(0.0, 1.0 - dist);
-          color += impactColor * flashIntensity * 0.5;
+          // 衝撃時の局所的な明るさ（フラッシュ）
+          float flashIntensity = max(0.0, 1.0 - progress * 2.5) * max(0.0, 1.0 - dist * 0.6);
+          color += vec3(1.0, 1.0, 0.9) * flashIntensity * 0.5;
         }
 
         gl_FragColor = vec4(color, opacity);
@@ -279,11 +290,12 @@ function updateFixedShield(time) {
   // 緩やかな回転
   fixedShieldGroup.rotation.y = time * 0.3;
 
-  // 衝撃波の進行を更新
+  // 衝撃波の進行を更新（より長く広がる）
   for (let i = 0; i < fixedShieldImpacts.length; i++) {
     const impact = fixedShieldImpacts[i];
-    if (impact.progress >= 0 && impact.progress < 2.0) {
-      impact.progress += 0.02;
+    if (impact.progress >= 0 && impact.progress < 3.0) {
+      // 進行速度を遅くして長く見えるように
+      impact.progress += 0.015;
       fixedShieldMaterial.uniforms.impactProgresses.value[i] = impact.progress;
     }
   }
