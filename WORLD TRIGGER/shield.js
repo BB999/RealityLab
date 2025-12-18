@@ -168,7 +168,7 @@ function createFixedShield(scene) {
           float dist = distance(vPosition, impactPoint);
 
           // 波の幅（輪っかの太さ）
-          float waveWidth = 0.25;
+          float waveWidth = 0.12;
 
           // 3つの波を生成
           for (int j = 0; j < 3; j++) {
