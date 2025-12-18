@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // モジュールのインポート
 import {
@@ -53,6 +54,19 @@ let handModel2 = null;
 let isLeftHandOpen = false;
 let isRightHandOpen = false;
 
+// レプリカモデル
+let replicaModel = null;
+let replicaPositioned = false;
+let replicaFloatTime = 0;
+let replicaWaitFrames = 0; // 配置前の待機フレーム数
+let replicaBasePosition = null; // 初期配置位置（中心）
+let replicaTargetPosition = null; // 移動先
+let replicaMoveSpeed = 0.5; // 移動速度（m/s）
+let isVRMode = false; // VRモードかどうか
+let replicaIsMoving = true; // 移動中かどうか
+let replicaStopTimer = 0; // 停止タイマー
+let replicaStopDuration = 0; // 停止時間
+
 // シーンの初期化
 function init() {
   // シーン作成
@@ -91,6 +105,9 @@ function init() {
   // アステロイドエフェクトを作成
   createAsteroid(scene);
 
+  // レプリカモデルを読み込み
+  loadReplicaModel();
+
   // リサイズ対応
   window.addEventListener('resize', onWindowResize);
 
@@ -111,6 +128,172 @@ function createBox() {
   scene.add(box);
 }
 
+// レプリカモデルを読み込んで配置
+function loadReplicaModel() {
+  const loader = new GLTFLoader();
+  loader.load(
+    './repurika.glb',
+    (gltf) => {
+      replicaModel = gltf.scene;
+      replicaModel.visible = false;
+      scene.add(replicaModel);
+      console.log('レプリカモデルを読み込みました');
+    },
+    (progress) => {
+      console.log('読み込み中:', (progress.loaded / progress.total * 100) + '%');
+    },
+    (error) => {
+      console.error('レプリカモデルの読み込みエラー:', error);
+    }
+  );
+}
+
+// レプリカモデルをカメラの前に配置
+function positionReplicaModel() {
+  if (!replicaModel || replicaPositioned) return;
+
+  // カメラの位置が安定するまで60フレーム待つ
+  replicaWaitFrames++;
+  if (replicaWaitFrames < 60) return;
+
+  const cameraPosition = new THREE.Vector3();
+  const cameraDirection = new THREE.Vector3();
+  camera.getWorldPosition(cameraPosition);
+  camera.getWorldDirection(cameraDirection);
+
+  // カメラの高さが0に近い場合はまだ待つ（トラッキングが安定していない）
+  if (Math.abs(cameraPosition.y) < 0.1) return;
+
+  // カメラの水平方向5m前に配置（カメラと同じ高さ）
+  cameraDirection.y = 0; // 水平方向のみ
+  cameraDirection.normalize();
+  const targetPosition = cameraPosition.clone().add(cameraDirection.multiplyScalar(5));
+  targetPosition.y = cameraPosition.y;
+
+  replicaModel.position.copy(targetPosition);
+  // カメラの方を向く
+  replicaModel.lookAt(cameraPosition);
+  replicaModel.visible = true;
+  replicaPositioned = true;
+
+  // 基準位置を保存
+  replicaModel.userData.baseY = targetPosition.y;
+  replicaBasePosition = targetPosition.clone();
+  replicaTargetPosition = targetPosition.clone();
+
+  console.log('レプリカモデルを配置しました:', targetPosition, 'カメラ高さ:', cameraPosition.y);
+}
+
+// VRモード用：ランダムな移動先を設定
+function setRandomReplicaTarget() {
+  if (!replicaBasePosition) return;
+
+  // 5m範囲内のランダムな位置
+  const angle = Math.random() * Math.PI * 2;
+  const distance = Math.random() * 5;
+  replicaTargetPosition = new THREE.Vector3(
+    replicaBasePosition.x + Math.cos(angle) * distance,
+    replicaBasePosition.y,
+    replicaBasePosition.z + Math.sin(angle) * distance
+  );
+}
+
+// レプリカモデルの浮遊アニメーション
+function updateReplicaFloat(deltaTime) {
+  if (!replicaModel || !replicaModel.visible) return;
+
+  replicaFloatTime += deltaTime;
+
+  // 上下に浮遊（振幅0.1m、周期2秒）
+  const floatY = Math.sin(replicaFloatTime * Math.PI) * 0.1;
+
+  // VRモード：ランダム移動と停止
+  if (isVRMode && replicaTargetPosition) {
+    // 停止中の場合
+    if (!replicaIsMoving) {
+      replicaStopTimer += deltaTime;
+      if (replicaStopTimer >= replicaStopDuration) {
+        // 停止終了、次の行動を決定
+        replicaStopTimer = 0;
+        if (Math.random() < 0.7) {
+          // 70%の確率で移動開始
+          setRandomReplicaTarget();
+          replicaIsMoving = true;
+        } else {
+          // 30%の確率でまた停止
+          replicaStopDuration = 1 + Math.random() * 3;
+        }
+      }
+    } else {
+      // 移動中
+      const currentPos = new THREE.Vector3(
+        replicaModel.position.x,
+        replicaModel.userData.baseY,
+        replicaModel.position.z
+      );
+      const direction = new THREE.Vector3().subVectors(replicaTargetPosition, currentPos);
+      const distance = direction.length();
+
+      if (distance < 0.1) {
+        // 目標に到達したら次の行動を決定
+        if (Math.random() < 0.5) {
+          // 50%の確率で停止
+          replicaIsMoving = false;
+          replicaStopTimer = 0;
+          replicaStopDuration = 1 + Math.random() * 3;
+        } else {
+          // 50%の確率ですぐ次の移動先へ
+          setRandomReplicaTarget();
+        }
+      } else {
+        // 目標に向かって移動
+        direction.normalize();
+        const moveDistance = Math.min(replicaMoveSpeed * deltaTime, distance);
+        replicaModel.position.x += direction.x * moveDistance;
+        replicaModel.position.z += direction.z * moveDistance;
+
+        // 進行方向を向く（滑らかに補間）
+        const targetAngle = Math.atan2(direction.x, direction.z);
+        let currentAngle = replicaModel.rotation.y;
+
+        // 角度の差を-π〜πの範囲に正規化
+        let angleDiff = targetAngle - currentAngle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        // 滑らかに補間（1秒で約90度回転）
+        const rotationSpeed = 1.5 * deltaTime;
+        replicaModel.rotation.y += angleDiff * rotationSpeed;
+      }
+    }
+  }
+
+  // 浮遊（Y座標）
+  if (replicaModel.userData.baseY !== undefined) {
+    replicaModel.position.y = replicaModel.userData.baseY + floatY;
+  }
+
+  // 少し傾きも加える（VRモードでは移動方向に加算）
+  replicaModel.rotation.z += Math.sin(replicaFloatTime * Math.PI * 0.5) * 0.001;
+  replicaModel.rotation.x += Math.sin(replicaFloatTime * Math.PI * 0.3) * 0.001;
+}
+
+// レプリカモデルを削除
+function removeReplicaModel() {
+  if (replicaModel) {
+    replicaModel.visible = false;
+    replicaPositioned = false;
+    replicaFloatTime = 0;
+    replicaWaitFrames = 0;
+    replicaBasePosition = null;
+    replicaTargetPosition = null;
+    isVRMode = false;
+    replicaIsMoving = true;
+    replicaStopTimer = 0;
+    replicaStopDuration = 0;
+  }
+}
+
 // アニメーションループ
 function animate(timestamp, frame) {
   const time = timestamp ? timestamp / 1000 : performance.now() / 1000;
@@ -118,6 +301,12 @@ function animate(timestamp, frame) {
   // XRセッション中の処理
   if (frame && xrSession) {
     const referenceSpace = renderer.xr.getReferenceSpace();
+
+    // レプリカモデルの初期配置
+    positionReplicaModel();
+
+    // レプリカモデルの浮遊アニメーション
+    updateReplicaFloat(1 / 60); // 約60fpsを想定
 
     // 深度情報を更新
     updateDepthInfo(frame, referenceSpace, timestamp, scene, camera);
@@ -330,6 +519,7 @@ async function startXR() {
       xrSession = null;
 
       cleanupDepth(scene);
+      removeReplicaModel();
 
       window.dispatchEvent(new Event('xr-session-end'));
 
@@ -379,6 +569,7 @@ async function startVR() {
     await renderer.xr.setSession(xrSession);
 
     createVREnvironment(scene);
+    isVRMode = true;
 
     rightController = renderer.xr.getController(0);
     leftController = renderer.xr.getController(1);
@@ -416,6 +607,7 @@ async function startVR() {
       xrSession = null;
 
       removeVREnvironment(scene);
+      removeReplicaModel();
 
       // ハンドモデルをクリーンアップ
       if (handModel1) {
