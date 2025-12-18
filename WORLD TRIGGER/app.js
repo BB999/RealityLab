@@ -29,7 +29,8 @@ import {
   getRightHandTransform,
   getLeftHandTransform,
   isHandOpen,
-  isPalmFacingForward
+  isPalmFacingForward,
+  isPalmFacingDown
 } from './hand-tracking.js';
 
 import {
@@ -1129,7 +1130,10 @@ function animate(timestamp, frame) {
     if (leftHand) {
       const handOpen = isHandOpen(leftHand, frame, referenceSpace);
       const palmForward = isPalmFacingForward(leftHand, frame, referenceSpace, camera, 'left');
-      const handTransform = getLeftHandTransform(leftHand, frame, referenceSpace);
+      // ハウンドモード：手のひらが下向き
+      const leftHoundMode = isPalmFacingDown(leftHand, frame, referenceSpace);
+      // ハウンドモード時は手から離してキューブを配置
+      const handTransform = getLeftHandTransform(leftHand, frame, referenceSpace, leftHoundMode);
 
       // 左手の位置を保存
       if (handTransform) {
@@ -1156,9 +1160,9 @@ function animate(timestamp, frame) {
 
         // パーになった時
         if (handOpen && leftAsteroidMode && leftAsteroidGroup && !leftAsteroidState.isCharging) {
-          // アステロイド発動
+          // アステロイド発動（手のひらが下向きならハウンドモード）
           leftAsteroidGroup.visible = true;
-          castAsteroid('left');
+          castAsteroid('left', leftHoundMode);
         }
         // グーになった時（発射）
         else if (!handOpen && wasOpen && leftAsteroidGroup && leftAsteroidState.isCharging && !leftAsteroidState.isCancelling) {
@@ -1245,7 +1249,10 @@ function animate(timestamp, frame) {
     if (rightHand) {
       const handOpen = isHandOpen(rightHand, frame, referenceSpace);
       const palmForward = isPalmFacingForward(rightHand, frame, referenceSpace, camera, 'right');
-      const handTransform = getRightHandTransform(rightHand, frame, referenceSpace);
+      // ハウンドモード：手のひらが下向き
+      const rightHoundMode = isPalmFacingDown(rightHand, frame, referenceSpace);
+      // ハウンドモード時は手から離してキューブを配置
+      const handTransform = getRightHandTransform(rightHand, frame, referenceSpace, rightHoundMode);
 
       // 右手の位置を保存
       if (handTransform) {
@@ -1272,9 +1279,9 @@ function animate(timestamp, frame) {
 
         // パーになった時
         if (handOpen && rightAsteroidMode && rightAsteroidGroup && !rightAsteroidState.isCharging) {
-          // アステロイド発動
+          // アステロイド発動（手のひらが下向きならハウンドモード）
           rightAsteroidGroup.visible = true;
-          castAsteroid('right');
+          castAsteroid('right', rightHoundMode);
         }
         // グーになった時（発射）
         else if (!handOpen && wasOpen && rightAsteroidGroup && rightAsteroidState.isCharging && !rightAsteroidState.isCancelling) {

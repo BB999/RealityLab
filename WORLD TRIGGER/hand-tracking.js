@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
-// 右手の位置と向きを取得
-export function getRightHandTransform(hand, frame, referenceSpace) {
+// 右手の位置と向きを取得（isHound: ハウンドモードの場合は手から離す）
+export function getRightHandTransform(hand, frame, referenceSpace, isHound = false) {
   if (!hand || !frame || !referenceSpace) return null;
 
   const wristSpace = hand.get('wrist');
@@ -44,8 +44,9 @@ export function getRightHandTransform(hand, frame, referenceSpace) {
   adjustedNormal.y += 0.4; // 上向きに調整
   adjustedNormal.normalize();
 
-  // エフェクトを手のひらの前に配置（少し離す）
-  const offset = adjustedNormal.clone().multiplyScalar(0.15);
+  // エフェクトを手のひらの前に配置（ハウンドモードは手から離す）
+  const offsetDistance = isHound ? 0.30 : 0.15;
+  const offset = adjustedNormal.clone().multiplyScalar(offsetDistance);
   const effectPosition = palmCenter.clone().add(offset);
 
   // エフェクトが手のひらから外向きに出るように回転（逆方向を向く）
@@ -132,6 +133,13 @@ export function isPalmFacingForward(hand, frame, referenceSpace, camera, handedn
   const palmNormal = new THREE.Vector3(0, -1, 0);
   palmNormal.applyQuaternion(quaternion);
 
+  // 手のひらが下向きの場合はシールドモードにしない（ハウンド用）
+  const downward = new THREE.Vector3(0, -1, 0);
+  const dotDown = palmNormal.dot(downward);
+  if (dotDown > 0.5) {
+    return false; // 下向きなので前方ではない
+  }
+
   // カメラの前方方向（カメラが見ている方向）
   const cameraForward = new THREE.Vector3(0, 0, -1);
   camera.getWorldQuaternion(new THREE.Quaternion());
@@ -147,8 +155,8 @@ export function isPalmFacingForward(hand, frame, referenceSpace, camera, handedn
   return dot > 0.3;
 }
 
-// 左手の位置と向きを取得
-export function getLeftHandTransform(hand, frame, referenceSpace) {
+// 左手の位置と向きを取得（isHound: ハウンドモードの場合は手から離す）
+export function getLeftHandTransform(hand, frame, referenceSpace, isHound = false) {
   if (!hand || !frame || !referenceSpace) return null;
 
   // 手のひらの中心（wrist）の位置を取得
@@ -188,8 +196,9 @@ export function getLeftHandTransform(hand, frame, referenceSpace) {
   const palmNormal = new THREE.Vector3(0, 1, 0);
   palmNormal.applyQuaternion(quaternion);
 
-  // シールドを手のひらの前に配置（手の甲の反対側 = 手のひら側）
-  const offset = palmNormal.clone().multiplyScalar(-0.08); // 手のひら側に少しオフセット
+  // シールドを手のひらの前に配置（ハウンドモードは手から離す）
+  const offsetDistance = isHound ? -0.20 : -0.08;
+  const offset = palmNormal.clone().multiplyScalar(offsetDistance);
   const shieldPosition = palmCenter.clone().add(offset);
 
   // 手の指の方向を取得（手首から中指先端への方向）
@@ -215,4 +224,36 @@ export function getLeftHandTransform(hand, frame, referenceSpace) {
     position: shieldPosition,
     quaternion: shieldQuaternion
   };
+}
+
+// 手のひらが下向きかどうかを判定（ハウンドモード用）
+export function isPalmFacingDown(hand, frame, referenceSpace) {
+  if (!hand || !frame || !referenceSpace) return false;
+
+  const wristSpace = hand.get('wrist');
+  if (!wristSpace) return false;
+
+  const wristPose = frame.getJointPose(wristSpace, referenceSpace);
+  if (!wristPose) return false;
+
+  const quaternion = new THREE.Quaternion(
+    wristPose.transform.orientation.x,
+    wristPose.transform.orientation.y,
+    wristPose.transform.orientation.z,
+    wristPose.transform.orientation.w
+  );
+
+  // 手のひらの法線を取得（-Y方向が手のひら側）
+  const palmNormal = new THREE.Vector3(0, -1, 0);
+  palmNormal.applyQuaternion(quaternion);
+
+  // 下向きベクトル
+  const downward = new THREE.Vector3(0, -1, 0);
+
+  // 手のひらの法線と下向きベクトルの内積
+  // 手のひらが下を向いている = 内積が正（同じ方向）
+  const dot = palmNormal.dot(downward);
+
+  // 内積が0.5以上なら手のひらが下を向いていると判定
+  return dot > 0.5;
 }

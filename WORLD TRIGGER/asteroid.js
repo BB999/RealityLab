@@ -4,6 +4,8 @@ import * as THREE from 'three';
 const TRION_COLOR = 0x88ffcc;
 const BIG_CUBE_SIZE = 0.15;
 const SPLIT_COUNT = 3;
+const HOUND_SIZE_MULTIPLIER = 2.0; // ハウンドモード時のサイズ倍率
+const HOUND_TURN_SPEED = 0.03; // ハウンドの旋回速度（ゆっくり曲がる）
 
 // シーンへの参照
 let sceneRef = null;
@@ -34,7 +36,8 @@ function createAsteroidInstance(scene) {
     firingWorldQuaternion: null,
     firingPalmNormal: null,
     getTargetPositionFunc: null,
-    onHitTargetFunc: null
+    onHitTargetFunc: null,
+    isHoundMode: false // ハウンドモードかどうか
   };
 
   instance.group.visible = false;
@@ -79,14 +82,15 @@ export function createAsteroid(scene) {
   asteroids.right = createAsteroidInstance(scene);
 }
 
-// アステロイド発動（hand: 'left' or 'right'）
-export function castAsteroid(hand = 'right') {
+// アステロイド発動（hand: 'left' or 'right', isHound: ハウンドモードか）
+export function castAsteroid(hand = 'right', isHound = false) {
   const asteroid = asteroids[hand];
   if (!asteroid) return;
   if (asteroid.isCharging || asteroid.isCharged) return;
 
   asteroid.isCharging = true;
   asteroid.chargeProgress = 0;
+  asteroid.isHoundMode = isHound;
   asteroid.bigCube.scale.set(0, 0, 0);
   asteroid.bigCubeFaceMaterial.opacity = 0;
   asteroid.bigCubeLineMaterial.opacity = 0;
@@ -96,7 +100,9 @@ export function castAsteroid(hand = 'right') {
 
 // 弾丸を生成
 function spawnBullets(asteroid) {
-  const smallSize = BIG_CUBE_SIZE / SPLIT_COUNT;
+  // ハウンドモード時は弾丸も1.5倍
+  const sizeMultiplier = asteroid.isHoundMode ? HOUND_SIZE_MULTIPLIER : 1.0;
+  const smallSize = (BIG_CUBE_SIZE / SPLIT_COUNT) * sizeMultiplier;
   const totalCount = SPLIT_COUNT * SPLIT_COUNT * SPLIT_COUNT;
 
   let order = [];
@@ -201,7 +207,9 @@ function spawnBullets(asteroid) {
           },
           fired: false,
           active: true,
-          followHand: true
+          followHand: true,
+          isHound: asteroid.isHoundMode, // ハウンドモードフラグ
+          sizeMultiplier: sizeMultiplier // サイズ倍率を保存
         });
       }
     }
@@ -214,18 +222,22 @@ function updateSingleAsteroid(asteroid, camera) {
 
   // チャージ中
   if (asteroid.isCharging || asteroid.isCharged) {
+    // ハウンドモード時は2倍のサイズ
+    const sizeMultiplier = asteroid.isHoundMode ? HOUND_SIZE_MULTIPLIER : 1.0;
+
     if (asteroid.isCharging) {
       asteroid.chargeProgress += 0.02;
 
       if (asteroid.chargeProgress < 0.5) {
         const s = (asteroid.chargeProgress / 0.5);
         const ease = s * (2 - s);
-        asteroid.bigCube.scale.set(ease, ease, ease);
+        const scale = ease * sizeMultiplier;
+        asteroid.bigCube.scale.set(scale, scale, scale);
         const opacity = Math.min(asteroid.chargeProgress * 2, 1);
         asteroid.bigCubeFaceMaterial.opacity = opacity;
         asteroid.bigCubeLineMaterial.opacity = opacity;
       } else {
-        asteroid.bigCube.scale.set(1, 1, 1);
+        asteroid.bigCube.scale.set(sizeMultiplier, sizeMultiplier, sizeMultiplier);
         asteroid.bigCubeFaceMaterial.opacity = 1;
         asteroid.bigCubeLineMaterial.opacity = 1;
       }
@@ -292,7 +304,7 @@ function updateSingleAsteroid(asteroid, camera) {
 
         bullet.mesh.position.lerpVectors(bullet.worldSplitPos, bullet.worldFinalPos, ease);
 
-        const smallSize = BIG_CUBE_SIZE / SPLIT_COUNT;
+        const smallSize = (BIG_CUBE_SIZE / SPLIT_COUNT) * bullet.sizeMultiplier;
         const s = smallSize * (1.0 - (0.3 * t));
         bullet.mesh.scale.set(s, s, s);
 
@@ -301,7 +313,7 @@ function updateSingleAsteroid(asteroid, camera) {
         bullet.mesh.rotation.z += bullet.rotSpeed.z;
       } else if (bullet.timer <= totalEnd) {
         bullet.mesh.position.copy(bullet.worldFinalPos);
-        const smallSize = BIG_CUBE_SIZE / SPLIT_COUNT;
+        const smallSize = (BIG_CUBE_SIZE / SPLIT_COUNT) * bullet.sizeMultiplier;
         const s = smallSize * 0.7;
         bullet.mesh.scale.set(s, s, s);
 
@@ -315,7 +327,14 @@ function updateSingleAsteroid(asteroid, camera) {
         let fireDirection = new THREE.Vector3();
         const currentTargetPos = asteroid.getTargetPositionFunc ? asteroid.getTargetPositionFunc() : null;
 
-        if (currentTargetPos) {
+        // ハウンドモードの場合はカメラの向きに発射（後で誘導される）
+        if (bullet.isHound) {
+          if (camera) {
+            camera.getWorldDirection(fireDirection);
+          } else {
+            fireDirection.set(0, 0, -1);
+          }
+        } else if (currentTargetPos) {
           fireDirection.subVectors(currentTargetPos, bulletWorldPos).normalize();
         } else {
           if (camera) {
@@ -335,7 +354,8 @@ function updateSingleAsteroid(asteroid, camera) {
 
         const lookTarget = bulletWorldPos.clone().add(fireDirection);
         bullet.mesh.lookAt(lookTarget);
-        bullet.mesh.scale.set(0.01, 0.01, 0.3);
+        const bulletScale = bullet.sizeMultiplier;
+        bullet.mesh.scale.set(0.01 * bulletScale, 0.01 * bulletScale, 0.3 * bulletScale);
 
         bullet.worldPos = bulletWorldPos.clone();
         bullet.startWorldPos = bullet.worldPos.clone();
@@ -354,13 +374,36 @@ function updateSingleAsteroid(asteroid, camera) {
   asteroid.firedBullets.forEach(bullet => {
     if (!bullet.active) return;
 
+    const currentTargetPos = asteroid.getTargetPositionFunc ? asteroid.getTargetPositionFunc() : null;
+
+    // ハウンドモード：ターゲットに向かって曲がる（時間経過で曲がりが急になる）
+    if (bullet.isHound && currentTargetPos) {
+      // 飛行時間をカウント
+      if (bullet.flightTime === undefined) bullet.flightTime = 0;
+      bullet.flightTime++;
+
+      // 時間経過で曲がりを急にする（最初は0.02、最大0.3まで上昇）
+      const baseTurnSpeed = 0.02;
+      const maxTurnSpeed = 0.3;
+      const turnSpeedIncrease = bullet.flightTime * 0.002; // 毎フレーム0.002ずつ増加
+      const turnSpeed = Math.min(baseTurnSpeed + turnSpeedIncrease, maxTurnSpeed);
+
+      // 現在の速度方向
+      const currentDir = bullet.worldVelocity.clone().normalize();
+      // ターゲットへの方向
+      const targetDir = new THREE.Vector3().subVectors(currentTargetPos, bullet.worldPos).normalize();
+      // 曲がる（線形補間）
+      const newDir = currentDir.lerp(targetDir, turnSpeed).normalize();
+      // 新しい速度を設定
+      bullet.worldVelocity.copy(newDir.multiplyScalar(bullet.speed));
+    }
+
     bullet.worldPos.add(bullet.worldVelocity);
     bullet.mesh.position.copy(bullet.worldPos);
 
     const targetPos = bullet.worldPos.clone().add(bullet.worldVelocity);
     bullet.mesh.lookAt(targetPos);
 
-    const currentTargetPos = asteroid.getTargetPositionFunc ? asteroid.getTargetPositionFunc() : null;
     if (currentTargetPos) {
       const distToTarget = bullet.worldPos.distanceTo(currentTargetPos);
       if (distToTarget < 0.5) {
