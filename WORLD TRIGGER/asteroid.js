@@ -35,6 +35,12 @@ let firingWorldPosition = null;
 let firingWorldQuaternion = null;
 let firingPalmNormal = null; // 手のひらの法線方向
 
+// ターゲット位置を取得する関数
+let getTargetPositionFunc = null;
+
+// ヒット時のコールバック関数
+let onHitTargetFunc = null;
+
 // アステロイドエフェクトを作成
 export function createAsteroid(scene) {
   sceneRef = scene;
@@ -364,21 +370,38 @@ export function updateAsteroid(time, camera) {
       else {
         bullet.fired = true;
 
-        // カメラの正面方向をワールド座標で取得
-        const cameraDirection = new THREE.Vector3(0, 0, -1);
-        if (camera) {
-          camera.getWorldDirection(cameraDirection);
-        }
-
         // 弾丸の現在位置（すでにワールド座標）
         const bulletWorldPos = bullet.mesh.position.clone();
 
-        // 発射方向（カメラの正面方向）をワールド座標で設定
-        bullet.worldVelocity = cameraDirection.clone().multiplyScalar(bullet.speed);
+        // 発射方向を決定（発射時にターゲット位置を取得）
+        let fireDirection = new THREE.Vector3();
+        const currentTargetPos = getTargetPositionFunc ? getTargetPositionFunc() : null;
 
-        // 弾丸をカメラの方向に向ける（細長く変形）
-        const targetPos = bulletWorldPos.clone().add(cameraDirection);
-        bullet.mesh.lookAt(targetPos);
+        if (currentTargetPos) {
+          // ターゲット（レプリカ）の現在位置に向かって発射
+          fireDirection.subVectors(currentTargetPos, bulletWorldPos).normalize();
+        } else {
+          // ターゲットがない場合はカメラの正面方向
+          if (camera) {
+            camera.getWorldDirection(fireDirection);
+          } else {
+            fireDirection.set(0, 0, -1);
+          }
+        }
+
+        // 発射方向にランダムなばらつきを追加（±5度程度）
+        const spread = 0.08; // ばらつきの強さ
+        fireDirection.x += (Math.random() - 0.5) * spread;
+        fireDirection.y += (Math.random() - 0.5) * spread;
+        fireDirection.z += (Math.random() - 0.5) * spread;
+        fireDirection.normalize();
+
+        // 発射方向をワールド座標で設定
+        bullet.worldVelocity = fireDirection.clone().multiplyScalar(bullet.speed);
+
+        // 弾丸を発射方向に向ける（細長く変形）
+        const lookTarget = bulletWorldPos.clone().add(fireDirection);
+        bullet.mesh.lookAt(lookTarget);
         bullet.mesh.scale.set(0.01, 0.01, 0.3);
 
         // ワールド位置を保存
@@ -410,6 +433,28 @@ export function updateAsteroid(time, camera) {
     // 進行方向を向くように回転を更新
     const targetPos = bullet.worldPos.clone().add(bullet.worldVelocity);
     bullet.mesh.lookAt(targetPos);
+
+    // ターゲットへのヒット判定
+    const currentTargetPos = getTargetPositionFunc ? getTargetPositionFunc() : null;
+    if (currentTargetPos) {
+      const distToTarget = bullet.worldPos.distanceTo(currentTargetPos);
+      if (distToTarget < 0.5) {
+        // ヒット！
+        if (onHitTargetFunc) {
+          onHitTargetFunc();
+        }
+        bullet.active = false;
+        bullet.mesh.visible = false;
+        if (sceneRef) {
+          sceneRef.remove(bullet.mesh);
+        }
+        bullet.geometry.dispose();
+        if (bullet.edges) bullet.edges.dispose();
+        if (bullet.faceMaterial) bullet.faceMaterial.dispose();
+        if (bullet.lineMaterial) bullet.lineMaterial.dispose();
+        return;
+      }
+    }
 
     // 発射開始位置からの距離で非アクティブ化
     const distanceTraveled = bullet.worldPos.distanceTo(bullet.startWorldPos);
@@ -463,7 +508,7 @@ export function updateAsteroid(time, camera) {
 }
 
 // アステロイドを発射（手を閉じた時に呼ばれる）
-export function fireAsteroid(palmNormal) {
+export function fireAsteroid(palmNormal, getTargetPosFn, onHitFn) {
   if (!isCharging && !isCharged) return;
 
   isCharging = false;
@@ -476,7 +521,13 @@ export function fireAsteroid(palmNormal) {
   asteroidGroup.getWorldPosition(firingWorldPosition);
   asteroidGroup.getWorldQuaternion(firingWorldQuaternion);
 
-  // 手のひらの法線方向を保存
+  // ターゲット位置を取得する関数を保存（発射時に毎回呼ばれる）
+  getTargetPositionFunc = getTargetPosFn || null;
+
+  // ヒット時のコールバック関数を保存
+  onHitTargetFunc = onHitFn || null;
+
+  // 手のひらの法線方向を保存（ターゲットがない場合のフォールバック）
   firingPalmNormal = palmNormal ? palmNormal.clone() : new THREE.Vector3(0, 1, 0);
 
   // 大キューブのワールド回転を保存

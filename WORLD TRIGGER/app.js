@@ -67,6 +67,27 @@ let replicaIsMoving = true; // 移動中かどうか
 let replicaStopTimer = 0; // 停止タイマー
 let replicaStopDuration = 0; // 停止時間
 
+// レプリカのアステロイド攻撃
+let replicaAsteroidGroup = null;
+let replicaBigCube = null;
+let replicaBigCubeFaceMaterial = null;
+let replicaBigCubeLineMaterial = null;
+let replicaAsteroidState = 'idle'; // idle, charging, charged, firing
+let replicaChargeProgress = 0;
+let replicaAttackTimer = 0;
+let replicaAttackInterval = 5; // 5秒ごとに攻撃
+let replicaBullets = [];
+let replicaFiredBullets = [];
+const REPLICA_CUBE_SIZE = 0.15;
+const REPLICA_TRION_COLOR = 0x88ffcc;
+
+// ヒットエフェクト用
+let hitOverlay = null;
+let hitFlashIntensity = 0;
+
+// レプリカのヒットエフェクト用
+let replicaHitFlashTimer = 0;
+
 // シーンの初期化
 function init() {
   // シーン作成
@@ -200,7 +221,7 @@ function setRandomReplicaTarget() {
 
 // レプリカモデルの浮遊アニメーション
 function updateReplicaFloat(deltaTime) {
-  if (!replicaModel || !replicaModel.visible) return;
+  if (!replicaModel || !replicaPositioned) return;
 
   replicaFloatTime += deltaTime;
 
@@ -278,6 +299,343 @@ function updateReplicaFloat(deltaTime) {
   replicaModel.rotation.x += Math.sin(replicaFloatTime * Math.PI * 0.3) * 0.001;
 }
 
+// レプリカのアステロイドを作成
+function createReplicaAsteroid() {
+  if (replicaAsteroidGroup) return;
+
+  replicaAsteroidGroup = new THREE.Group();
+  replicaAsteroidGroup.visible = false;
+  scene.add(replicaAsteroidGroup);
+
+  // 大キューブを作成
+  replicaBigCube = new THREE.Group();
+
+  const geometry = new THREE.BoxGeometry(REPLICA_CUBE_SIZE, REPLICA_CUBE_SIZE, REPLICA_CUBE_SIZE);
+
+  // 面のマテリアル
+  replicaBigCubeFaceMaterial = new THREE.MeshBasicMaterial({
+    color: REPLICA_TRION_COLOR,
+    transparent: true,
+    opacity: 0
+  });
+  const faceMesh = new THREE.Mesh(geometry, replicaBigCubeFaceMaterial);
+  replicaBigCube.add(faceMesh);
+
+  // 輪郭線
+  const edges = new THREE.EdgesGeometry(geometry);
+  replicaBigCubeLineMaterial = new THREE.LineBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0,
+    linewidth: 2
+  });
+  const edgeMesh = new THREE.LineSegments(edges, replicaBigCubeLineMaterial);
+  replicaBigCube.add(edgeMesh);
+
+  replicaBigCube.userData.rotAxis = new THREE.Vector3(
+    Math.random() - 0.5,
+    Math.random() - 0.5,
+    Math.random() - 0.5
+  ).normalize();
+
+  replicaAsteroidGroup.add(replicaBigCube);
+}
+
+// レプリカのアステロイド攻撃を更新
+function updateReplicaAsteroid(deltaTime) {
+  if (!replicaModel || !replicaPositioned || !isVRMode) return;
+  if (!replicaAsteroidGroup) {
+    createReplicaAsteroid();
+  }
+
+  // 攻撃タイマー
+  replicaAttackTimer += deltaTime;
+
+  // アイドル状態：一定間隔でチャージ開始
+  if (replicaAsteroidState === 'idle') {
+    if (replicaAttackTimer >= replicaAttackInterval) {
+      replicaAsteroidState = 'charging';
+      replicaChargeProgress = 0;
+      replicaAttackTimer = 0;
+      replicaAsteroidGroup.visible = true;
+      replicaBigCube.scale.set(0, 0, 0);
+      replicaBigCubeFaceMaterial.opacity = 0;
+      replicaBigCubeLineMaterial.opacity = 0;
+      replicaBigCube.visible = true;
+    }
+  }
+
+  // チャージ中
+  if (replicaAsteroidState === 'charging') {
+    replicaChargeProgress += 0.02;
+
+    // レプリカの上にキューブを配置
+    const abovePos = replicaModel.position.clone();
+    abovePos.y += 0.5; // レプリカの0.5m上
+    replicaAsteroidGroup.position.copy(abovePos);
+
+    // スケールアップ
+    if (replicaChargeProgress < 0.5) {
+      const s = replicaChargeProgress / 0.5;
+      const ease = s * (2 - s);
+      replicaBigCube.scale.set(ease, ease, ease);
+      const opacity = Math.min(replicaChargeProgress * 2, 1);
+      replicaBigCubeFaceMaterial.opacity = opacity;
+      replicaBigCubeLineMaterial.opacity = opacity;
+    } else {
+      replicaBigCube.scale.set(1, 1, 1);
+      replicaBigCubeFaceMaterial.opacity = 1;
+      replicaBigCubeLineMaterial.opacity = 1;
+    }
+
+    // 回転
+    replicaBigCube.rotateOnAxis(replicaBigCube.userData.rotAxis, 0.02);
+
+    // チャージ完了
+    if (replicaChargeProgress >= 1) {
+      replicaAsteroidState = 'charged';
+    }
+  }
+
+  // チャージ完了：少し待ってから発射
+  if (replicaAsteroidState === 'charged') {
+    replicaAttackTimer += deltaTime;
+
+    // レプリカの上に追従
+    const abovePos = replicaModel.position.clone();
+    abovePos.y += 0.5;
+    replicaAsteroidGroup.position.copy(abovePos);
+
+    // 回転継続
+    replicaBigCube.rotateOnAxis(replicaBigCube.userData.rotAxis, 0.02);
+
+    if (replicaAttackTimer >= 0.5) {
+      // 発射
+      replicaAsteroidState = 'firing';
+      replicaAttackTimer = 0;
+      spawnReplicaBullets();
+      replicaBigCube.visible = false;
+    }
+  }
+
+  // 発射中：弾丸を更新
+  if (replicaAsteroidState === 'firing') {
+    updateReplicaBullets(deltaTime);
+  }
+}
+
+// レプリカの弾丸を生成
+function spawnReplicaBullets() {
+  const smallSize = REPLICA_CUBE_SIZE / 3;
+  const firingPos = replicaAsteroidGroup.position.clone();
+
+  // カメラの位置を取得（ターゲット）
+  const cameraPos = new THREE.Vector3();
+  camera.getWorldPosition(cameraPos);
+
+  for (let x = 0; x < 3; x++) {
+    for (let y = 0; y < 3; y++) {
+      for (let z = 0; z < 3; z++) {
+        const bulletGeometry = new THREE.BoxGeometry(1, 1, 1);
+
+        const faceMaterial = new THREE.MeshBasicMaterial({
+          color: REPLICA_TRION_COLOR
+        });
+        const faceMesh = new THREE.Mesh(bulletGeometry, faceMaterial);
+
+        const edges = new THREE.EdgesGeometry(bulletGeometry);
+        const lineMaterial = new THREE.LineBasicMaterial({
+          color: 0xffffff,
+          linewidth: 2
+        });
+        const edgeMesh = new THREE.LineSegments(edges, lineMaterial);
+
+        const bulletMesh = new THREE.Group();
+        bulletMesh.add(faceMesh);
+        bulletMesh.add(edgeMesh);
+
+        // 開始位置（グリッド状）
+        const startPos = new THREE.Vector3(
+          (x - 1) * smallSize,
+          (y - 1) * smallSize,
+          (z - 1) * smallSize
+        );
+        bulletMesh.position.copy(firingPos).add(startPos);
+        bulletMesh.scale.set(smallSize, smallSize, smallSize);
+
+        scene.add(bulletMesh);
+
+        // 発射ディレイ
+        const index = x * 9 + y * 3 + z;
+        const shootDelay = 12 + Math.floor(Math.random() * 108);
+
+        replicaBullets.push({
+          mesh: bulletMesh,
+          startPos: bulletMesh.position.clone(),
+          splitPos: bulletMesh.position.clone().add(startPos.clone().multiplyScalar(0.3)),
+          timer: 0,
+          shootDelay: shootDelay,
+          speed: 0.06,
+          fired: false,
+          active: true
+        });
+      }
+    }
+  }
+}
+
+// レプリカの弾丸を更新
+function updateReplicaBullets(deltaTime) {
+  const cameraPos = new THREE.Vector3();
+  camera.getWorldPosition(cameraPos);
+
+  let allDone = true;
+
+  replicaBullets.forEach(bullet => {
+    if (!bullet.active) return;
+    allDone = false;
+
+    bullet.timer++;
+
+    // 発射前：展開アニメーション
+    if (bullet.timer <= bullet.shootDelay) {
+      const t = Math.min(bullet.timer / 25, 1);
+      bullet.mesh.position.lerpVectors(bullet.startPos, bullet.splitPos, t);
+      bullet.mesh.rotation.x += 0.05;
+      bullet.mesh.rotation.y += 0.05;
+    }
+    // 発射
+    else if (!bullet.fired) {
+      bullet.fired = true;
+      // カメラに向かう方向
+      const direction = new THREE.Vector3().subVectors(cameraPos, bullet.mesh.position).normalize();
+
+      // 発射方向にランダムなばらつきを追加（±5度程度）
+      const spread = 0.08;
+      direction.x += (Math.random() - 0.5) * spread;
+      direction.y += (Math.random() - 0.5) * spread;
+      direction.z += (Math.random() - 0.5) * spread;
+      direction.normalize();
+
+      bullet.velocity = direction.multiplyScalar(bullet.speed);
+
+      // 弾丸を細長く（ばらつき後の方向を向く）
+      const lookTarget = bullet.mesh.position.clone().add(direction);
+      bullet.mesh.lookAt(lookTarget);
+      bullet.mesh.scale.set(0.01, 0.01, 0.3);
+
+      replicaFiredBullets.push(bullet);
+    }
+  });
+
+  // 発射済み弾丸の移動とカメラへのヒット判定
+  replicaFiredBullets.forEach(bullet => {
+    if (!bullet.active) return;
+
+    bullet.mesh.position.add(bullet.velocity);
+
+    // カメラとの距離をチェック（ヒット判定）
+    const distToCamera = bullet.mesh.position.distanceTo(cameraPos);
+    if (distToCamera < 0.3) {
+      // ヒット！
+      triggerHitFlash();
+      scene.remove(bullet.mesh);
+      bullet.active = false;
+      return;
+    }
+
+    // 一定距離で消滅
+    if (bullet.mesh.position.distanceTo(bullet.startPos) > 15) {
+      scene.remove(bullet.mesh);
+      bullet.active = false;
+    }
+  });
+
+  // 全弾丸完了
+  if (allDone && replicaBullets.length > 0) {
+    replicaBullets = replicaBullets.filter(b => b.active);
+    replicaFiredBullets = replicaFiredBullets.filter(b => b.active);
+
+    if (replicaBullets.length === 0 && replicaFiredBullets.length === 0) {
+      replicaAsteroidState = 'idle';
+      replicaAsteroidGroup.visible = false;
+      replicaAttackInterval = 3 + Math.random() * 4; // 次の攻撃は3〜7秒後
+    }
+  }
+}
+
+// ヒットオーバーレイを作成
+function createHitOverlay() {
+  if (hitOverlay) return;
+
+  // カメラの前に赤い半透明の球体を配置（視界全体を覆う）
+  const geometry = new THREE.SphereGeometry(0.3, 16, 16);
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xff0000,
+    transparent: true,
+    opacity: 0,
+    side: THREE.BackSide, // 内側から見る
+    depthWrite: false,
+    depthTest: false
+  });
+  hitOverlay = new THREE.Mesh(geometry, material);
+  hitOverlay.renderOrder = 999;
+  hitOverlay.frustumCulled = false;
+  scene.add(hitOverlay);
+}
+
+// ヒットフラッシュをトリガー
+function triggerHitFlash() {
+  hitFlashIntensity = 0.6; // 赤の強さ（0〜1）
+  console.log('ヒット！');
+}
+
+// ヒットフラッシュを更新
+function updateHitFlash(deltaTime) {
+  if (!hitOverlay) {
+    createHitOverlay();
+  }
+
+  // オーバーレイをカメラの位置に追従
+  const cameraPos = new THREE.Vector3();
+  camera.getWorldPosition(cameraPos);
+  hitOverlay.position.copy(cameraPos);
+
+  // フラッシュを徐々に減衰
+  if (hitFlashIntensity > 0) {
+    hitFlashIntensity -= deltaTime * 2; // 0.5秒で消える
+    if (hitFlashIntensity < 0) hitFlashIntensity = 0;
+  }
+
+  hitOverlay.material.opacity = hitFlashIntensity;
+}
+
+// レプリカにヒットしたときのフラッシュをトリガー
+function triggerReplicaHitFlash() {
+  replicaHitFlashTimer = 0.3; // 0.3秒間点滅
+  console.log('レプリカにヒット！');
+}
+
+// レプリカのヒットフラッシュを更新（点滅）
+function updateReplicaHitFlash(deltaTime) {
+  if (replicaHitFlashTimer > 0) {
+    replicaHitFlashTimer -= deltaTime;
+
+    // 点滅（0.03秒ごとに切り替え）
+    const blinkPhase = Math.floor(replicaHitFlashTimer / 0.03) % 2;
+    if (replicaModel && replicaPositioned) {
+      replicaModel.visible = (blinkPhase === 0);
+    }
+
+    // 点滅終了後は表示
+    if (replicaHitFlashTimer <= 0) {
+      if (replicaModel && replicaPositioned) {
+        replicaModel.visible = true;
+      }
+    }
+  }
+}
+
 // レプリカモデルを削除
 function removeReplicaModel() {
   if (replicaModel) {
@@ -292,6 +650,24 @@ function removeReplicaModel() {
     replicaStopTimer = 0;
     replicaStopDuration = 0;
   }
+
+  // レプリカのアステロイドをリセット
+  if (replicaAsteroidGroup) {
+    replicaAsteroidGroup.visible = false;
+  }
+  replicaAsteroidState = 'idle';
+  replicaChargeProgress = 0;
+  replicaAttackTimer = 0;
+
+  // 弾丸を削除
+  replicaBullets.forEach(b => {
+    if (b.mesh) scene.remove(b.mesh);
+  });
+  replicaFiredBullets.forEach(b => {
+    if (b.mesh) scene.remove(b.mesh);
+  });
+  replicaBullets = [];
+  replicaFiredBullets = [];
 }
 
 // アニメーションループ
@@ -307,6 +683,15 @@ function animate(timestamp, frame) {
 
     // レプリカモデルの浮遊アニメーション
     updateReplicaFloat(1 / 60); // 約60fpsを想定
+
+    // レプリカのアステロイド攻撃
+    updateReplicaAsteroid(1 / 60);
+
+    // ヒットフラッシュを更新
+    updateHitFlash(1 / 60);
+
+    // レプリカのヒットフラッシュを更新
+    updateReplicaHitFlash(1 / 60);
 
     // 深度情報を更新
     updateDepthInfo(frame, referenceSpace, timestamp, scene, camera);
@@ -404,9 +789,20 @@ function animate(timestamp, frame) {
           asteroidGroup.visible = true;
           castAsteroid();
         } else if (!handOpen && asteroidGroup && asteroidState.isCharging && !asteroidState.isCancelling) {
-          // 右手を閉じたら発射（手のひらの法線を渡す）
+          // 右手を閉じたら発射（手のひらの法線とターゲット位置取得関数を渡す）
           const palmNormal = handTransform ? handTransform.palmNormal : null;
-          fireAsteroid(palmNormal);
+          // 各弾丸発射時にその時点のレプリカの位置を取得する関数
+          const getTargetPos = () => {
+            if (replicaModel && replicaModel.visible) {
+              return replicaModel.position.clone();
+            }
+            return null;
+          };
+          // レプリカにヒットした時のコールバック
+          const onHitReplica = () => {
+            triggerReplicaHitFlash();
+          };
+          fireAsteroid(palmNormal, getTargetPos, onHitReplica);
         }
       }
 
