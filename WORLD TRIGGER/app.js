@@ -88,6 +88,15 @@ let hitFlashIntensity = 0;
 // レプリカのヒットエフェクト用
 let replicaHitFlashTimer = 0;
 
+// 自動シールド用
+let autoShields = []; // { group, faceMaterial, lineMaterial, timer, impactRings }
+const AUTO_SHIELD_DISTANCE = 0.15; // シールドが発動する距離（手からの距離）
+const AUTO_SHIELD_DURATION = 2.0; // シールド表示時間
+const AUTO_SHIELD_RADIUS = 0.1; // 自動シールドの半径
+const AUTO_SHIELD_KICKBACK_DISTANCE = 0.05; // キックバック距離
+const AUTO_SHIELD_KICKBACK_SPEED = 2; // キックバック速度（戻る速度）
+let leftHandPosition = null; // 左手の位置を保存
+
 // シーンの初期化
 function init() {
   // シーン作成
@@ -534,8 +543,37 @@ function updateReplicaBullets(deltaTime) {
 
     bullet.mesh.position.add(bullet.velocity);
 
-    // カメラとの距離をチェック（ヒット判定）
+    // カメラとの距離をチェック
     const distToCamera = bullet.mesh.position.distanceTo(cameraPos);
+
+    // シールド発動中の場合（左手がパーで左手位置が取得できている）
+    if (isLeftHandOpen && leftHandPosition) {
+      // まず既存のシールドとの衝突をチェック
+      const existingShield = checkAutoShieldCollision(bullet.mesh.position);
+      if (existingShield) {
+        // 既存のシールドに衝撃を追加
+        addImpactToShield(existingShield, bullet.mesh.position.clone());
+        scene.remove(bullet.mesh);
+        bullet.active = false;
+        return;
+      }
+
+      // 手とカメラの距離を取得（手を前に出すほど遠くで発動）
+      const handToCamera = leftHandPosition.distanceTo(cameraPos);
+      // シールド発動距離 = 手とカメラの距離 + 少しの余裕
+      const shieldActivationDistance = handToCamera + 0.1;
+
+      // カメラからの距離がシールド発動距離に近づいたら発動
+      if (distToCamera < shieldActivationDistance && distToCamera > 0.3) {
+        // 弾丸の位置にシールドを生成（衝撃位置も渡す）
+        spawnAutoShield(bullet.mesh.position.clone(), bullet.mesh.position.clone());
+        scene.remove(bullet.mesh);
+        bullet.active = false;
+        return;
+      }
+    }
+
+    // ヒット判定（シールド距離より近い）
     if (distToCamera < 0.3) {
       // ヒット！
       triggerHitFlash();
@@ -636,6 +674,306 @@ function updateReplicaHitFlash(deltaTime) {
   }
 }
 
+// 六角形の内部判定
+function isInsideHexagon(localX, localY, radius) {
+  // 六角形の頂点は30度回転した状態（CircleGeometryのデフォルト）
+  // 六角形の内部判定：各辺までの距離をチェック
+  const ax = Math.abs(localX);
+  const ay = Math.abs(localY);
+
+  // 六角形の判定式（フラットトップ六角形）
+  // 横幅 = radius, 縦幅 = radius * sqrt(3) / 2
+  const hexHeight = radius * Math.sqrt(3) / 2;
+
+  // 六角形の3つの条件
+  if (ay > hexHeight) return false;
+  if (ax > radius) return false;
+  // 斜め辺の判定
+  if (ax + ay / Math.sqrt(3) > radius) return false;
+
+  return true;
+}
+
+// 既存のシールドとの衝突判定（六角形の形状を考慮）
+function checkAutoShieldCollision(bulletPosition) {
+  for (const shield of autoShields) {
+    // 弾丸の位置をシールドのローカル座標に変換
+    const localPos = bulletPosition.clone();
+    shield.group.worldToLocal(localPos);
+
+    // Z方向（シールドの厚み方向）の距離をチェック
+    const zDist = Math.abs(localPos.z);
+    if (zDist > 0.1) continue; // シールドの前後0.1mの範囲のみ
+
+    // 六角形の内部判定
+    if (isInsideHexagon(localPos.x, localPos.y, AUTO_SHIELD_RADIUS)) {
+      return shield;
+    }
+  }
+  return null;
+}
+
+// シールドに衝撃を追加
+function addImpactToShield(shield, impactWorldPos) {
+  // 衝撃位置をシールドのローカル座標に変換
+  const localPos = impactWorldPos.clone();
+  shield.group.worldToLocal(localPos);
+
+  // 正規化した位置（-1〜1の範囲）
+  const normalizedX = localPos.x / AUTO_SHIELD_RADIUS;
+  const normalizedY = localPos.y / AUTO_SHIELD_RADIUS;
+
+  // 新しい衝撃を追加
+  const impactIndex = shield.impacts.length % 4; // 最大4つの衝撃
+  shield.impacts[impactIndex] = {
+    x: normalizedX,
+    y: normalizedY,
+    progress: 0
+  };
+
+  // シェーダーのuniformを更新
+  shield.faceMaterial.uniforms.impactPoints.value[impactIndex].set(normalizedX, normalizedY);
+  shield.faceMaterial.uniforms.impactProgresses.value[impactIndex] = 0;
+
+  // タイマーをリセット（シールドを延長）
+  shield.timer = Math.max(shield.timer, AUTO_SHIELD_DURATION);
+
+  // キックバックを追加
+  shield.kickbackOffset = AUTO_SHIELD_KICKBACK_DISTANCE;
+
+  console.log('シールドに衝撃追加！');
+}
+
+// 自動シールドを生成
+function spawnAutoShield(position, impactWorldPos) {
+  // 六角形のシールドを作成（シェーダーで衝撃波エフェクト）
+  const geometry = new THREE.CircleGeometry(AUTO_SHIELD_RADIUS, 6);
+
+  // 衝撃位置をローカル座標で計算（生成時は中心からのオフセット）
+  const cameraPos = new THREE.Vector3();
+  camera.getWorldPosition(cameraPos);
+
+  // シールドの向きを計算
+  const shieldGroup = new THREE.Group();
+  shieldGroup.position.copy(position);
+  shieldGroup.lookAt(cameraPos);
+
+  // 衝撃位置をローカル座標に変換
+  const localImpact = impactWorldPos.clone();
+  shieldGroup.worldToLocal(localImpact);
+  const normalizedX = localImpact.x / AUTO_SHIELD_RADIUS;
+  const normalizedY = localImpact.y / AUTO_SHIELD_RADIUS;
+
+  // 衝撃波シェーダーマテリアル（複数の衝撃点対応）
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0 },
+      impactPoints: { value: [
+        new THREE.Vector2(normalizedX, normalizedY),
+        new THREE.Vector2(0, 0),
+        new THREE.Vector2(0, 0),
+        new THREE.Vector2(0, 0)
+      ]},
+      impactProgresses: { value: [0, -1, -1, -1] }, // -1は無効
+      baseColor: { value: new THREE.Color(0x88ffcc) },
+      impactColor: { value: new THREE.Color(0xffffff) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec2 vPos;
+      void main() {
+        vUv = uv;
+        vPos = position.xy / ${AUTO_SHIELD_RADIUS.toFixed(4)};
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float time;
+      uniform vec2 impactPoints[4];
+      uniform float impactProgresses[4];
+      uniform vec3 baseColor;
+      uniform vec3 impactColor;
+      varying vec2 vUv;
+      varying vec2 vPos;
+
+      void main() {
+        // 基本の色
+        vec3 color = baseColor;
+        float alpha = 0.6;
+
+        // 各衝撃点からの波を計算
+        for (int i = 0; i < 4; i++) {
+          float progress = impactProgresses[i];
+          if (progress < 0.0) continue; // 無効な衝撃点
+
+          vec2 impactPoint = impactPoints[i];
+          float distFromImpact = length(vPos - impactPoint);
+
+          float waveWidth = 0.2;
+
+          // 複数の波を生成
+          for (int j = 0; j < 3; j++) {
+            float delay = float(j) * 0.1;
+            float wavePos = progress * 1.5 - delay;
+            if (wavePos > 0.0 && wavePos < 2.0) {
+              float dist = abs(distFromImpact - wavePos);
+              if (dist < waveWidth) {
+                float intensity = 1.0 - (dist / waveWidth);
+                intensity *= intensity;
+                intensity *= max(0.0, 1.0 - wavePos * 0.4);
+                color = mix(color, impactColor, intensity * 0.8);
+                alpha = max(alpha, 0.6 + intensity * 0.4);
+              }
+            }
+          }
+
+          // 衝撃時の局所的な明るさ
+          float flashDist = length(vPos - impactPoint);
+          float flashIntensity = max(0.0, 1.0 - progress * 3.0) * max(0.0, 1.0 - flashDist * 2.0);
+          color += impactColor * flashIntensity * 0.5;
+        }
+
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+
+  const shieldMesh = new THREE.Mesh(geometry, material);
+  shieldGroup.add(shieldMesh);
+
+  // 輪郭線も追加
+  const edgeGeometry = new THREE.BufferGeometry();
+  const edgeVertices = [];
+  for (let i = 0; i <= 6; i++) {
+    const angle = (i / 6) * Math.PI * 2;
+    edgeVertices.push(
+      Math.cos(angle) * AUTO_SHIELD_RADIUS,
+      Math.sin(angle) * AUTO_SHIELD_RADIUS,
+      0
+    );
+  }
+  edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edgeVertices, 3));
+  const lineMaterial = new THREE.LineBasicMaterial({
+    color: 0xccffee,
+    transparent: true,
+    opacity: 0.9
+  });
+  const edgeMesh = new THREE.Line(edgeGeometry, lineMaterial);
+  shieldGroup.add(edgeMesh);
+
+  scene.add(shieldGroup);
+
+  autoShields.push({
+    group: shieldGroup,
+    shieldMesh: shieldMesh,
+    faceMaterial: material,
+    lineMaterial: lineMaterial,
+    edgeGeometry: edgeGeometry,
+    timer: AUTO_SHIELD_DURATION,
+    impacts: [{ x: normalizedX, y: normalizedY, progress: 0 }],
+    kickbackOffset: AUTO_SHIELD_KICKBACK_DISTANCE, // 初回の衝撃でキックバック
+    originalPosition: position.clone(), // 元の位置を保存
+    fadeProgress: 1.0 // フェード用プログレス（1が完全表示、0が消滅）
+  });
+
+  console.log('自動シールド発動！');
+}
+
+// 自動シールドを更新
+function updateAutoShields(deltaTime) {
+  const cameraPos = new THREE.Vector3();
+  camera.getWorldPosition(cameraPos);
+
+  autoShields.forEach(shield => {
+    shield.timer -= deltaTime;
+
+    // 各衝撃点の進行を更新
+    if (shield.impacts) {
+      for (let i = 0; i < shield.impacts.length; i++) {
+        const impact = shield.impacts[i];
+        if (impact.progress < 2.0) {
+          impact.progress += deltaTime * 2.5;
+          shield.faceMaterial.uniforms.impactProgresses.value[i] = impact.progress;
+        }
+      }
+    }
+
+    // キックバックアニメーション
+    if (shield.kickbackOffset > 0) {
+      // キックバック（カメラから離れる方向に移動）
+      const kickbackDirection = new THREE.Vector3()
+        .subVectors(shield.originalPosition, cameraPos)
+        .normalize();
+
+      // シールドを後ろに移動
+      shield.group.position.copy(shield.originalPosition)
+        .add(kickbackDirection.multiplyScalar(shield.kickbackOffset));
+
+      // キックバックを徐々に戻す
+      shield.kickbackOffset -= deltaTime * AUTO_SHIELD_KICKBACK_SPEED * 0.1;
+      if (shield.kickbackOffset < 0) {
+        shield.kickbackOffset = 0;
+        shield.group.position.copy(shield.originalPosition);
+      }
+    }
+
+    // フェードアウト効果（残り0.5秒でフェード開始）
+    if (shield.timer < 0.5) {
+      // ターゲットプログレスを0に
+      const targetProgress = 0;
+      // スムーズに変化（左手シールドと同じ補間）
+      shield.fadeProgress += (targetProgress - shield.fadeProgress) * 0.1;
+
+      // スケール縮小（左手シールドと同じ）
+      const scale = shield.fadeProgress;
+      shield.shieldMesh.scale.set(scale, scale, 1);
+
+      // オパシティ変化
+      shield.faceMaterial.uniforms.baseColor.value.setRGB(
+        0.53 * shield.fadeProgress, 1.0 * shield.fadeProgress, 0.8 * shield.fadeProgress
+      );
+      shield.lineMaterial.opacity = 0.9 * shield.fadeProgress;
+    }
+
+    // タイマー終了で削除
+    if (shield.timer <= 0 || shield.fadeProgress < 0.01) {
+      scene.remove(shield.group);
+      shield.faceMaterial.dispose();
+      shield.lineMaterial.dispose();
+      if (shield.edgeGeometry) {
+        shield.edgeGeometry.dispose();
+      }
+      if (shield.shieldMesh && shield.shieldMesh.geometry) {
+        shield.shieldMesh.geometry.dispose();
+      }
+      shield.timer = 0; // 削除フラグ
+    }
+  });
+
+  // 削除済みのシールドを配列から除去
+  autoShields = autoShields.filter(shield => shield.timer > 0);
+}
+
+// 自動シールドをクリーンアップ
+function cleanupAutoShields() {
+  autoShields.forEach(shield => {
+    scene.remove(shield.group);
+    shield.faceMaterial.dispose();
+    shield.lineMaterial.dispose();
+    if (shield.edgeGeometry) {
+      shield.edgeGeometry.dispose();
+    }
+    if (shield.shieldMesh && shield.shieldMesh.geometry) {
+      shield.shieldMesh.geometry.dispose();
+    }
+  });
+  autoShields = [];
+}
+
 // レプリカモデルを削除
 function removeReplicaModel() {
   if (replicaModel) {
@@ -668,6 +1006,9 @@ function removeReplicaModel() {
   });
   replicaBullets = [];
   replicaFiredBullets = [];
+
+  // 自動シールドをクリーンアップ
+  cleanupAutoShields();
 }
 
 // アニメーションループ
@@ -692,6 +1033,9 @@ function animate(timestamp, frame) {
 
     // レプリカのヒットフラッシュを更新
     updateReplicaHitFlash(1 / 60);
+
+    // 自動シールドを更新
+    updateAutoShields(1 / 60);
 
     // 深度情報を更新
     updateDepthInfo(frame, referenceSpace, timestamp, scene, camera);
@@ -754,13 +1098,18 @@ function animate(timestamp, frame) {
 
       // シールドの位置を左手の前に更新
       const shieldGroup = getShieldGroup();
-      if (shieldGroup && isLeftHandOpen) {
-        const handTransform = getLeftHandTransform(leftHand, frame, referenceSpace);
-        if (handTransform) {
+      const handTransform = getLeftHandTransform(leftHand, frame, referenceSpace);
+      if (handTransform) {
+        // 左手の位置を保存（自動シールド用）
+        leftHandPosition = handTransform.position.clone();
+
+        if (shieldGroup && isLeftHandOpen) {
           shieldGroup.position.copy(handTransform.position);
           shieldGroup.quaternion.copy(handTransform.quaternion);
         }
       }
+    } else {
+      leftHandPosition = null;
     }
 
     // 右手のハンドトラッキングをチェック（アステロイド用）
