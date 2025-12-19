@@ -369,11 +369,8 @@ function createPlayerUI() {
 function updatePlayerUI() {
   if (!playerUIGroup) return;
 
-  // VRモード時のみ表示
-  if (!isVRMode) {
-    playerUIGroup.visible = false;
-    return;
-  }
+  // XRセッション中のみ表示（VR/MR両方）
+  // isVRModeのチェックを削除してMRでも表示
 
   // 左手の位置に配置
   if (leftHandPosition) {
