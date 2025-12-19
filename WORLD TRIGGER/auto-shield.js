@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import {
+  getAudioLoader,
+  isAudioInitialized,
+  playPositionalSound
+} from './audio-manager.js';
 
 // 自動シールド用
 let autoShields = [];
@@ -11,6 +16,42 @@ const AUTO_SHIELD_KICKBACK_SPEED = 2;
 // 外部参照
 let sceneRef = null;
 let cameraRef = null;
+
+// オーディオ関連
+let hitBuffer = null;
+let shieldBuffer = null;  // シールド出現音
+let audioLoaded = false;
+
+// オーディオを初期化
+export function initAutoShieldAudio() {
+  if (audioLoaded || !isAudioInitialized()) return;
+
+  const audioLoader = getAudioLoader();
+  if (!audioLoader) return;
+
+  // ヒット音をロード
+  audioLoader.load('/hit.mp3', (buffer) => {
+    hitBuffer = buffer;
+    console.log('自動シールドヒット音をロード完了');
+  }, undefined, (err) => {
+    console.error('自動シールドヒット音のロードエラー:', err);
+  });
+
+  // シールド出現音をロード
+  audioLoader.load('/shield.mp3', (buffer) => {
+    shieldBuffer = buffer;
+    console.log('自動シールド出現音をロード完了');
+  }, undefined, (err) => {
+    console.error('自動シールド出現音のロードエラー:', err);
+  });
+
+  audioLoaded = true;
+}
+
+// ヒット音を再生
+function playHitSound(position, volume = 1.0) {
+  playPositionalSound(hitBuffer, position, volume);
+}
 
 // 初期化
 export function initAutoShield(scene, camera) {
@@ -50,6 +91,9 @@ export function checkAutoShieldCollision(bulletPosition) {
 
 // シールドに衝撃を追加
 export function addImpactToShield(shield, impactWorldPos) {
+  // ヒット音を再生
+  playHitSound(impactWorldPos, 0.7);
+
   const localPos = impactWorldPos.clone();
   shield.group.worldToLocal(localPos);
 

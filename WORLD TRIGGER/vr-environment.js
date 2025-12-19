@@ -24,6 +24,25 @@ const _forward = new THREE.Vector3();
 // 深度テクスチャを直接更新するための参照
 let depthTextureData = null;
 
+// オクルージョン用深度テクスチャ
+let occlusionDepthTexture = null;
+let occlusionRawValueToMeters = 0;
+let occlusionWidth = 0;
+let occlusionHeight = 0;
+let occlusionDepthData = null;
+let occlusionNormDepthBufferFromNormView = null; // 座標変換マトリックス
+
+// オクルージョン深度情報を取得
+export function getOcclusionDepthInfo() {
+  return {
+    texture: occlusionDepthTexture,
+    rawValueToMeters: occlusionRawValueToMeters,
+    width: occlusionWidth,
+    height: occlusionHeight,
+    uvTransform: occlusionNormDepthBufferFromNormView
+  };
+}
+
 function createDepthVisualizationMesh(scene) {
   // 解像度を大幅に下げて高速化（128x128 → 32x32）
   const geometry = new THREE.PlaneGeometry(2, 2, 32, 32);
@@ -73,11 +92,6 @@ function createDepthVisualizationMesh(scene) {
 }
 
 export function updateDepthInfo(frame, referenceSpace, timestamp, scene, camera) {
-  if (!showDepthVisualization) {
-    if (depthMesh) depthMesh.visible = false;
-    return;
-  }
-
   const viewerPose = frame.getViewerPose(referenceSpace);
   if (!viewerPose || !viewerPose.views[0]) return;
 
@@ -87,12 +101,43 @@ export function updateDepthInfo(frame, referenceSpace, timestamp, scene, camera)
   const depthInfo = frame.getDepthInformation(view);
   if (!depthInfo) return;
 
+  const w = depthInfo.width;
+  const h = depthInfo.height;
+
+  // オクルージョン用深度テクスチャを更新
+  if (!occlusionDepthTexture || occlusionWidth !== w || occlusionHeight !== h) {
+    occlusionWidth = w;
+    occlusionHeight = h;
+    occlusionDepthData = new Uint8Array(w * h * 2);
+    occlusionDepthTexture = new THREE.DataTexture(
+      occlusionDepthData,
+      w, h,
+      THREE.LuminanceAlphaFormat,
+      THREE.UnsignedByteType
+    );
+    occlusionDepthTexture.minFilter = THREE.NearestFilter;
+    occlusionDepthTexture.magFilter = THREE.NearestFilter;
+    occlusionDepthTexture.generateMipmaps = false;
+  }
+
+  occlusionDepthData.set(new Uint8Array(depthInfo.data));
+  occlusionDepthTexture.needsUpdate = true;
+  occlusionRawValueToMeters = depthInfo.rawValueToMeters;
+
+  // UV変換マトリックスを保存
+  if (depthInfo.normDepthBufferFromNormView) {
+    occlusionNormDepthBufferFromNormView = depthInfo.normDepthBufferFromNormView;
+  }
+
+  // デバッグ表示用
+  if (!showDepthVisualization) {
+    if (depthMesh) depthMesh.visible = false;
+    return;
+  }
+
   if (!depthMesh) {
     createDepthVisualizationMesh(scene);
   }
-
-  const w = depthInfo.width;
-  const h = depthInfo.height;
 
   // テクスチャが未作成または解像度変更時のみ再作成
   if (!depthDataTexture || depthDataTexture.image.width !== w || depthDataTexture.image.height !== h) {
@@ -296,4 +341,91 @@ export function cleanupDepth(scene) {
   }
   depthDataTexture = null;
   depthTextureData = null;
+  occlusionDepthTexture = null;
+  occlusionDepthData = null;
+}
+
+// オクルージョン対応シェーダーマテリアルを作成
+export function createOcclusionMaterial(baseColor, emissiveColor, opacity, isAdditive = true) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      baseColor: { value: new THREE.Color(baseColor) },
+      emissiveColor: { value: new THREE.Color(emissiveColor || 0x000000) },
+      opacity: { value: opacity },
+      depthTexture: { value: null },
+      rawValueToMeters: { value: 0 },
+      maxOcclusionDistance: { value: 1.0 }, // 1m以上はオクルージョン無効
+      uvTransform: { value: new THREE.Matrix4() }
+    },
+    vertexShader: `
+      varying vec4 vClipPos;
+      varying float vViewZ;
+      void main() {
+        vec4 viewPos = modelViewMatrix * vec4(position, 1.0);
+        vViewZ = -viewPos.z;
+        vec4 clipPos = projectionMatrix * viewPos;
+        vClipPos = clipPos;
+        gl_Position = clipPos;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 baseColor;
+      uniform vec3 emissiveColor;
+      uniform float opacity;
+      uniform sampler2D depthTexture;
+      uniform float rawValueToMeters;
+      uniform float maxOcclusionDistance;
+      uniform mat4 uvTransform;
+      varying vec4 vClipPos;
+      varying float vViewZ;
+
+      void main() {
+        // スクリーンUV座標を計算（0〜1の範囲）
+        vec2 screenUV = (vClipPos.xy / vClipPos.w) * 0.5 + 0.5;
+        // UV変換を適用
+        vec4 uvCoord = uvTransform * vec4(screenUV, 0.0, 1.0);
+        vec2 depthUV = uvCoord.xy;
+
+        // 深度テクスチャから深度を取得
+        vec4 depthData = texture2D(depthTexture, depthUV);
+        float rawDepth = depthData.r + depthData.g * 256.0;
+        float realWorldDepth = rawDepth * rawValueToMeters;
+
+        // 手だけオクルージョン：0.15m〜0.8mの範囲のみ
+        float minHandDistance = 0.15;
+        float maxHandDistance = 0.8;
+
+        float occlusionAlpha = 1.0;
+        if (rawValueToMeters > 0.0 && realWorldDepth > minHandDistance && realWorldDepth < maxHandDistance) {
+          if (vViewZ > realWorldDepth + 0.02) {
+            occlusionAlpha = 0.0;
+          }
+        }
+
+        vec3 color = baseColor + emissiveColor;
+        gl_FragColor = vec4(color, opacity * occlusionAlpha);
+      }
+    `,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: isAdditive ? THREE.AdditiveBlending : THREE.NormalBlending
+  });
+}
+
+// マテリアルの深度テクスチャを更新
+export function updateMaterialDepth(material) {
+  if (material && material.uniforms && occlusionDepthTexture) {
+    material.uniforms.depthTexture.value = occlusionDepthTexture;
+    material.uniforms.rawValueToMeters.value = occlusionRawValueToMeters;
+    if (material.uniforms.uvTransform && occlusionNormDepthBufferFromNormView) {
+      const m = occlusionNormDepthBufferFromNormView.matrix;
+      material.uniforms.uvTransform.value.set(
+        m[0], m[4], m[8], m[12],
+        m[1], m[5], m[9], m[13],
+        m[2], m[6], m[10], m[14],
+        m[3], m[7], m[11], m[15]
+      );
+    }
+  }
 }

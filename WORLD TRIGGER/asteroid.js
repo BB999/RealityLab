@@ -1,7 +1,19 @@
 import * as THREE from 'three';
+import {
+  getAudioLoader,
+  isAudioInitialized,
+  playPositionalSound
+} from './audio-manager.js';
 
 // 定数
 const TRION_COLOR = 0x88ffcc;
+
+// オーディオ関連
+let spawnBuffer = null;  // 展開音バッファ
+let splitBuffer = null;  // 分割音バッファ
+let fireBuffer = null;   // 発射音バッファ
+let audioLoaded = false;
+
 const BIG_CUBE_SIZE = 0.15;
 const SPLIT_COUNT = 3;
 const HOUND_SIZE_MULTIPLIER = 2.0; // ハウンドモード時のサイズ倍率
@@ -9,6 +21,40 @@ const HOUND_TURN_SPEED = 0.03; // ハウンドの旋回速度（ゆっくり曲�
 
 // シーンへの参照
 let sceneRef = null;
+
+// オーディオを初期化
+export function initAsteroidAudio() {
+  if (audioLoaded || !isAudioInitialized()) return;
+
+  const audioLoader = getAudioLoader();
+  if (!audioLoader) return;
+
+  // 展開音をロード
+  audioLoader.load('/展開1.mp3', (buffer) => {
+    spawnBuffer = buffer;
+    console.log('展開音をロード完了');
+  }, undefined, (err) => {
+    console.error('展開音のロードエラー:', err);
+  });
+
+  // 分割音をロード
+  audioLoader.load('/分割2.mp3', (buffer) => {
+    splitBuffer = buffer;
+    console.log('分割音をロード完了');
+  }, undefined, (err) => {
+    console.error('分割音のロードエラー:', err);
+  });
+
+  // 発射音をロード
+  audioLoader.load('/発射3.mp3', (buffer) => {
+    fireBuffer = buffer;
+    console.log('発射音をロード完了');
+  }, undefined, (err) => {
+    console.error('発射音のロードエラー:', err);
+  });
+
+  audioLoaded = true;
+}
 
 // 左右のアステロイド状態を管理
 const asteroids = {
@@ -47,10 +93,13 @@ function createAsteroidInstance(scene) {
   instance.bigCube = new THREE.Group();
   const geometry = new THREE.BoxGeometry(BIG_CUBE_SIZE, BIG_CUBE_SIZE, BIG_CUBE_SIZE);
 
+  // シンプルなマテリアル（オクルージョンなし）
   instance.bigCubeFaceMaterial = new THREE.MeshBasicMaterial({
     color: TRION_COLOR,
     transparent: true,
-    opacity: 0
+    opacity: 0,
+    side: THREE.DoubleSide,
+    depthWrite: false
   });
   const faceMesh = new THREE.Mesh(geometry, instance.bigCubeFaceMaterial);
   instance.bigCube.add(faceMesh);
@@ -96,10 +145,14 @@ export function castAsteroid(hand = 'right', isHound = false) {
   asteroid.bigCubeLineMaterial.opacity = 0;
   asteroid.bigCube.visible = true;
   asteroid.bigCubeWorldRotation = { x: 0, y: 0, z: 0 };
+  asteroid.spawnSoundPlayed = false;  // 展開音フラグをリセット
 }
 
 // 弾丸を生成
 function spawnBullets(asteroid) {
+  // 分割音を再生（音量大きめ）
+  playPositionalSound(splitBuffer, asteroid.firingWorldPosition, 1.2);
+
   // ハウンドモード時は弾丸も1.5倍
   const sizeMultiplier = asteroid.isHoundMode ? HOUND_SIZE_MULTIPLIER : 1.0;
   const smallSize = (BIG_CUBE_SIZE / SPLIT_COUNT) * sizeMultiplier;
@@ -228,6 +281,14 @@ function updateSingleAsteroid(asteroid, camera) {
     if (asteroid.isCharging) {
       asteroid.chargeProgress += 0.02;
 
+      // 展開音を再生（bigCubeのワールド位置から）
+      if (!asteroid.spawnSoundPlayed) {
+        asteroid.spawnSoundPlayed = true;
+        const cubeWorldPos = new THREE.Vector3();
+        asteroid.bigCube.getWorldPosition(cubeWorldPos);
+        playPositionalSound(spawnBuffer, cubeWorldPos, 0.8);
+      }
+
       if (asteroid.chargeProgress < 0.5) {
         const s = (asteroid.chargeProgress / 0.5);
         const ease = s * (2 - s);
@@ -324,6 +385,13 @@ function updateSingleAsteroid(asteroid, camera) {
         bullet.fired = true;
 
         const bulletWorldPos = bullet.mesh.position.clone();
+
+        // 発射音を再生（5個おきに再生、弾丸の現在位置から音を出す）
+        if (!asteroid.fireSoundCount) asteroid.fireSoundCount = 0;
+        asteroid.fireSoundCount++;
+        if (asteroid.fireSoundCount % 5 === 1) {
+          playPositionalSound(fireBuffer, bulletWorldPos, 0.6);
+        }
         let fireDirection = new THREE.Vector3();
         const currentTargetPos = asteroid.getTargetPositionFunc ? asteroid.getTargetPositionFunc() : null;
 
@@ -367,6 +435,7 @@ function updateSingleAsteroid(asteroid, camera) {
     if (allFired && asteroid.bullets.length > 0) {
       asteroid.isFiring = false;
       asteroid.bullets = [];
+      asteroid.fireSoundCount = 0; // 発射音カウントをリセット
     }
   }
 

@@ -1,11 +1,22 @@
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+import {
+  getAudioLoader,
+  isAudioInitialized,
+  playPositionalSound
+} from './audio-manager.js';
 
 // 左右シールド用オブジェクト
 const shields = {
   left: null,
   right: null
 };
+
+// オーディオ関連
+let shieldBuffer = null;       // 通常シールド音
+let fixedShieldBuffer = null;  // 固定シールド音
+let hitBuffer = null;          // シールドヒット音
+let audioLoaded = false;
 
 // シールドのサイズ（手のひらサイズに合わせる）
 const SHIELD_RADIUS = 0.12;
@@ -19,6 +30,7 @@ let fixedShieldBorder = null;
 let fixedShieldProgress = 0;
 let targetFixedShieldProgress = 0;
 let fixedShieldImpacts = []; // 衝撃点の配列
+let fixedShieldSoundPlayed = false; // 固定シールドの音を鳴らしたかどうか
 
 // 固定シールドのサイズ
 const FIXED_SHIELD_RADIUS = 1.2;
@@ -29,6 +41,45 @@ const FIXED_SHIELD_BOTTOM_HEIGHT = 1.2;
 // シーン参照
 let sceneRef = null;
 
+// オーディオを初期化
+export function initShieldAudio() {
+  if (audioLoaded || !isAudioInitialized()) return;
+
+  const audioLoader = getAudioLoader();
+  if (!audioLoader) {
+    console.error('シールド: audioLoaderが取得できない');
+    return;
+  }
+
+  console.log('シールドオーディオ初期化開始');
+
+  // 通常シールド音をロード
+  audioLoader.load('/shield.mp3', (buffer) => {
+    shieldBuffer = buffer;
+    console.log('シールド音をロード完了');
+  }, undefined, (err) => {
+    console.error('シールド音のロードエラー:', err);
+  });
+
+  // 固定シールド音をロード
+  audioLoader.load('/fixed-shield.mp3', (buffer) => {
+    fixedShieldBuffer = buffer;
+    console.log('固定シールド音をロード完了');
+  }, undefined, (err) => {
+    console.error('固定シールド音のロードエラー:', err);
+  });
+
+  // ヒット音をロード
+  audioLoader.load('/hit.mp3', (buffer) => {
+    hitBuffer = buffer;
+    console.log('シールドヒット音をロード完了');
+  }, undefined, (err) => {
+    console.error('シールドヒット音のロードエラー:', err);
+  });
+
+  audioLoaded = true;
+}
+
 // 単一シールドを作成
 function createSingleShield() {
   const group = new THREE.Group();
@@ -36,16 +87,11 @@ function createSingleShield() {
   // シールドのジオメトリ（薄い六角形）
   const geometry = new THREE.CylinderGeometry(SHIELD_RADIUS, SHIELD_RADIUS, SHIELD_THICKNESS, 6);
 
-  // シールドのマテリアル
-  const material = new THREE.MeshPhongMaterial({
-    color: 0x88ffcc,       // 白っぽいグリーン
-    emissive: 0x225544,    // 自己発光
-    specular: 0xffffff,    // 反射光
-    shininess: 90,         // 光沢
-
+  // シンプルなシールドマテリアル（オクルージョンなし）
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x88ffcc,
     transparent: true,
-    opacity: 0,            // 初期状態は透明
-
+    opacity: 0,
     side: THREE.DoubleSide,
     depthWrite: false,
     blending: THREE.AdditiveBlending
@@ -76,7 +122,8 @@ function createSingleShield() {
     border: border,
     lineMaterial: lineMaterial,
     progress: 0,
-    targetProgress: 0
+    targetProgress: 0,
+    soundPlayed: false  // 音を鳴らしたかどうか
   };
 }
 
@@ -115,7 +162,7 @@ function createFixedShield(scene) {
   const combinedGeo = BufferGeometryUtils.mergeGeometries([bodyGeo, topGeo, bottomGeo]);
   const smoothGeo = BufferGeometryUtils.mergeVertices(combinedGeo);
 
-  // 衝撃波対応のシェーダーマテリアル
+  // 衝撃波対応シェーダーマテリアル（オクルージョンなし）
   fixedShieldMaterial = new THREE.ShaderMaterial({
     uniforms: {
       time: { value: 0 },
@@ -250,8 +297,16 @@ function updateSingleShield(shield, time) {
   // 表示開始は0.1以上、非表示は0.05以下
   if (shield.progress > 0.1) {
     shield.group.visible = true;
+    // シールド発生時に音を鳴らす
+    if (!shield.soundPlayed && shieldBuffer) {
+      shield.soundPlayed = true;
+      const position = new THREE.Vector3();
+      shield.group.getWorldPosition(position);
+      playPositionalSound(shieldBuffer, position, 0.5);
+    }
   } else if (shield.progress < 0.05) {
     shield.group.visible = false;
+    shield.soundPlayed = false;  // シールドが消えたらリセット
   }
 
   // シールドのスケールとオパシティをプログレスに連動
@@ -278,8 +333,16 @@ function updateFixedShield(time) {
   // 表示/非表示（ヒステリシスを追加）
   if (fixedShieldProgress > 0.1) {
     fixedShieldGroup.visible = true;
+    // 固定シールド発生時に音を鳴らす
+    if (!fixedShieldSoundPlayed && fixedShieldBuffer) {
+      fixedShieldSoundPlayed = true;
+      const position = new THREE.Vector3();
+      fixedShieldGroup.getWorldPosition(position);
+      playPositionalSound(fixedShieldBuffer, position, 0.5);
+    }
   } else if (fixedShieldProgress < 0.05) {
     fixedShieldGroup.visible = false;
+    fixedShieldSoundPlayed = false;  // シールドが消えたらリセット
   }
 
   // スケールとオパシティ
@@ -356,6 +419,9 @@ export function setFixedShieldPosition(position) {
 // 固定シールドに衝撃を追加
 export function addFixedShieldImpact(worldPosition) {
   if (!fixedShieldGroup || fixedShieldProgress < 0.5) return;
+
+  // ヒット音を再生
+  playPositionalSound(hitBuffer, worldPosition, 0.7);
 
   // ワールド座標をローカル座標に変換
   const localPos = worldPosition.clone();

@@ -66,8 +66,8 @@ export async function startXR() {
       requiredFeatures: [],
       optionalFeatures: ['local-floor', 'bounded-floor', 'depth-sensing', 'plane-detection', 'hand-tracking'],
       depthSensing: {
-        usagePreference: ['gpu-optimized', 'cpu-optimized'],
-        dataFormatPreference: ['luminance-alpha', 'float32']
+        usagePreference: ['cpu-optimized'],
+        dataFormatPreference: ['luminance-alpha']
       }
     });
 
@@ -271,15 +271,24 @@ export function getHand2() {
   return hand2;
 }
 
+// ボタン演出後の遅延時間（ms）
+const BUTTON_EFFECT_DELAY = 1500;
+
 // ボタンイベント設定
 export function setupXRButtons() {
   const startButton = document.getElementById('start-button');
   if (startButton) {
-    startButton.addEventListener('click', startXR);
+    startButton.addEventListener('click', () => {
+      // 1.5秒後にXRセッション開始（ボタン演出後）
+      setTimeout(startXR, BUTTON_EFFECT_DELAY);
+    });
   }
 
   const vrButton = document.getElementById('vr-button');
   if (vrButton) {
-    vrButton.addEventListener('click', startVR);
+    vrButton.addEventListener('click', () => {
+      // 1.5秒後にVRセッション開始（ボタン演出後）
+      setTimeout(startVR, BUTTON_EFFECT_DELAY);
+    });
   }
 }

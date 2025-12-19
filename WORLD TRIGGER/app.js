@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 
+// オーディオマネージャー
+import { initAudioManager } from './audio-manager.js';
+
 // モジュールのインポート
 import {
   createShield,
@@ -11,7 +14,8 @@ import {
   setFixedShieldPosition,
   addFixedShieldImpact,
   checkFixedShieldCollision,
-  isFixedShieldActive
+  isFixedShieldActive,
+  initShieldAudio
 } from './shield.js';
 
 import {
@@ -20,7 +24,8 @@ import {
   castAsteroid,
   fireAsteroid,
   getAsteroidGroup,
-  getAsteroidState
+  getAsteroidState,
+  initAsteroidAudio
 } from './asteroid.js';
 
 import {
@@ -43,6 +48,7 @@ import {
 
 import {
   initReplica,
+  initReplicaAudio,
   setReplicaVRMode,
   loadReplicaModel,
   positionReplicaModel,
@@ -58,6 +64,7 @@ import {
 
 import {
   initAutoShield,
+  initAutoShieldAudio,
   checkAutoShieldCollision,
   addImpactToShield,
   spawnAutoShield,
@@ -163,6 +170,13 @@ function init() {
   initXRSession(scene, renderer, {
     onSessionStart: (isVR) => {
       boxPositioned = false;
+      // オーディオマネージャーを最初に初期化（共有AudioListener）
+      initAudioManager(camera, scene);
+      // 各モジュールのオーディオを初期化
+      initAsteroidAudio();
+      initShieldAudio();
+      initAutoShieldAudio();
+      initReplicaAudio();
       if (isVR) {
         isVRMode = true;
         setReplicaVRMode(true);

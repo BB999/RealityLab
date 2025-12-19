@@ -1,5 +1,78 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import {
+  getAudioLoader,
+  isAudioInitialized,
+  playPositionalSound
+} from './audio-manager.js';
+
+// オーディオ関連
+let playerHitBuffer = null;  // プレイヤーヒット音バッファ
+let replicaHitBuffer = null; // レプリカヒット音バッファ
+let spawnBuffer = null;      // 展開音バッファ
+let splitBuffer = null;      // 分割音バッファ
+let fireBuffer = null;       // 発射音バッファ
+let audioLoaded = false;
+
+// オーディオを初期化
+export function initReplicaAudio() {
+  if (audioLoaded || !isAudioInitialized()) return;
+
+  const audioLoader = getAudioLoader();
+  if (!audioLoader) return;
+
+  // プレイヤーヒット音をロード
+  audioLoader.load('/playerhit.mp3', (buffer) => {
+    playerHitBuffer = buffer;
+    console.log('プレイヤーヒット音をロード完了');
+  }, undefined, (err) => {
+    console.error('プレイヤーヒット音のロードエラー:', err);
+  });
+
+  // レプリカヒット音をロード
+  audioLoader.load('/tekihit.mp3', (buffer) => {
+    replicaHitBuffer = buffer;
+    console.log('レプリカヒット音をロード完了');
+  }, undefined, (err) => {
+    console.error('レプリカヒット音のロードエラー:', err);
+  });
+
+  // 展開音をロード
+  audioLoader.load('/%E5%B1%95%E9%96%8B1.mp3', (buffer) => {
+    spawnBuffer = buffer;
+    console.log('レプリカ展開音をロード完了');
+  }, undefined, (err) => {
+    console.error('レプリカ展開音のロードエラー:', err);
+  });
+
+  // 分割音をロード
+  audioLoader.load('/%E5%88%86%E5%89%B22.mp3', (buffer) => {
+    splitBuffer = buffer;
+    console.log('レプリカ分割音をロード完了');
+  }, undefined, (err) => {
+    console.error('レプリカ分割音のロードエラー:', err);
+  });
+
+  // 発射音をロード
+  audioLoader.load('/%E7%99%BA%E5%B0%843.mp3', (buffer) => {
+    fireBuffer = buffer;
+    console.log('レプリカ発射音をロード完了');
+  }, undefined, (err) => {
+    console.error('レプリカ発射音のロードエラー:', err);
+  });
+
+  audioLoaded = true;
+}
+
+// プレイヤーヒット音を再生
+function playPlayerHitSound(position) {
+  playPositionalSound(playerHitBuffer, position, 0.2);
+}
+
+// レプリカヒット音を再生
+function playReplicaHitSound(position) {
+  playPositionalSound(replicaHitBuffer, position, 0.8);
+}
 
 // レプリカモデル
 let replicaModel = null;
@@ -24,6 +97,7 @@ let replicaAttackTimer = 0;
 let replicaAttackInterval = 5;
 let replicaBullets = [];
 let replicaFiredBullets = [];
+let replicaFireSoundCount = 0;  // 発射音カウント
 const REPLICA_CUBE_SIZE = 0.15;
 const REPLICA_TRION_COLOR = 0x88ffcc;
 
@@ -53,6 +127,7 @@ export function initReplica(scene, camera, callbacks = {}) {
 export function setReplicaVRMode(isVR) {
   isVRModeRef = isVR;
 }
+
 
 // レプリカモデルを読み込んで配置
 export function loadReplicaModel() {
@@ -240,6 +315,13 @@ export function updateReplicaAsteroid(deltaTime, shieldState = {}) {
       replicaBigCubeFaceMaterial.opacity = 0;
       replicaBigCubeLineMaterial.opacity = 0;
       replicaBigCube.visible = true;
+
+      // 展開音を再生
+      if (spawnBuffer) {
+        const abovePos = replicaModel.position.clone();
+        abovePos.y += 0.5;
+        playPositionalSound(spawnBuffer, abovePos, 0.8);
+      }
     }
   }
 
@@ -296,6 +378,11 @@ export function updateReplicaAsteroid(deltaTime, shieldState = {}) {
 function spawnReplicaBullets() {
   const smallSize = REPLICA_CUBE_SIZE / 3;
   const firingPos = replicaAsteroidGroup.position.clone();
+
+  // 分割音を再生
+  if (splitBuffer) {
+    playPositionalSound(splitBuffer, firingPos, 1.2);
+  }
 
   const cameraPos = new THREE.Vector3();
   cameraRef.getWorldPosition(cameraPos);
@@ -370,6 +457,15 @@ function updateReplicaBullets(deltaTime, shieldState) {
     }
     else if (!bullet.fired) {
       bullet.fired = true;
+
+      // 発射音を再生（5個おきに再生、アステロイドの発射位置から音を出す）
+      if (fireBuffer) {
+        replicaFireSoundCount++;
+        if (replicaFireSoundCount % 5 === 1) {
+          playPositionalSound(fireBuffer, replicaAsteroidGroup.position.clone(), 0.6);
+        }
+      }
+
       const direction = new THREE.Vector3().subVectors(cameraPos, bullet.mesh.position).normalize();
 
       const spread = 0.08;
@@ -443,6 +539,8 @@ function updateReplicaBullets(deltaTime, shieldState) {
 
     // ヒット判定
     if (distToCamera < 0.3) {
+      // プレイヤーヒット音を再生
+      playPlayerHitSound(bullet.mesh.position.clone());
       if (onHitCallback) {
         onHitCallback();
       }
@@ -467,6 +565,7 @@ function updateReplicaBullets(deltaTime, shieldState) {
       replicaAsteroidState = 'idle';
       replicaAsteroidGroup.visible = false;
       replicaAttackInterval = 3 + Math.random() * 4;
+      replicaFireSoundCount = 0;  // 発射音カウントをリセット
     }
   }
 }
@@ -474,6 +573,10 @@ function updateReplicaBullets(deltaTime, shieldState) {
 // レプリカにヒットしたときのフラッシュをトリガー
 export function triggerReplicaHitFlash() {
   replicaHitFlashTimer = 0.3;
+  // レプリカヒット音を再生
+  if (replicaModel && replicaPositioned) {
+    playReplicaHitSound(replicaModel.position.clone());
+  }
   console.log('レプリカにヒット！');
 }
 
