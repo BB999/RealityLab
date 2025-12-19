@@ -197,12 +197,12 @@ function init() {
       return null;
     },
     spawnAutoShield: (pos, impactPos) => {
-      if (!hasEnoughTrion(5)) {
+      if (!hasEnoughTrion(1)) {
         showTrionWarning();
         return;  // シールドを発動しない
       }
       spawnAutoShield(pos, impactPos);
-      consumeTrion(5);  // 自動シールド発動でTRION-5
+      consumeTrion(1);  // 自動シールド発動でTRION-1
     }
   });
   initAutoShield(scene, camera);
