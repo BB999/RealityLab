@@ -44,7 +44,8 @@ import {
   updatePlaneMeshes,
   toggleDepthVisualization,
   setShowDepthVisualization,
-  cleanupDepth
+  cleanupDepth,
+  setOcclusionEnabled
 } from './vr-environment.js';
 
 import {
@@ -249,6 +250,9 @@ function init() {
 
   // 深度表示切り替えボタン
   setupDepthToggleButton();
+
+  // オクリュージョン設定チェックボックス
+  setupOcclusionCheckbox();
 
   // プレイヤーUIを作成
   createPlayerUI();
@@ -1049,6 +1053,20 @@ function setupDepthToggleButton() {
       depthToggleButton.style.display = 'none';
       setShowDepthVisualization(false);
       depthToggleButton.textContent = '深度表示 OFF';
+    });
+  }
+}
+
+function setupOcclusionCheckbox() {
+  const occlusionCheckbox = document.getElementById('occlusion-checkbox');
+  if (occlusionCheckbox) {
+    // 初期状態を反映
+    setOcclusionEnabled(occlusionCheckbox.checked);
+
+    // チェックボックス変更時
+    occlusionCheckbox.addEventListener('change', () => {
+      setOcclusionEnabled(occlusionCheckbox.checked);
+      console.log('オクリュージョン:', occlusionCheckbox.checked ? 'ON' : 'OFF');
     });
   }
 }

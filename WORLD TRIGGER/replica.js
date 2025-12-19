@@ -314,7 +314,7 @@ export function updateReplicaFloat(deltaTime) {
 
   const floatY = Math.sin(replicaFloatTime * Math.PI) * 0.1;
 
-  if (isVRModeRef && replicaTargetPosition) {
+  if (replicaTargetPosition) {
     if (!replicaIsMoving) {
       replicaStopTimer += deltaTime;
       if (replicaStopTimer >= replicaStopDuration) {
@@ -414,7 +414,7 @@ function createReplicaAsteroid() {
 
 // レプリカのアステロイド攻撃を更新
 export function updateReplicaAsteroid(deltaTime, shieldState = {}) {
-  if (!replicaModel || !replicaPositioned || !isVRModeRef) return;
+  if (!replicaModel || !replicaPositioned) return;
   if (isReplicaDefeated) return; // 撃破済みなら攻撃しない
   if (!replicaAsteroidGroup) {
     createReplicaAsteroid();

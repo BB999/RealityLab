@@ -5,6 +5,9 @@ let depthDataTexture = null;
 let depthMesh = null;
 let showDepthVisualization = false;
 
+// オクリュージョン有効/無効
+let occlusionEnabled = true;
+
 // VR用背景とグリッド
 let vrBackground = null;
 let gridHelper = null;
@@ -122,7 +125,8 @@ export function updateDepthInfo(frame, referenceSpace, timestamp, scene, camera)
 
   occlusionDepthData.set(new Uint8Array(depthInfo.data));
   occlusionDepthTexture.needsUpdate = true;
-  occlusionRawValueToMeters = depthInfo.rawValueToMeters;
+  // オクルージョンが無効の場合は0を設定してシェーダー内でスキップ
+  occlusionRawValueToMeters = occlusionEnabled ? depthInfo.rawValueToMeters : 0;
 
   // UV変換マトリックスを保存
   if (depthInfo.normDepthBufferFromNormView) {
@@ -333,6 +337,16 @@ export function setShowDepthVisualization(value) {
   showDepthVisualization = value;
 }
 
+// オクリュージョンの有効/無効を設定
+export function setOcclusionEnabled(value) {
+  occlusionEnabled = value;
+}
+
+// オクリュージョンの有効/無効を取得
+export function getOcclusionEnabled() {
+  return occlusionEnabled;
+}
+
 // クリーンアップ
 export function cleanupDepth(scene) {
   if (depthMesh) {
@@ -417,7 +431,8 @@ export function createOcclusionMaterial(baseColor, emissiveColor, opacity, isAdd
 export function updateMaterialDepth(material) {
   if (material && material.uniforms && occlusionDepthTexture) {
     material.uniforms.depthTexture.value = occlusionDepthTexture;
-    material.uniforms.rawValueToMeters.value = occlusionRawValueToMeters;
+    // オクリュージョンが無効の場合はrawValueToMetersを0にしてシェーダー内でスキップ
+    material.uniforms.rawValueToMeters.value = occlusionEnabled ? occlusionRawValueToMeters : 0;
     if (material.uniforms.uvTransform && occlusionNormDepthBufferFromNormView) {
       const m = occlusionNormDepthBufferFromNormView.matrix;
       material.uniforms.uvTransform.value.set(

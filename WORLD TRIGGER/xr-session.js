@@ -4,7 +4,8 @@ import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 import {
   createVREnvironment,
   removeVREnvironment,
-  cleanupDepth
+  cleanupDepth,
+  getOcclusionEnabled
 } from './vr-environment.js';
 
 // XRセッション用変数
@@ -62,14 +63,23 @@ export async function startXR() {
       return;
     }
 
-    xrSession = await navigator.xr.requestSession('immersive-ar', {
+    // オクルージョン設定に基づいてdepth-sensingを含めるか決定
+    const occlusionEnabled = getOcclusionEnabled();
+    const optionalFeatures = ['local-floor', 'bounded-floor', 'plane-detection', 'hand-tracking'];
+    const sessionOptions = {
       requiredFeatures: [],
-      optionalFeatures: ['local-floor', 'bounded-floor', 'depth-sensing', 'plane-detection', 'hand-tracking'],
-      depthSensing: {
+      optionalFeatures: optionalFeatures
+    };
+
+    if (occlusionEnabled) {
+      optionalFeatures.push('depth-sensing');
+      sessionOptions.depthSensing = {
         usagePreference: ['cpu-optimized'],
         dataFormatPreference: ['luminance-alpha']
-      }
-    });
+      };
+    }
+
+    xrSession = await navigator.xr.requestSession('immersive-ar', sessionOptions);
 
     await rendererRef.xr.setSession(xrSession);
 
