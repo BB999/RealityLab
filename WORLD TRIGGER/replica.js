@@ -103,6 +103,7 @@ const REPLICA_TRION_COLOR = 0x88ffcc;
 
 // レプリカのヒットエフェクト用
 let replicaHitFlashTimer = 0;
+let hitParticles = [];
 
 // レプリカのHP
 let replicaHP = 100;
@@ -665,14 +666,86 @@ function updateReplicaBullets(deltaTime, shieldState) {
   }
 }
 
+// ヒットパーティクルを生成
+function spawnHitParticles(position) {
+  const particleCount = 12;
+
+  for (let i = 0; i < particleCount; i++) {
+    const geometry = new THREE.BoxGeometry(0.02, 0.02, 0.02);
+    const material = new THREE.MeshBasicMaterial({
+      color: REPLICA_TRION_COLOR,
+      transparent: true,
+      opacity: 1.0
+    });
+    const particle = new THREE.Mesh(geometry, material);
+    particle.position.copy(position);
+
+    // ランダムな方向に飛び散る
+    const velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.08,
+      (Math.random() - 0.5) * 0.08,
+      (Math.random() - 0.5) * 0.08
+    );
+
+    sceneRef.add(particle);
+
+    hitParticles.push({
+      mesh: particle,
+      velocity: velocity,
+      life: 0.5,
+      maxLife: 0.5
+    });
+  }
+}
+
+// ヒットパーティクルを更新
+export function updateHitParticles(deltaTime) {
+  hitParticles.forEach(particle => {
+    if (particle.life <= 0) return;
+
+    particle.life -= deltaTime;
+
+    // 移動
+    particle.mesh.position.add(particle.velocity);
+
+    // 減速
+    particle.velocity.multiplyScalar(0.95);
+
+    // フェードアウト
+    const lifeRatio = particle.life / particle.maxLife;
+    particle.mesh.material.opacity = lifeRatio;
+
+    // スケールダウン
+    const scale = lifeRatio * 0.8 + 0.2;
+    particle.mesh.scale.set(scale, scale, scale);
+
+    // 回転
+    particle.mesh.rotation.x += 0.1;
+    particle.mesh.rotation.y += 0.1;
+
+    // 寿命が尽きたら削除
+    if (particle.life <= 0) {
+      sceneRef.remove(particle.mesh);
+      particle.mesh.geometry.dispose();
+      particle.mesh.material.dispose();
+    }
+  });
+
+  // 死んだパーティクルを除去
+  hitParticles = hitParticles.filter(p => p.life > 0);
+}
+
 // レプリカにヒットしたときのフラッシュをトリガー
-export function triggerReplicaHitFlash(damage = 1) {
+export function triggerReplicaHitFlash(damage = 1, hitPosition = null) {
   replicaHitFlashTimer = 0.3;
   // HPを減らす
   replicaHP = Math.max(0, replicaHP - damage);
   // レプリカヒット音を再生
   if (replicaModel && replicaPositioned) {
     playReplicaHitSound(replicaModel.position.clone());
+    // ヒットパーティクルを生成
+    const particlePos = hitPosition || replicaModel.position.clone();
+    spawnHitParticles(particlePos);
   }
   console.log('レプリカにヒット！ HP:', replicaHP);
 }

@@ -477,7 +477,7 @@ function updateSingleAsteroid(asteroid, camera) {
       const distToTarget = bullet.worldPos.distanceTo(currentTargetPos);
       if (distToTarget < 0.5) {
         if (asteroid.onHitTargetFunc) {
-          asteroid.onHitTargetFunc();
+          asteroid.onHitTargetFunc(bullet.worldPos.clone());
         }
         bullet.active = false;
         bullet.mesh.visible = false;

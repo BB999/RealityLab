@@ -57,6 +57,7 @@ import {
   updateReplicaAsteroid,
   triggerReplicaHitFlash,
   updateReplicaHitFlash,
+  updateHitParticles,
   removeReplicaModel,
   getReplicaModel,
   isReplicaPositioned,
@@ -538,6 +539,9 @@ function animate(timestamp, frame) {
     // レプリカのヒットフラッシュを更新
     updateReplicaHitFlash(1 / 60);
 
+    // ヒットパーティクルを更新
+    updateHitParticles(1 / 60);
+
     // 自動シールドを更新
     updateAutoShields(1 / 60);
 
@@ -660,8 +664,8 @@ function animate(timestamp, frame) {
             }
             return null;
           };
-          const onHitReplica = () => {
-            triggerReplicaHitFlash();
+          const onHitReplica = (hitPosition) => {
+            triggerReplicaHitFlash(1, hitPosition);
           };
           fireAsteroid(palmNormal, getTargetPos, onHitReplica, 'left');
           // TRION消費（ハウンド-20、アステロイド-10）
@@ -771,8 +775,8 @@ function animate(timestamp, frame) {
             }
             return null;
           };
-          const onHitReplica = () => {
-            triggerReplicaHitFlash();
+          const onHitReplica = (hitPosition) => {
+            triggerReplicaHitFlash(1, hitPosition);
           };
           fireAsteroid(palmNormal, getTargetPos, onHitReplica, 'right');
           // TRION消費（ハウンド-20、アステロイド-10）
