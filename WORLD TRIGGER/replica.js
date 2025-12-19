@@ -112,6 +112,24 @@ let hpBarGroup = null;
 let hpBarFill = null;
 let hpText = null;
 
+// 爆発・落下・ゲーム終了用
+let isReplicaDefeated = false;
+let explosionParticles = [];
+let replicaVelocityY = 0;
+let replicaOnGround = false;
+let bounceCount = 0;
+const GRAVITY = -9.8;
+const BOUNCE_DAMPING = 0.4;
+const MAX_BOUNCES = 3;
+const GROUND_Y = 0;
+
+// ゲーム終了UI
+let gameEndUIGroup = null;
+let returnButtonMesh = null;
+let buttonHovered = false;
+let buttonNormalTexture = null;
+let buttonHoverTexture = null;
+
 // 外部参照
 let sceneRef = null;
 let cameraRef = null;
@@ -121,6 +139,7 @@ let isVRModeRef = false;
 let onHitCallback = null;
 let checkShieldCollisionCallback = null;
 let spawnAutoShieldCallback = null;
+let onGameEndCallback = null;
 
 // 初期化
 export function initReplica(scene, camera, callbacks = {}) {
@@ -129,6 +148,7 @@ export function initReplica(scene, camera, callbacks = {}) {
   onHitCallback = callbacks.onHit || null;
   checkShieldCollisionCallback = callbacks.checkShieldCollision || null;
   spawnAutoShieldCallback = callbacks.spawnAutoShield || null;
+  onGameEndCallback = callbacks.onGameEnd || null;
 }
 
 // VRモード設定
@@ -395,6 +415,7 @@ function createReplicaAsteroid() {
 // レプリカのアステロイド攻撃を更新
 export function updateReplicaAsteroid(deltaTime, shieldState = {}) {
   if (!replicaModel || !replicaPositioned || !isVRModeRef) return;
+  if (isReplicaDefeated) return; // 撃破済みなら攻撃しない
   if (!replicaAsteroidGroup) {
     createReplicaAsteroid();
   }
@@ -737,6 +758,8 @@ export function updateHitParticles(deltaTime) {
 
 // レプリカにヒットしたときのフラッシュをトリガー
 export function triggerReplicaHitFlash(damage = 1, hitPosition = null) {
+  if (isReplicaDefeated) return; // 撃破済みなら何もしない
+
   replicaHitFlashTimer = 0.3;
   // HPを減らす
   replicaHP = Math.max(0, replicaHP - damage);
@@ -748,6 +771,11 @@ export function triggerReplicaHitFlash(damage = 1, hitPosition = null) {
     spawnHitParticles(particlePos);
   }
   console.log('レプリカにヒット！ HP:', replicaHP);
+
+  // HP0で撃破
+  if (replicaHP <= 0) {
+    triggerReplicaDefeat();
+  }
 }
 
 // レプリカのヒットフラッシュを更新
@@ -831,4 +859,346 @@ export function getReplicaHP() {
 
 export function getReplicaMaxHP() {
   return REPLICA_MAX_HP;
+}
+
+// レプリカ撃破状態を取得
+export function isReplicaDefeatedState() {
+  return isReplicaDefeated;
+}
+
+// 大爆発エフェクトを生成
+function spawnExplosion(position) {
+  const particleCount = 50;
+
+  for (let i = 0; i < particleCount; i++) {
+    const size = 0.03 + Math.random() * 0.05;
+    const geometry = new THREE.BoxGeometry(size, size, size);
+    const material = new THREE.MeshBasicMaterial({
+      color: REPLICA_TRION_COLOR,
+      transparent: true,
+      opacity: 1.0
+    });
+    const particle = new THREE.Mesh(geometry, material);
+    particle.position.copy(position);
+
+    // 全方向にランダムに飛び散る
+    const speed = 0.1 + Math.random() * 0.2;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.random() * Math.PI;
+    const velocity = new THREE.Vector3(
+      Math.sin(phi) * Math.cos(theta) * speed,
+      Math.sin(phi) * Math.sin(theta) * speed,
+      Math.cos(phi) * speed
+    );
+
+    sceneRef.add(particle);
+
+    explosionParticles.push({
+      mesh: particle,
+      velocity: velocity,
+      life: 1.5 + Math.random() * 0.5,
+      maxLife: 2.0
+    });
+  }
+}
+
+// 爆発パーティクルを更新
+export function updateExplosionParticles(deltaTime) {
+  explosionParticles.forEach(particle => {
+    if (particle.life <= 0) return;
+
+    particle.life -= deltaTime;
+
+    // 移動
+    particle.mesh.position.add(particle.velocity);
+
+    // 重力
+    particle.velocity.y -= 0.5 * deltaTime;
+
+    // 減速
+    particle.velocity.multiplyScalar(0.98);
+
+    // フェードアウト
+    const lifeRatio = particle.life / particle.maxLife;
+    particle.mesh.material.opacity = lifeRatio;
+
+    // 回転
+    particle.mesh.rotation.x += 0.1;
+    particle.mesh.rotation.y += 0.1;
+
+    // 寿命が尽きたら削除
+    if (particle.life <= 0) {
+      sceneRef.remove(particle.mesh);
+      particle.mesh.geometry.dispose();
+      particle.mesh.material.dispose();
+    }
+  });
+
+  // 死んだパーティクルを除去
+  explosionParticles = explosionParticles.filter(p => p.life > 0);
+}
+
+// レプリカの落下を更新
+export function updateReplicaFall(deltaTime) {
+  if (!isReplicaDefeated || !replicaModel || replicaOnGround) return;
+
+  // 重力を適用
+  replicaVelocityY += GRAVITY * deltaTime;
+  replicaModel.position.y += replicaVelocityY * deltaTime;
+
+  // 回転しながら落下
+  replicaModel.rotation.x += deltaTime * 2;
+  replicaModel.rotation.z += deltaTime * 1.5;
+
+  // 地面に到達
+  if (replicaModel.position.y <= GROUND_Y) {
+    replicaModel.position.y = GROUND_Y;
+
+    // 完全に停止（バウンドなし）
+    replicaOnGround = true;
+    replicaVelocityY = 0;
+    console.log('レプリカが地面に落下しました');
+
+    // ゲーム終了UIを表示
+    createGameEndUI();
+  }
+}
+
+// ゲーム終了UIを作成
+function createGameEndUI() {
+  if (gameEndUIGroup) return;
+
+  gameEndUIGroup = new THREE.Group();
+
+  // カメラの前に配置（近くに）
+  const cameraPos = new THREE.Vector3();
+  const cameraDir = new THREE.Vector3();
+  cameraRef.getWorldPosition(cameraPos);
+  cameraRef.getWorldDirection(cameraDir);
+
+  const uiDistance = 0.8;
+  const uiPosition = cameraPos.clone().add(cameraDir.multiplyScalar(uiDistance));
+  uiPosition.y = cameraPos.y;
+
+  gameEndUIGroup.position.copy(uiPosition);
+  gameEndUIGroup.lookAt(cameraPos);
+
+  // 「戦闘訓練終了」のテキスト
+  const titleCanvas = document.createElement('canvas');
+  titleCanvas.width = 512;
+  titleCanvas.height = 128;
+  const titleCtx = titleCanvas.getContext('2d');
+
+  // 背景をクリア（透明）
+  titleCtx.clearRect(0, 0, titleCanvas.width, titleCanvas.height);
+
+  // テキストスタイル（メインページと同じデザイン）
+  titleCtx.font = 'bold 64px "Noto Sans JP", sans-serif';
+  titleCtx.textAlign = 'center';
+  titleCtx.textBaseline = 'middle';
+
+  // グロー効果
+  titleCtx.shadowColor = 'rgba(136, 255, 204, 0.8)';
+  titleCtx.shadowBlur = 20;
+
+  // アウトライン
+  titleCtx.strokeStyle = '#88ffcc';
+  titleCtx.lineWidth = 4;
+  titleCtx.strokeText('戦闘訓練終了', titleCanvas.width / 2, titleCanvas.height / 2);
+
+  // 塗りつぶし
+  titleCtx.fillStyle = '#000000';
+  titleCtx.fillText('戦闘訓練終了', titleCanvas.width / 2, titleCanvas.height / 2);
+
+  const titleTexture = new THREE.CanvasTexture(titleCanvas);
+  const titleMaterial = new THREE.MeshBasicMaterial({
+    map: titleTexture,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  const titleGeometry = new THREE.PlaneGeometry(0.5, 0.125);
+  const titleMesh = new THREE.Mesh(titleGeometry, titleMaterial);
+  titleMesh.position.set(0, 0.1, 0);
+  gameEndUIGroup.add(titleMesh);
+
+  // 「タイトルに戻る」ボタン（通常状態）
+  const buttonCanvas = document.createElement('canvas');
+  buttonCanvas.width = 256;
+  buttonCanvas.height = 64;
+  const buttonCtx = buttonCanvas.getContext('2d');
+
+  // ボタン背景
+  buttonCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+  buttonCtx.fillRect(0, 0, buttonCanvas.width, buttonCanvas.height);
+
+  // ボタン枠線
+  buttonCtx.strokeStyle = '#88ffcc';
+  buttonCtx.lineWidth = 3;
+  buttonCtx.strokeRect(2, 2, buttonCanvas.width - 4, buttonCanvas.height - 4);
+
+  // ボタンテキスト
+  buttonCtx.font = 'bold 28px "Noto Sans JP", sans-serif';
+  buttonCtx.textAlign = 'center';
+  buttonCtx.textBaseline = 'middle';
+  buttonCtx.fillStyle = '#88ffcc';
+  buttonCtx.shadowColor = 'rgba(136, 255, 204, 0.8)';
+  buttonCtx.shadowBlur = 10;
+  buttonCtx.fillText('タイトルに戻る', buttonCanvas.width / 2, buttonCanvas.height / 2);
+
+  buttonNormalTexture = new THREE.CanvasTexture(buttonCanvas);
+
+  // ホバー状態のボタン
+  const hoverCanvas = document.createElement('canvas');
+  hoverCanvas.width = 256;
+  hoverCanvas.height = 64;
+  const hoverCtx = hoverCanvas.getContext('2d');
+
+  // ホバー時は背景を明るく
+  hoverCtx.fillStyle = 'rgba(136, 255, 204, 0.3)';
+  hoverCtx.fillRect(0, 0, hoverCanvas.width, hoverCanvas.height);
+
+  // ボタン枠線（より太く）
+  hoverCtx.strokeStyle = '#88ffcc';
+  hoverCtx.lineWidth = 5;
+  hoverCtx.strokeRect(2, 2, hoverCanvas.width - 4, hoverCanvas.height - 4);
+
+  // ボタンテキスト
+  hoverCtx.font = 'bold 28px "Noto Sans JP", sans-serif';
+  hoverCtx.textAlign = 'center';
+  hoverCtx.textBaseline = 'middle';
+  hoverCtx.fillStyle = '#ffffff';
+  hoverCtx.shadowColor = 'rgba(136, 255, 204, 1.0)';
+  hoverCtx.shadowBlur = 20;
+  hoverCtx.fillText('タイトルに戻る', hoverCanvas.width / 2, hoverCanvas.height / 2);
+
+  buttonHoverTexture = new THREE.CanvasTexture(hoverCanvas);
+
+  const buttonMaterial = new THREE.MeshBasicMaterial({
+    map: buttonNormalTexture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+  const buttonGeometry = new THREE.PlaneGeometry(0.3, 0.08);
+  returnButtonMesh = new THREE.Mesh(buttonGeometry, buttonMaterial);
+  returnButtonMesh.position.set(0, -0.05, 0);
+  returnButtonMesh.userData.isButton = true;
+  gameEndUIGroup.add(returnButtonMesh);
+
+  sceneRef.add(gameEndUIGroup);
+  console.log('ゲーム終了UI表示');
+}
+
+// ゲーム終了UIを更新（常にカメラの前に）
+export function updateGameEndUI() {
+  if (!gameEndUIGroup) return;
+
+  const cameraPos = new THREE.Vector3();
+  cameraRef.getWorldPosition(cameraPos);
+
+  gameEndUIGroup.lookAt(cameraPos);
+}
+
+// ボタンのホバー状態を設定
+export function setButtonHover(isHovered) {
+  if (!returnButtonMesh) return;
+
+  if (isHovered !== buttonHovered) {
+    buttonHovered = isHovered;
+    returnButtonMesh.material.map = isHovered ? buttonHoverTexture : buttonNormalTexture;
+    returnButtonMesh.material.needsUpdate = true;
+
+    // ホバー時は少し大きくする
+    const scale = isHovered ? 1.1 : 1.0;
+    returnButtonMesh.scale.set(scale, scale, 1);
+  }
+}
+
+// ボタンがクリックされたかチェック
+export function checkReturnButtonClick(raycaster) {
+  if (!returnButtonMesh) return false;
+
+  const intersects = raycaster.intersectObject(returnButtonMesh);
+  if (intersects.length > 0) {
+    console.log('タイトルに戻るボタンがクリックされました');
+    return true;
+  }
+  return false;
+}
+
+// タイトルに戻る処理
+export function returnToTitle() {
+  // XRセッションを終了
+  if (onGameEndCallback) {
+    onGameEndCallback();
+  }
+  // ページをリロード
+  window.location.reload();
+}
+
+// レプリカ撃破時の処理
+export function triggerReplicaDefeat() {
+  if (isReplicaDefeated) return;
+
+  isReplicaDefeated = true;
+  console.log('レプリカ撃破！');
+
+  // HPバーを非表示
+  if (hpBarGroup) {
+    hpBarGroup.visible = false;
+  }
+
+  // アステロイドを非表示
+  if (replicaAsteroidGroup) {
+    replicaAsteroidGroup.visible = false;
+  }
+
+  // 弾丸を削除
+  replicaBullets.forEach(b => {
+    if (b.mesh) sceneRef.remove(b.mesh);
+  });
+  replicaFiredBullets.forEach(b => {
+    if (b.mesh) sceneRef.remove(b.mesh);
+  });
+  replicaBullets = [];
+  replicaFiredBullets = [];
+
+  // 大爆発エフェクト
+  if (replicaModel && replicaPositioned) {
+    spawnExplosion(replicaModel.position.clone());
+  }
+
+  // 落下開始
+  replicaVelocityY = 0; // そのまま落下
+  replicaOnGround = false;
+}
+
+// ゲーム終了UIをクリーンアップ
+export function cleanupGameEndUI() {
+  if (gameEndUIGroup) {
+    sceneRef.remove(gameEndUIGroup);
+    gameEndUIGroup = null;
+    returnButtonMesh = null;
+  }
+
+  // 爆発パーティクルをクリーンアップ
+  explosionParticles.forEach(p => {
+    if (p.mesh) {
+      sceneRef.remove(p.mesh);
+      p.mesh.geometry.dispose();
+      p.mesh.material.dispose();
+    }
+  });
+  explosionParticles = [];
+
+  // 状態をリセット
+  isReplicaDefeated = false;
+  replicaVelocityY = 0;
+  replicaOnGround = false;
+  bounceCount = 0;
+}
+
+// ボタンメッシュを取得
+export function getReturnButtonMesh() {
+  return returnButtonMesh;
 }

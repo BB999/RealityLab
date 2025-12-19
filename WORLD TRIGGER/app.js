@@ -58,6 +58,14 @@ import {
   triggerReplicaHitFlash,
   updateReplicaHitFlash,
   updateHitParticles,
+  updateExplosionParticles,
+  updateReplicaFall,
+  updateGameEndUI,
+  isReplicaDefeatedState,
+  getReturnButtonMesh,
+  setButtonHover,
+  returnToTitle,
+  cleanupGameEndUI,
   removeReplicaModel,
   getReplicaModel,
   isReplicaPositioned,
@@ -542,6 +550,34 @@ function animate(timestamp, frame) {
     // ヒットパーティクルを更新
     updateHitParticles(1 / 60);
 
+    // 爆発パーティクルを更新
+    updateExplosionParticles(1 / 60);
+
+    // レプリカの落下を更新
+    updateReplicaFall(1 / 60);
+
+    // ゲーム終了UIを更新
+    updateGameEndUI();
+
+    // ボタンホバー状態をリセット（手がボタンに近づいていなければ）
+    if (isReplicaDefeatedState()) {
+      let isNearButton = false;
+      const buttonMesh = getReturnButtonMesh();
+      if (buttonMesh) {
+        const buttonPos = new THREE.Vector3();
+        buttonMesh.getWorldPosition(buttonPos);
+        if (leftHandPosition && leftHandPosition.distanceTo(buttonPos) < 0.2) {
+          isNearButton = true;
+        }
+        if (rightHandPosition && rightHandPosition.distanceTo(buttonPos) < 0.2) {
+          isNearButton = true;
+        }
+      }
+      if (!isNearButton) {
+        setButtonHover(false);
+      }
+    }
+
     // 自動シールドを更新
     updateAutoShields(1 / 60);
 
@@ -619,10 +655,51 @@ function animate(timestamp, frame) {
         leftHandPosition = handTransform.position.clone();
       }
 
-      const leftAsteroidMode = handOpen && !palmForward;
+      // ゲーム終了時のボタン判定（左手）
+      if (isReplicaDefeatedState()) {
+        const indexTipPose = frame.getJointPose(leftHand.get('index-finger-tip'), referenceSpace);
+        const thumbTipPose = frame.getJointPose(leftHand.get('thumb-tip'), referenceSpace);
+        if (indexTipPose) {
+          const fingerPos = new THREE.Vector3(
+            indexTipPose.transform.position.x,
+            indexTipPose.transform.position.y,
+            indexTipPose.transform.position.z
+          );
+          const buttonMesh = getReturnButtonMesh();
+          if (buttonMesh) {
+            const buttonPos = new THREE.Vector3();
+            buttonMesh.getWorldPosition(buttonPos);
+            const dist = fingerPos.distanceTo(buttonPos);
 
-      // シールドモード判定（TRION切れの時はシールド発動しない）
-      let newLeftShieldMode = handOpen && palmForward;
+            // ホバー判定（ボタンに近づいたらハイライト）
+            if (dist < 0.2) {
+              setButtonHover(true);
+
+              // ピンチジェスチャー判定（人差し指と親指が近い）
+              if (thumbTipPose && dist < 0.1) {
+                const thumbPos = new THREE.Vector3(
+                  thumbTipPose.transform.position.x,
+                  thumbTipPose.transform.position.y,
+                  thumbTipPose.transform.position.z
+                );
+                const pinchDist = fingerPos.distanceTo(thumbPos);
+                if (pinchDist < 0.05) {
+                  console.log('ボタンをピンチ！（左手）');
+                  returnToTitle();
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 撃破後はトリガー使用不可
+      const canUseTrigger = !isReplicaDefeatedState();
+
+      const leftAsteroidMode = handOpen && !palmForward && canUseTrigger;
+
+      // シールドモード判定（TRION切れの時、または撃破後はシールド発動しない）
+      let newLeftShieldMode = handOpen && palmForward && canUseTrigger;
       if (newLeftShieldMode && !isLeftShieldMode && !hasEnoughTrion(5)) {
         showTrionWarning();
         newLeftShieldMode = false;  // TRION切れの時はシールドモードにしない
@@ -639,7 +716,7 @@ function animate(timestamp, frame) {
         const leftAsteroidGroup = getAsteroidGroup('left');
         const leftAsteroidState = getAsteroidState('left');
 
-        if (handOpen && leftAsteroidMode && leftAsteroidGroup && !leftAsteroidState.isCharging) {
+        if (handOpen && leftAsteroidMode && leftAsteroidGroup && !leftAsteroidState.isCharging && canUseTrigger) {
           const trionCost = leftHoundMode ? 20 : 10;
           if (!hasEnoughTrion(trionCost)) {
             showTrionWarning();
@@ -737,10 +814,51 @@ function animate(timestamp, frame) {
         rightHandPosition = handTransform.position.clone();
       }
 
-      const rightAsteroidMode = handOpen && !palmForward;
+      // ゲーム終了時のボタン判定（右手）
+      if (isReplicaDefeatedState()) {
+        const indexTipPose = frame.getJointPose(rightHand.get('index-finger-tip'), referenceSpace);
+        const thumbTipPose = frame.getJointPose(rightHand.get('thumb-tip'), referenceSpace);
+        if (indexTipPose) {
+          const fingerPos = new THREE.Vector3(
+            indexTipPose.transform.position.x,
+            indexTipPose.transform.position.y,
+            indexTipPose.transform.position.z
+          );
+          const buttonMesh = getReturnButtonMesh();
+          if (buttonMesh) {
+            const buttonPos = new THREE.Vector3();
+            buttonMesh.getWorldPosition(buttonPos);
+            const dist = fingerPos.distanceTo(buttonPos);
 
-      // シールドモード判定（TRION切れの時はシールド発動しない）
-      let newRightShieldMode = handOpen && palmForward;
+            // ホバー判定（ボタンに近づいたらハイライト）
+            if (dist < 0.2) {
+              setButtonHover(true);
+
+              // ピンチジェスチャー判定（人差し指と親指が近い）
+              if (thumbTipPose && dist < 0.1) {
+                const thumbPos = new THREE.Vector3(
+                  thumbTipPose.transform.position.x,
+                  thumbTipPose.transform.position.y,
+                  thumbTipPose.transform.position.z
+                );
+                const pinchDist = fingerPos.distanceTo(thumbPos);
+                if (pinchDist < 0.05) {
+                  console.log('ボタンをピンチ！（右手）');
+                  returnToTitle();
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 撃破後はトリガー使用不可（右手）
+      const canUseTriggerRight = !isReplicaDefeatedState();
+
+      const rightAsteroidMode = handOpen && !palmForward && canUseTriggerRight;
+
+      // シールドモード判定（TRION切れの時、または撃破後はシールド発動しない）
+      let newRightShieldMode = handOpen && palmForward && canUseTriggerRight;
       if (newRightShieldMode && !isRightShieldMode && !hasEnoughTrion(5)) {
         showTrionWarning();
         newRightShieldMode = false;  // TRION切れの時はシールドモードにしない
@@ -757,7 +875,7 @@ function animate(timestamp, frame) {
         const rightAsteroidGroup = getAsteroidGroup('right');
         const rightAsteroidState = getAsteroidState('right');
 
-        if (handOpen && rightAsteroidMode && rightAsteroidGroup && !rightAsteroidState.isCharging) {
+        if (handOpen && rightAsteroidMode && rightAsteroidGroup && !rightAsteroidState.isCharging && canUseTriggerRight) {
           const trionCost = rightHoundMode ? 20 : 10;
           if (!hasEnoughTrion(trionCost)) {
             showTrionWarning();
@@ -841,9 +959,9 @@ function animate(timestamp, frame) {
 
     // シールドのターゲット状態を更新（ヒステリシス付き）
     const deltaTime = 1 / 60;
-    const bothHandsShieldMode = isLeftShieldMode && isRightShieldMode;
+    const bothHandsShieldMode = isLeftShieldMode && isRightShieldMode && !isReplicaDefeatedState();
 
-    // 両手シールドモードの判定（遅延を追加して安定化）
+    // 両手シールドモードの判定（遅延を追加して安定化、撃破後は無効）
     if (bothHandsShieldMode && !fixedShieldModeActive) {
       // 両手がシールドモードだが、まだ固定シールドは無効
       fixedShieldModeTimer += deltaTime;
