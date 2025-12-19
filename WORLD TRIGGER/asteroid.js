@@ -252,7 +252,7 @@ function spawnBullets(asteroid) {
           spreadDuration: 25,
           shootDelay: shootDelay,
           velocity: new THREE.Vector3(),
-          speed: 0.08,
+          speed: 0.12,
           rotSpeed: {
             x: (Math.random() - 0.5) * 0.08,
             y: (Math.random() - 0.5) * 0.08,

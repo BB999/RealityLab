@@ -81,7 +81,7 @@ let replicaFloatTime = 0;
 let replicaWaitFrames = 0;
 let replicaBasePosition = null;
 let replicaTargetPosition = null;
-let replicaMoveSpeed = 0.5;
+let replicaMoveSpeed = 0.75;
 let replicaIsMoving = true;
 let replicaStopTimer = 0;
 let replicaStopDuration = 0;
@@ -544,7 +544,7 @@ function spawnReplicaBullets() {
           splitPos: bulletMesh.position.clone().add(startPos.clone().multiplyScalar(0.3)),
           timer: 0,
           shootDelay: shootDelay,
-          speed: 0.06,
+          speed: 0.09,
           fired: false,
           active: true
         });
