@@ -54,7 +54,7 @@ export function initShieldAudio() {
   console.log('シールドオーディオ初期化開始');
 
   // 通常シールド音をロード
-  audioLoader.load('/shield.mp3', (buffer) => {
+  audioLoader.load('./shield.mp3', (buffer) => {
     shieldBuffer = buffer;
     console.log('シールド音をロード完了');
   }, undefined, (err) => {
@@ -62,7 +62,7 @@ export function initShieldAudio() {
   });
 
   // 固定シールド音をロード
-  audioLoader.load('/fixed-shield.mp3', (buffer) => {
+  audioLoader.load('./fixed-shield.mp3', (buffer) => {
     fixedShieldBuffer = buffer;
     console.log('固定シールド音をロード完了');
   }, undefined, (err) => {
@@ -70,7 +70,7 @@ export function initShieldAudio() {
   });
 
   // ヒット音をロード
-  audioLoader.load('/hit.mp3', (buffer) => {
+  audioLoader.load('./hit.mp3', (buffer) => {
     hitBuffer = buffer;
     console.log('シールドヒット音をロード完了');
   }, undefined, (err) => {

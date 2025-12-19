@@ -30,7 +30,7 @@ export function initAsteroidAudio() {
   if (!audioLoader) return;
 
   // 展開音をロード
-  audioLoader.load('/展開1.mp3', (buffer) => {
+  audioLoader.load('./展開1.mp3', (buffer) => {
     spawnBuffer = buffer;
     console.log('展開音をロード完了');
   }, undefined, (err) => {
@@ -38,7 +38,7 @@ export function initAsteroidAudio() {
   });
 
   // 分割音をロード
-  audioLoader.load('/分割2.mp3', (buffer) => {
+  audioLoader.load('./分割2.mp3', (buffer) => {
     splitBuffer = buffer;
     console.log('分割音をロード完了');
   }, undefined, (err) => {
@@ -46,7 +46,7 @@ export function initAsteroidAudio() {
   });
 
   // 発射音をロード
-  audioLoader.load('/発射3.mp3', (buffer) => {
+  audioLoader.load('./発射3.mp3', (buffer) => {
     fireBuffer = buffer;
     console.log('発射音をロード完了');
   }, undefined, (err) => {

@@ -22,7 +22,7 @@ export function initReplicaAudio() {
   if (!audioLoader) return;
 
   // プレイヤーヒット音をロード
-  audioLoader.load('/playerhit.mp3', (buffer) => {
+  audioLoader.load('./playerhit.mp3', (buffer) => {
     playerHitBuffer = buffer;
     console.log('プレイヤーヒット音をロード完了');
   }, undefined, (err) => {
@@ -30,7 +30,7 @@ export function initReplicaAudio() {
   });
 
   // レプリカヒット音をロード
-  audioLoader.load('/tekihit.mp3', (buffer) => {
+  audioLoader.load('./tekihit.mp3', (buffer) => {
     replicaHitBuffer = buffer;
     console.log('レプリカヒット音をロード完了');
   }, undefined, (err) => {
@@ -38,7 +38,7 @@ export function initReplicaAudio() {
   });
 
   // 展開音をロード
-  audioLoader.load('/%E5%B1%95%E9%96%8B1.mp3', (buffer) => {
+  audioLoader.load('./展開1.mp3', (buffer) => {
     spawnBuffer = buffer;
     console.log('レプリカ展開音をロード完了');
   }, undefined, (err) => {
@@ -46,7 +46,7 @@ export function initReplicaAudio() {
   });
 
   // 分割音をロード
-  audioLoader.load('/%E5%88%86%E5%89%B22.mp3', (buffer) => {
+  audioLoader.load('./分割2.mp3', (buffer) => {
     splitBuffer = buffer;
     console.log('レプリカ分割音をロード完了');
   }, undefined, (err) => {
@@ -54,7 +54,7 @@ export function initReplicaAudio() {
   });
 
   // 発射音をロード
-  audioLoader.load('/%E7%99%BA%E5%B0%843.mp3', (buffer) => {
+  audioLoader.load('./発射3.mp3', (buffer) => {
     fireBuffer = buffer;
     console.log('レプリカ発射音をロード完了');
   }, undefined, (err) => {

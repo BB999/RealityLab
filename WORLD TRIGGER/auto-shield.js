@@ -30,7 +30,7 @@ export function initAutoShieldAudio() {
   if (!audioLoader) return;
 
   // ヒット音をロード
-  audioLoader.load('/hit.mp3', (buffer) => {
+  audioLoader.load('./hit.mp3', (buffer) => {
     hitBuffer = buffer;
     console.log('自動シールドヒット音をロード完了');
   }, undefined, (err) => {
@@ -38,7 +38,7 @@ export function initAutoShieldAudio() {
   });
 
   // シールド出現音をロード
-  audioLoader.load('/shield.mp3', (buffer) => {
+  audioLoader.load('./shield.mp3', (buffer) => {
     shieldBuffer = buffer;
     console.log('自動シールド出現音をロード完了');
   }, undefined, (err) => {
