@@ -598,6 +598,56 @@
       text-shadow: 0 0 10px rgba(136, 255, 204, 0.5);
     }
 
+    /* About section */
+    .about-container {
+      margin-top: 30px;
+      padding: 20px 30px;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(136, 255, 204, 0.3);
+      border-radius: 8px;
+      backdrop-filter: blur(5px);
+      max-width: 500px;
+      text-align: left;
+    }
+
+    .about-title {
+      font-size: 1.1rem;
+      color: #88ffcc;
+      margin-bottom: 15px;
+      letter-spacing: 0.1em;
+      text-align: center;
+    }
+
+    .about-text {
+      font-size: 0.9rem;
+      color: rgba(136, 255, 204, 0.8);
+      line-height: 1.8;
+      margin-bottom: 10px;
+    }
+
+    .about-list {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .about-list li {
+      font-size: 0.85rem;
+      color: rgba(136, 255, 204, 0.7);
+      line-height: 1.6;
+      padding-left: 1.5em;
+      position: relative;
+      margin-bottom: 5px;
+    }
+
+    .about-list li::before {
+      content: '▶';
+      position: absolute;
+      left: 0;
+      color: #88ffcc;
+      font-size: 0.6em;
+      top: 0.4em;
+    }
+
     /* Responsive */
     @media (max-width: 640px) {
       .start-btn {
@@ -682,6 +732,21 @@
         <input type="checkbox" id="occlusion-checkbox" class="option-checkbox" checked>
         <label for="occlusion-checkbox" class="option-label">オクリュージョン（遮蔽処理）</label>
       </div>
+    </div>
+
+    <!-- About -->
+    <div class="about-container">
+      <h3 class="about-title">このアプリについて</h3>
+      <p class="about-text">
+        ワールドトリガーの世界観をMR/VRで体験できるアプリです。
+        ハンドトラッキングを使ってトリガーを発動し、レプリカと戦闘訓練を行います。
+      </p>
+      <ul class="about-list">
+        <li>手を開いて前に向ける → シールド発動</li>
+        <li>手を開いて下に向ける → アステロイド（チャージ）</li>
+        <li>手を握る → アステロイド発射</li>
+        <li>両手でシールド → 固定シールド（大型）</li>
+      </ul>
     </div>
   </div>
 
