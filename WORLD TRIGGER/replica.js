@@ -104,6 +104,13 @@ const REPLICA_TRION_COLOR = 0x88ffcc;
 // レプリカのヒットエフェクト用
 let replicaHitFlashTimer = 0;
 
+// レプリカのHP
+let replicaHP = 100;
+const REPLICA_MAX_HP = 100;
+let hpBarGroup = null;
+let hpBarFill = null;
+let hpText = null;
+
 // 外部参照
 let sceneRef = null;
 let cameraRef = null;
@@ -178,6 +185,91 @@ export function positionReplicaModel() {
   replicaTargetPosition = targetPosition.clone();
 
   console.log('レプリカモデルを配置しました:', targetPosition, 'カメラ高さ:', cameraPosition.y);
+
+  // HPバーを作成
+  createHPBar();
+}
+
+// HPバーを作成
+function createHPBar() {
+  if (hpBarGroup) return;
+
+  hpBarGroup = new THREE.Group();
+
+  // HPテキスト（スプライト）
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 48px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('HP', 64, 32);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const spriteMaterial = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true
+  });
+  hpText = new THREE.Sprite(spriteMaterial);
+  hpText.scale.set(0.3, 0.15, 1);
+  hpText.position.set(0, 0.15, 0);
+  hpBarGroup.add(hpText);
+
+  // HPバー背景
+  const bgGeometry = new THREE.PlaneGeometry(0.5, 0.08);
+  const bgMaterial = new THREE.MeshBasicMaterial({
+    color: 0x333333,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide
+  });
+  const bgMesh = new THREE.Mesh(bgGeometry, bgMaterial);
+  hpBarGroup.add(bgMesh);
+
+  // HPバー本体（緑）
+  const fillGeometry = new THREE.PlaneGeometry(0.48, 0.06);
+  const fillMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00ff00,
+    transparent: true,
+    opacity: 0.9,
+    side: THREE.DoubleSide
+  });
+  hpBarFill = new THREE.Mesh(fillGeometry, fillMaterial);
+  hpBarFill.position.z = 0.001;
+  hpBarGroup.add(hpBarFill);
+
+  sceneRef.add(hpBarGroup);
+}
+
+// HPバーを更新
+function updateHPBar() {
+  if (!hpBarGroup || !replicaModel || !replicaPositioned) return;
+
+  // レプリカの上に配置
+  const replicaPos = replicaModel.position.clone();
+  replicaPos.y += 0.8;
+  hpBarGroup.position.copy(replicaPos);
+
+  // カメラの方を向く
+  const cameraPos = new THREE.Vector3();
+  cameraRef.getWorldPosition(cameraPos);
+  hpBarGroup.lookAt(cameraPos);
+
+  // HP割合に応じてバーを縮小
+  const hpRatio = replicaHP / REPLICA_MAX_HP;
+  hpBarFill.scale.x = hpRatio;
+  hpBarFill.position.x = -0.24 * (1 - hpRatio);
+
+  // HPに応じて色を変更
+  if (hpRatio > 0.5) {
+    hpBarFill.material.color.setHex(0x00ff00); // 緑
+  } else if (hpRatio > 0.25) {
+    hpBarFill.material.color.setHex(0xffff00); // 黄
+  } else {
+    hpBarFill.material.color.setHex(0xff0000); // 赤
+  }
 }
 
 // ランダムな移動先を設定
@@ -255,6 +347,9 @@ export function updateReplicaFloat(deltaTime) {
 
   replicaModel.rotation.z += Math.sin(replicaFloatTime * Math.PI * 0.5) * 0.001;
   replicaModel.rotation.x += Math.sin(replicaFloatTime * Math.PI * 0.3) * 0.001;
+
+  // HPバーを更新
+  updateHPBar();
 }
 
 // レプリカのアステロイドを作成
@@ -571,13 +666,15 @@ function updateReplicaBullets(deltaTime, shieldState) {
 }
 
 // レプリカにヒットしたときのフラッシュをトリガー
-export function triggerReplicaHitFlash() {
+export function triggerReplicaHitFlash(damage = 1) {
   replicaHitFlashTimer = 0.3;
+  // HPを減らす
+  replicaHP = Math.max(0, replicaHP - damage);
   // レプリカヒット音を再生
   if (replicaModel && replicaPositioned) {
     playReplicaHitSound(replicaModel.position.clone());
   }
-  console.log('レプリカにヒット！');
+  console.log('レプリカにヒット！ HP:', replicaHP);
 }
 
 // レプリカのヒットフラッシュを更新
@@ -612,6 +709,15 @@ export function removeReplicaModel() {
     replicaStopDuration = 0;
   }
 
+  // HPバーを削除
+  if (hpBarGroup) {
+    sceneRef.remove(hpBarGroup);
+    hpBarGroup = null;
+    hpBarFill = null;
+    hpText = null;
+  }
+  replicaHP = REPLICA_MAX_HP;  // HPをリセット
+
   if (replicaAsteroidGroup) {
     replicaAsteroidGroup.visible = false;
   }
@@ -643,4 +749,13 @@ export function getReplicaPosition() {
     return replicaModel.position.clone();
   }
   return null;
+}
+
+// レプリカのHP取得
+export function getReplicaHP() {
+  return replicaHP;
+}
+
+export function getReplicaMaxHP() {
+  return REPLICA_MAX_HP;
 }

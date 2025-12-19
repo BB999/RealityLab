@@ -25,6 +25,7 @@ import {
   fireAsteroid,
   getAsteroidGroup,
   getAsteroidState,
+  resetAsteroid,
   initAsteroidAudio
 } from './asteroid.js';
 
@@ -114,6 +115,25 @@ let rightHandPosition = null;
 // VRモード
 let isVRMode = false;
 
+// プレイヤーのステータス
+let playerHP = 100;
+let playerTrion = 100;
+const PLAYER_MAX_HP = 100;
+const PLAYER_MAX_TRION = 100;
+
+// プレイヤーUIグループ（左手首に表示）
+let playerUIGroup = null;
+let playerHPBarFill = null;
+let playerTrionBarFill = null;
+
+// TRION切れ警告表示
+let trionWarningLeft = null;
+let trionWarningRight = null;
+let trionWarningTimer = 0;
+
+// TRION回復タイマー
+let trionRecoveryTimer = 0;
+
 // シーンの初期化
 function init() {
   // シーン作成
@@ -154,7 +174,10 @@ function init() {
 
   // モジュール初期化
   initReplica(scene, camera, {
-    onHit: triggerHitFlash,
+    onHit: () => {
+      triggerHitFlash();
+      damagePlayer(2);  // プレイヤーにダメージ -2
+    },
     checkShieldCollision: (pos) => {
       const shield = checkAutoShieldCollision(pos);
       if (shield) {
@@ -163,7 +186,14 @@ function init() {
       }
       return null;
     },
-    spawnAutoShield: spawnAutoShield
+    spawnAutoShield: (pos, impactPos) => {
+      if (!hasEnoughTrion(5)) {
+        showTrionWarning();
+        return;  // シールドを発動しない
+      }
+      spawnAutoShield(pos, impactPos);
+      consumeTrion(5);  // 自動シールド発動でTRION-5
+    }
   });
   initAutoShield(scene, camera);
   initHitEffect(scene, camera);
@@ -210,6 +240,256 @@ function init() {
 
   // 深度表示切り替えボタン
   setupDepthToggleButton();
+
+  // プレイヤーUIを作成
+  createPlayerUI();
+
+  // TRION切れ警告を作成
+  createTrionWarning();
+}
+
+// プレイヤーUIを作成（左手首に表示）
+function createPlayerUI() {
+  if (playerUIGroup) return;
+
+  playerUIGroup = new THREE.Group();
+  playerUIGroup.visible = false;
+
+  const barWidth = 0.08;
+  const barHeight = 0.015;
+  const spacing = 0.025;
+
+  // HP ラベル（PlaneGeometryでグループと同じ角度に）
+  const hpCanvas = document.createElement('canvas');
+  hpCanvas.width = 64;
+  hpCanvas.height = 32;
+  const hpCtx = hpCanvas.getContext('2d');
+  hpCtx.fillStyle = '#ffffff';
+  hpCtx.font = 'bold 24px Arial';
+  hpCtx.textAlign = 'center';
+  hpCtx.textBaseline = 'middle';
+  hpCtx.fillText('HP', 32, 16);
+  const hpTexture = new THREE.CanvasTexture(hpCanvas);
+  const hpLabelGeometry = new THREE.PlaneGeometry(0.03, 0.015);
+  const hpLabelMaterial = new THREE.MeshBasicMaterial({
+    map: hpTexture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+  const hpLabel = new THREE.Mesh(hpLabelGeometry, hpLabelMaterial);
+  hpLabel.position.set(-0.055, spacing, 0.001);
+  playerUIGroup.add(hpLabel);
+
+  // HP バー背景
+  const hpBgGeometry = new THREE.PlaneGeometry(barWidth, barHeight);
+  const hpBgMaterial = new THREE.MeshBasicMaterial({
+    color: 0x333333,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide
+  });
+  const hpBgMesh = new THREE.Mesh(hpBgGeometry, hpBgMaterial);
+  hpBgMesh.position.set(0, spacing, 0);
+  playerUIGroup.add(hpBgMesh);
+
+  // HP バー本体（緑）
+  const hpFillGeometry = new THREE.PlaneGeometry(barWidth - 0.004, barHeight - 0.004);
+  const hpFillMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00ff00,
+    transparent: true,
+    opacity: 0.9,
+    side: THREE.DoubleSide
+  });
+  playerHPBarFill = new THREE.Mesh(hpFillGeometry, hpFillMaterial);
+  playerHPBarFill.position.set(0, spacing, 0.001);
+  playerUIGroup.add(playerHPBarFill);
+
+  // TRION ラベル（PlaneGeometryでグループと同じ角度に）
+  const trionCanvas = document.createElement('canvas');
+  trionCanvas.width = 80;
+  trionCanvas.height = 24;
+  const trionCtx = trionCanvas.getContext('2d');
+  trionCtx.fillStyle = '#88ffcc';
+  trionCtx.font = 'bold 20px Arial';
+  trionCtx.textAlign = 'center';
+  trionCtx.textBaseline = 'middle';
+  trionCtx.fillText('TRION', 40, 12);
+  const trionTexture = new THREE.CanvasTexture(trionCanvas);
+  const trionLabelGeometry = new THREE.PlaneGeometry(0.032, 0.012);
+  const trionLabelMaterial = new THREE.MeshBasicMaterial({
+    map: trionTexture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+  const trionLabel = new THREE.Mesh(trionLabelGeometry, trionLabelMaterial);
+  trionLabel.position.set(-0.055, 0, 0.001);
+  playerUIGroup.add(trionLabel);
+
+  // TRION バー背景
+  const trionBgGeometry = new THREE.PlaneGeometry(barWidth, barHeight);
+  const trionBgMaterial = new THREE.MeshBasicMaterial({
+    color: 0x333333,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide
+  });
+  const trionBgMesh = new THREE.Mesh(trionBgGeometry, trionBgMaterial);
+  trionBgMesh.position.set(0, 0, 0);
+  playerUIGroup.add(trionBgMesh);
+
+  // TRION バー本体（シアン）
+  const trionFillGeometry = new THREE.PlaneGeometry(barWidth - 0.004, barHeight - 0.004);
+  const trionFillMaterial = new THREE.MeshBasicMaterial({
+    color: 0x88ffcc,
+    transparent: true,
+    opacity: 0.9,
+    side: THREE.DoubleSide
+  });
+  playerTrionBarFill = new THREE.Mesh(trionFillGeometry, trionFillMaterial);
+  playerTrionBarFill.position.set(0, 0, 0.001);
+  playerUIGroup.add(playerTrionBarFill);
+
+  scene.add(playerUIGroup);
+}
+
+// プレイヤーUIを更新
+function updatePlayerUI() {
+  if (!playerUIGroup) return;
+
+  // VRモード時のみ表示
+  if (!isVRMode) {
+    playerUIGroup.visible = false;
+    return;
+  }
+
+  // 左手の位置に配置
+  if (leftHandPosition) {
+    playerUIGroup.visible = true;
+    const uiPos = leftHandPosition.clone();
+    uiPos.y += 0.1; // 手首の少し上
+    playerUIGroup.position.copy(uiPos);
+
+    // カメラの方を向く
+    const cameraPos = new THREE.Vector3();
+    camera.getWorldPosition(cameraPos);
+    playerUIGroup.lookAt(cameraPos);
+  } else {
+    playerUIGroup.visible = false;
+  }
+
+  // HP バー更新
+  const hpRatio = playerHP / PLAYER_MAX_HP;
+  playerHPBarFill.scale.x = Math.max(0.01, hpRatio);
+  playerHPBarFill.position.x = -0.038 * (1 - hpRatio);
+
+  if (hpRatio > 0.5) {
+    playerHPBarFill.material.color.setHex(0x00ff00);
+  } else if (hpRatio > 0.25) {
+    playerHPBarFill.material.color.setHex(0xffff00);
+  } else {
+    playerHPBarFill.material.color.setHex(0xff0000);
+  }
+
+  // TRION バー更新
+  const trionRatio = playerTrion / PLAYER_MAX_TRION;
+  playerTrionBarFill.scale.x = Math.max(0.01, trionRatio);
+  playerTrionBarFill.position.x = -0.038 * (1 - trionRatio);
+}
+
+// プレイヤーがダメージを受けた時
+function damagePlayer(amount = 10) {
+  playerHP = Math.max(0, playerHP - amount);
+  console.log('プレイヤーHP:', playerHP);
+}
+
+// TRIONを消費
+function consumeTrion(amount = 5) {
+  playerTrion = Math.max(0, playerTrion - amount);
+  console.log('TRION:', playerTrion);
+}
+
+// TRIONを回復
+function recoverTrion(amount = 1) {
+  playerTrion = Math.min(PLAYER_MAX_TRION, playerTrion + amount);
+}
+
+// TRIONが足りるかチェック
+function hasEnoughTrion(amount) {
+  return playerTrion >= amount;
+}
+
+// TRION切れ警告を作成
+function createTrionWarning() {
+  // 警告テキストのキャンバス
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ff3333';
+  ctx.font = 'bold 32px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('OUT OF TRION', 128, 32);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true
+  });
+
+  // 左腕用
+  trionWarningLeft = new THREE.Sprite(material.clone());
+  trionWarningLeft.scale.set(0.15, 0.04, 1);
+  trionWarningLeft.visible = false;
+  scene.add(trionWarningLeft);
+
+  // 右腕用
+  trionWarningRight = new THREE.Sprite(material.clone());
+  trionWarningRight.scale.set(0.15, 0.04, 1);
+  trionWarningRight.visible = false;
+  scene.add(trionWarningRight);
+}
+
+// TRION切れ警告を表示
+function showTrionWarning() {
+  trionWarningTimer = 1.5;  // 1.5秒間表示
+}
+
+// TRION切れ警告を更新
+function updateTrionWarning(deltaTime) {
+  if (trionWarningTimer > 0) {
+    trionWarningTimer -= deltaTime;
+
+    // 点滅効果
+    const blink = Math.floor(trionWarningTimer * 6) % 2 === 0;
+
+    if (trionWarningLeft && leftHandPosition) {
+      trionWarningLeft.visible = blink;
+      const pos = leftHandPosition.clone();
+      pos.y += 0.15;
+      trionWarningLeft.position.copy(pos);
+
+      // カメラを向く
+      const cameraPos = new THREE.Vector3();
+      camera.getWorldPosition(cameraPos);
+      trionWarningLeft.lookAt(cameraPos);
+    }
+
+    if (trionWarningRight && rightHandPosition) {
+      trionWarningRight.visible = blink;
+      const pos = rightHandPosition.clone();
+      pos.y += 0.15;
+      trionWarningRight.position.copy(pos);
+
+      // カメラを向く
+      const cameraPos = new THREE.Vector3();
+      camera.getWorldPosition(cameraPos);
+      trionWarningRight.lookAt(cameraPos);
+    }
+  } else {
+    if (trionWarningLeft) trionWarningLeft.visible = false;
+    if (trionWarningRight) trionWarningRight.visible = false;
+  }
 }
 
 // ボックスを作成
@@ -260,6 +540,19 @@ function animate(timestamp, frame) {
 
     // 自動シールドを更新
     updateAutoShields(1 / 60);
+
+    // プレイヤーUIを更新
+    updatePlayerUI();
+
+    // TRION切れ警告を更新
+    updateTrionWarning(1 / 60);
+
+    // TRION回復（1秒で2回復）
+    trionRecoveryTimer += 1 / 60;
+    if (trionRecoveryTimer >= 1.0) {
+      trionRecoveryTimer = 0;
+      recoverTrion(2);
+    }
 
     // 深度情報を更新
     updateDepthInfo(frame, referenceSpace, timestamp, scene, camera);
@@ -322,8 +615,14 @@ function animate(timestamp, frame) {
         leftHandPosition = handTransform.position.clone();
       }
 
-      const newLeftShieldMode = handOpen && palmForward;
       const leftAsteroidMode = handOpen && !palmForward;
+
+      // シールドモード判定（TRION切れの時はシールド発動しない）
+      let newLeftShieldMode = handOpen && palmForward;
+      if (newLeftShieldMode && !isLeftShieldMode && !hasEnoughTrion(5)) {
+        showTrionWarning();
+        newLeftShieldMode = false;  // TRION切れの時はシールドモードにしない
+      }
 
       if (newLeftShieldMode !== isLeftShieldMode) {
         isLeftShieldMode = newLeftShieldMode;
@@ -337,8 +636,14 @@ function animate(timestamp, frame) {
         const leftAsteroidState = getAsteroidState('left');
 
         if (handOpen && leftAsteroidMode && leftAsteroidGroup && !leftAsteroidState.isCharging) {
-          leftAsteroidGroup.visible = true;
-          castAsteroid('left', leftHoundMode);
+          const trionCost = leftHoundMode ? 20 : 10;
+          if (!hasEnoughTrion(trionCost)) {
+            showTrionWarning();
+            // TRION切れの時はキューブを出さない
+          } else {
+            leftAsteroidGroup.visible = true;
+            castAsteroid('left', leftHoundMode);
+          }
         }
         else if (!handOpen && wasOpen && leftAsteroidGroup && leftAsteroidState.isCharging && !leftAsteroidState.isCancelling) {
           const palmNormal = handTransform ? new THREE.Vector3(0, 1, 0).applyQuaternion(
@@ -359,6 +664,8 @@ function animate(timestamp, frame) {
             triggerReplicaHitFlash();
           };
           fireAsteroid(palmNormal, getTargetPos, onHitReplica, 'left');
+          // TRION消費（ハウンド-20、アステロイド-10）
+          consumeTrion(leftHoundMode ? 20 : 10);
         }
       }
 
@@ -426,8 +733,14 @@ function animate(timestamp, frame) {
         rightHandPosition = handTransform.position.clone();
       }
 
-      const newRightShieldMode = handOpen && palmForward;
       const rightAsteroidMode = handOpen && !palmForward;
+
+      // シールドモード判定（TRION切れの時はシールド発動しない）
+      let newRightShieldMode = handOpen && palmForward;
+      if (newRightShieldMode && !isRightShieldMode && !hasEnoughTrion(5)) {
+        showTrionWarning();
+        newRightShieldMode = false;  // TRION切れの時はシールドモードにしない
+      }
 
       if (newRightShieldMode !== isRightShieldMode) {
         isRightShieldMode = newRightShieldMode;
@@ -441,8 +754,14 @@ function animate(timestamp, frame) {
         const rightAsteroidState = getAsteroidState('right');
 
         if (handOpen && rightAsteroidMode && rightAsteroidGroup && !rightAsteroidState.isCharging) {
-          rightAsteroidGroup.visible = true;
-          castAsteroid('right', rightHoundMode);
+          const trionCost = rightHoundMode ? 20 : 10;
+          if (!hasEnoughTrion(trionCost)) {
+            showTrionWarning();
+            // TRION切れの時はキューブを出さない
+          } else {
+            rightAsteroidGroup.visible = true;
+            castAsteroid('right', rightHoundMode);
+          }
         }
         else if (!handOpen && wasOpen && rightAsteroidGroup && rightAsteroidState.isCharging && !rightAsteroidState.isCancelling) {
           const palmNormal = handTransform ? handTransform.palmNormal : null;
@@ -456,6 +775,8 @@ function animate(timestamp, frame) {
             triggerReplicaHitFlash();
           };
           fireAsteroid(palmNormal, getTargetPos, onHitReplica, 'right');
+          // TRION消費（ハウンド-20、アステロイド-10）
+          consumeTrion(rightHoundMode ? 20 : 10);
         }
       }
 
@@ -523,8 +844,14 @@ function animate(timestamp, frame) {
       // 両手がシールドモードだが、まだ固定シールドは無効
       fixedShieldModeTimer += deltaTime;
       if (fixedShieldModeTimer >= FIXED_SHIELD_ACTIVATE_DELAY) {
-        fixedShieldModeActive = true;
-        fixedShieldModeTimer = 0;
+        if (!hasEnoughTrion(30)) {
+          showTrionWarning();
+          fixedShieldModeTimer = 0;  // リセットして再試行可能に
+        } else {
+          fixedShieldModeActive = true;
+          fixedShieldModeTimer = 0;
+          consumeTrion(30);  // 固定シールド発動でTRION-30
+        }
       }
     } else if (!bothHandsShieldMode && fixedShieldModeActive) {
       // 両手シールドモードが解除された
