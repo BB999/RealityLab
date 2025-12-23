@@ -3,6 +3,7 @@ import mkcert from 'vite-plugin-mkcert';
 
 export default defineConfig({
   plugins: [mkcert()],
+  base: './',
   server: {
     https: true,
     host: true
