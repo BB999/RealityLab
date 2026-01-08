@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { FaceDetection } from '@mediapipe/face_detection';
-import { Camera } from '@mediapipe/camera_utils';
+
+// MediaPipeはCDNからグローバルに読み込まれる
+const FaceDetection = window.FaceDetection;
+const Camera = window.Camera;
 
 // DOM要素
 const video = document.getElementById('webcam');
