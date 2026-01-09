@@ -10,33 +10,28 @@
  * @returns {Promise<Object>} モジュール定義
  */
 export async function analyzePrompt(prompt, apiKey) {
-  const systemPrompt = `You are an AI that analyzes user prompts and determines what 3D module to spawn in a WebXR environment.
+  const systemPrompt = `You are an AI that analyzes user prompts and determines what to create in a WebXR environment.
 
-Available module types:
-1. "starfield" - Stars, night sky, space, cosmos, galaxy
-   params: count (50-200), color (hex string), size (0.02-0.08), spread (0.3-0.8 meters), twinkle (boolean)
+Available types:
+1. "threejs" - For any 3D object, effect, or animation that can be created with Three.js code
+   Examples: stars, fireworks, cubes, spheres, particles, geometric shapes, animated objects, etc.
 
-2. "fireworks" - Fireworks, explosions, celebrations, sparks
-   params: rate (0.3-1.0 seconds between launches), particleBudget (200-500), colors (array of hex strings), explosionSize (0.3-0.8 meters)
-
-3. "imagePanel" - For any request that should generate an image using AI
-   params: prompt (string - detailed image generation prompt), width (number), height (number)
+2. "imagePanel" - For 2D artwork, illustrations, photos, paintings that should be generated as an image
+   Examples: portraits, landscapes, artwork, photos, illustrations, etc.
 
 Respond ONLY with valid JSON in this exact format:
 {
-  "kind": "starfield|fireworks|imagePanel",
+  "kind": "threejs|imagePanel",
   "label": "brief description in user's language",
-  "params": { ... appropriate params ... },
-  "imagePrompt": "only if kind is imagePanel, detailed English prompt for image generation"
+  "params": {},
+  "imagePrompt": "only if kind is imagePanel, detailed English prompt for image generation",
+  "threejsPrompt": "only if kind is threejs, detailed description of what 3D object/effect to create"
 }
 
 Rules:
-- If the prompt mentions stars, night sky, space, cosmos, galaxy -> starfield
-- If the prompt mentions fireworks, explosions, sparkles, celebration -> fireworks
-- For any other visual/artistic request -> imagePanel with a detailed image generation prompt
-- IMPORTANT: This is WebXR at arm's reach distance. Keep all size/spread values small (under 1 meter)!
-- starfield spread should be 0.3-0.8m, size 0.02-0.08
-- fireworks explosionSize should be 0.3-0.8m
+- If the request is for 3D objects, effects, particles, geometric shapes, animations -> threejs
+- If the request is for 2D images, artwork, illustrations, photos -> imagePanel
+- For threejs, describe in detail what 3D effect/object should be created
 - For imagePanel, create a detailed English prompt for high-quality image generation`;
 
   try {
@@ -105,45 +100,111 @@ function createFallback(prompt) {
 }
 
 /**
+ * Three.jsコードを生成
+ * @param {string} description - 3Dオブジェクトの説明
+ * @param {string} apiKey - Anthropic APIキー
+ * @returns {Promise<string>} Three.jsコード
+ */
+export async function generateThreejsCode(description, apiKey) {
+  const systemPrompt = `You are a Three.js code generator for WebXR. Generate JavaScript code that creates 3D objects.
+
+IMPORTANT CONSTRAINTS:
+- Objects should fit within 0.5m radius (arm's reach in VR/MR)
+- Use MeshBasicMaterial (not MeshStandardMaterial) for WebXR compatibility
+- All objects must be added to the 'group' variable
+- Track meshes in the 'meshes' array for cleanup
+- Use 'animationCallbacks' array to register animation functions
+
+Available variables:
+- THREE: Three.js library
+- group: THREE.Group to add objects to
+- meshes: Array to track created meshes
+- animationCallbacks: Array of functions called each frame with (time, deltaTime)
+
+Example code structure:
+\`\`\`javascript
+// Create geometry and material
+const geometry = new THREE.SphereGeometry(0.05, 16, 16);
+const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+
+// Create mesh and add to group
+const mesh = new THREE.Mesh(geometry, material);
+group.add(mesh);
+meshes.push(mesh);
+
+// Optional: Add animation
+animationCallbacks.push((time, deltaTime) => {
+  mesh.rotation.y = time;
+});
+\`\`\`
+
+Output ONLY the JavaScript code, no markdown, no explanation.`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens: 1500,
+        messages: [{
+          role: 'user',
+          content: `Generate Three.js code for: ${description}`
+        }],
+        system: systemPrompt
+      })
+    });
+
+    if (!response.ok) {
+      console.error('Three.js code generation failed');
+      return getFallbackCode(description);
+    }
+
+    const data = await response.json();
+    let code = data.content[0].text.trim();
+
+    // マークダウンのコードブロックを除去
+    code = code.replace(/```javascript\n?/g, '').replace(/```\n?/g, '');
+
+    console.log('Generated Three.js code:', code);
+    return code;
+
+  } catch (error) {
+    console.error('Three.js code generation error:', error);
+    return getFallbackCode(description);
+  }
+}
+
+/**
+ * フォールバック用のシンプルなコード
+ */
+function getFallbackCode(description) {
+  return `
+// Fallback: Simple rotating cube
+const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const cube = new THREE.Mesh(geometry, material);
+group.add(cube);
+meshes.push(cube);
+
+animationCallbacks.push((time, deltaTime) => {
+  cube.rotation.x = time;
+  cube.rotation.y = time * 0.5;
+});
+`;
+}
+
+/**
  * シンプルなキーワードベースの判定（Claude APIが使えない場合のフォールバック）
  * @param {string} prompt - ユーザー入力
  * @returns {Object} モジュール定義
  */
 export function analyzePromptLocal(prompt) {
-  const lowerPrompt = prompt.toLowerCase();
-
-  // 星空系
-  const starKeywords = ['星', 'star', '夜空', 'night sky', '宇宙', 'space', 'cosmos', '銀河', 'galaxy', '天の川'];
-  if (starKeywords.some(k => lowerPrompt.includes(k))) {
-    return {
-      kind: 'starfield',
-      label: prompt,
-      params: {
-        count: 200,
-        color: '#ffffff',
-        size: 0.02,
-        spread: 2.0,
-        twinkle: true
-      }
-    };
-  }
-
-  // 花火系
-  const fireworkKeywords = ['花火', 'firework', '爆発', 'explosion', 'スパーク', 'spark', '祝', 'celebrat'];
-  if (fireworkKeywords.some(k => lowerPrompt.includes(k))) {
-    return {
-      kind: 'fireworks',
-      label: prompt,
-      params: {
-        rate: 0.5,
-        particleBudget: 500,
-        colors: ['#ff0000', '#ffff00', '#00ff00', '#00ffff', '#ff00ff'],
-        explosionSize: 0.5
-      }
-    };
-  }
-
-  // その他は画像パネル
   return {
     kind: 'imagePanel',
     label: prompt,

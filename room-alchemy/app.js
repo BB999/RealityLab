@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { ModuleManager } from './modules/ModuleManager.js';
-import { createStarfield, createFireworks } from './modules/factories/effects.js';
 import { createImagePanel } from './modules/factories/imagePanel.js';
-import { analyzePrompt } from './modules/PromptAnalyzer.js';
+import { createDynamicThreejs } from './modules/factories/dynamicThreejs.js';
+import { analyzePrompt, generateThreejsCode } from './modules/PromptAnalyzer.js';
 
 let scene, camera, renderer;
 let moduleManager = null;
@@ -171,9 +171,8 @@ function init() {
 
   // モジュールマネージャーを初期化
   moduleManager = new ModuleManager(scene);
-  moduleManager.registerFactory('starfield', createStarfield);
-  moduleManager.registerFactory('fireworks', createFireworks);
   moduleManager.registerFactory('imagePanel', createImagePanel);
+  moduleManager.registerFactory('threejs', createDynamicThreejs);
 
   // テキストパネルを作成
   createTextPanel();
@@ -658,14 +657,21 @@ async function submitPrompt() {
         });
         updateInfo('画像生成完了！');
       }
-    } else {
-      // 3Dモジュールをスポーン
-      console.log('スポーン位置:', spawnPosition.x.toFixed(2), spawnPosition.y.toFixed(2), spawnPosition.z.toFixed(2));
-      console.log('テキストパネル位置:', textPanel ? textPanel.position : 'null');
-      console.log('モジュール定義:', JSON.stringify(moduleDef));
-      const moduleId = moduleManager.spawn(moduleDef.kind, spawnPosition, moduleDef.params);
-      console.log('生成されたモジュール:', moduleId, 'kind:', moduleDef.kind);
-      updateInfo(`${moduleDef.label || moduleDef.kind} を生成しました！`);
+    } else if (moduleDef.kind === 'threejs') {
+      // Three.jsコードを生成して実行
+      updateInfo('3Dオブジェクト生成中... 🎨');
+      const threejsPrompt = moduleDef.threejsPrompt || currentPrompt;
+
+      // Claude APIでThree.jsコードを生成
+      const code = await generateThreejsCode(threejsPrompt, ANTHROPIC_API_KEY);
+
+      // 動的Three.jsモジュールをスポーン
+      const moduleId = moduleManager.spawn('threejs', spawnPosition, {
+        code: code,
+        prompt: threejsPrompt
+      });
+      console.log('生成されたモジュール:', moduleId, 'prompt:', threejsPrompt);
+      updateInfo(`${moduleDef.label || 'Three.js'} を生成しました！`);
     }
 
   } catch (error) {
@@ -745,11 +751,21 @@ function setupKeyboardEvents() {
       if (!isTextInputActive) {
         const testPosition = new THREE.Vector3(0, 1.0, -1.0);
         console.log('テストスポーン位置:', testPosition);
-        const moduleId = moduleManager.spawn('starfield', testPosition, {
-          count: 50,
-          color: '#ffff00',
-          size: 0.08,
-          spread: 0.5
+        // テスト用のシンプルなコード
+        const testCode = `
+const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const cube = new THREE.Mesh(geometry, material);
+group.add(cube);
+meshes.push(cube);
+animationCallbacks.push((time, deltaTime) => {
+  cube.rotation.x = time;
+  cube.rotation.y = time * 0.5;
+});
+`;
+        const moduleId = moduleManager.spawn('threejs', testPosition, {
+          code: testCode,
+          prompt: 'test cube'
         });
         console.log('テストスポーン完了:', moduleId);
         updateInfo('テストスポーン完了');
