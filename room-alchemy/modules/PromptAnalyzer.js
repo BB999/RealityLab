@@ -3,6 +3,44 @@
  * Claude APIを使ってプロンプトからモジュール種類とパラメータを判定
  */
 
+// Three.js用の詳細プロンプト
+const THREEJS_DESIGN_PROMPT = `あなたはThree.jsのプロのエンジニア兼、工業製品の3Dモデリング設計者です。
+展示・製品レベルを想定して、以下のプロンプトの対象物をThree.jsで生成してください。
+
+【最重要ルール】
+- 1 unit = 1m。現実の寸法・構造・比率で"リアル"を表現する（質感頼み禁止）。
+- 形状は見た目だけでなく、構造・厚み・接合が論理的に説明できること。
+- 抽象化・省略・シルエット誤魔化しは禁止（「なんとなくそれっぽい」は不可）。
+- まず形状構造を文章で整理し、その設計に忠実なコードを出すこと。
+
+【出力フォーマット（必ずこの順番）】
+1) 設計仕様（Design Spec）
+   - 全体寸法（W/H/D）をmm換算でも併記
+   - 厚み（板厚/肉厚）を数値で明記（例：t=18mm等）
+   - クリアランス/隙間（例：嵌合クリアランス0.5mm）
+   - 面取り/角丸の方針（例：R=2mm相当）
+2) 部品表（BOM: Bill of Materials）
+   - パーツを必ず分割：id, 名称, 寸法, 厚み, 材料想定, 接合方式（ねじ/ほぞ/溶接/接着等）
+3) 接合設計（Joints）
+   - どのパーツがどこで、どう固定されるかを文章で説明
+   - 組み立て順（Assembly steps）を3〜8手順で書く
+4) Three.js実装（Code）
+   - パーツごとに関数化を意識し、BOMのidと対応させる
+   - 各パーツは局所座標系で作り、最後に組み立て（transform）して全体にする
+   - すべての寸法は定数（mm→m変換）から計算し、ハードコードの魔法数を避ける
+5) 自己検証（Validation）
+   - 指定寸法と一致しているか（W/H/D）
+   - 厚みが全パーツで定義され一貫しているか
+   - 接合が物理的に成立しているか（浮き/めり込み/貫通がないか）
+   - "省略"が入り込んでいないか（BOMに無い形状がないか）
+
+【禁止】
+- 「詳細は省略」「適当に」「いい感じ」などの曖昧処理
+- 外部モデル(GLB)前提、外部テクスチャ必須
+- 参照不能な架空寸法（必ず数値化）
+
+最初に 想定する製造方法（木工/板金/射出成形/3Dプリント）を1つ選び、その制約（板厚や曲げRなど）に従え`;
+
 /**
  * プロンプトを解析してモジュール定義を生成
  * @param {string} prompt - ユーザー入力
@@ -111,9 +149,13 @@ function createFallback(prompt) {
  * @returns {Promise<string>} Three.jsコード
  */
 export async function generateThreejsCode(description, apiKey) {
-  const systemPrompt = `You are a Three.js code generator for WebXR. Generate JavaScript code that creates 3D objects.
+  const systemPrompt = `You are a Three.js code generator for WebXR.
 
-CRITICAL CONSTRAINTS:
+${THREEJS_DESIGN_PROMPT}
+
+---
+
+CRITICAL CONSTRAINTS FOR CODE OUTPUT:
 - Objects should fit within 0.5m radius (arm's reach in VR/MR)
 - Use MeshBasicMaterial ONLY (not MeshStandardMaterial, not ShaderMaterial)
 - All objects must be added to the 'group' variable
@@ -155,7 +197,7 @@ animationCallbacks.push((time, deltaTime) => {
 });
 \`\`\`
 
-Output ONLY the JavaScript code, no markdown, no explanation.`;
+Output ONLY the JavaScript code, no markdown, no explanation. Skip the design documentation and output only the final code.`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -168,10 +210,13 @@ Output ONLY the JavaScript code, no markdown, no explanation.`;
       },
       body: JSON.stringify({
         model: 'claude-3-5-haiku-20241022',
-        max_tokens: 1500,
+        max_tokens: 3000,
         messages: [{
           role: 'user',
-          content: `Generate Three.js code for: ${description}`
+          content: `【対象プロンプト】
+${description}
+
+上記の対象物をThree.jsで生成してください。リアルな寸法・構造・比率で製品レベルの3Dモデルを作成し、JavaScriptコードのみを出力してください。`
         }],
         system: systemPrompt
       })
@@ -244,7 +289,11 @@ export function analyzePromptLocal(prompt) {
 export async function regenerateThreejsCode(newPrompt, existingCode, originalPrompt, apiKey) {
   const systemPrompt = `You are a Three.js code generator for WebXR. You will modify existing Three.js code based on user instructions.
 
-CRITICAL CONSTRAINTS:
+${THREEJS_DESIGN_PROMPT}
+
+---
+
+CRITICAL CONSTRAINTS FOR CODE OUTPUT:
 - Objects should fit within 0.5m radius (arm's reach in VR/MR)
 - Use MeshBasicMaterial ONLY (not MeshStandardMaterial, not ShaderMaterial)
 - All objects must be added to the 'group' variable
@@ -269,9 +318,9 @@ Available variables:
 - meshes: Array to track created meshes
 - animationCallbacks: Array of functions called each frame with (time, deltaTime)
 
-IMPORTANT: Modify the existing code based on the user's instructions while maintaining the overall structure.
+IMPORTANT: Modify the existing code based on the user's instructions while maintaining the overall structure and realistic dimensions.
 
-Output ONLY the JavaScript code, no markdown, no explanation.`;
+Output ONLY the JavaScript code, no markdown, no explanation. Skip the design documentation and output only the final code.`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -284,19 +333,19 @@ Output ONLY the JavaScript code, no markdown, no explanation.`;
       },
       body: JSON.stringify({
         model: 'claude-3-5-haiku-20241022',
-        max_tokens: 2000,
+        max_tokens: 3000,
         messages: [{
           role: 'user',
-          content: `Original prompt: "${originalPrompt}"
+          content: `【対象プロンプト】
+元のオブジェクト: ${originalPrompt}
+変更指示: ${newPrompt}
 
-Existing Three.js code:
+既存のThree.jsコード:
 \`\`\`javascript
 ${existingCode}
 \`\`\`
 
-User's modification request: "${newPrompt}"
-
-Please modify the existing code based on the user's request. Keep the same overall structure but apply the requested changes.`
+上記の変更指示に基づいて既存のコードを修正してください。リアルな寸法・構造・比率を維持しながら、JavaScriptコードのみを出力してください。`
         }],
         system: systemPrompt
       })
