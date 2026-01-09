@@ -168,6 +168,7 @@ FORBIDDEN (these will cause errors):
 - ShaderMaterial, RawShaderMaterial (use MeshBasicMaterial instead)
 - CanvasTexture with dynamic text (not reliable in WebXR)
 - Any external resources or imports
+- NEVER set group.position or group.rotation - the group position is managed by the system
 
 USE ONLY these geometries:
 - BoxGeometry, SphereGeometry, PlaneGeometry, CylinderGeometry
@@ -209,8 +210,8 @@ Output ONLY the JavaScript code, no markdown, no explanation. Skip the design do
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-3-5-haiku-20241022',
-        max_tokens: 3000,
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
         messages: [{
           role: 'user',
           content: `【対象プロンプト】
@@ -232,6 +233,14 @@ ${description}
 
     // マークダウンのコードブロックを除去
     code = code.replace(/```javascript\n?/g, '').replace(/```\n?/g, '');
+
+    // group.positionとgroup.rotationへの直接設定を除去（システムが管理するため）
+    code = code.replace(/group\.position\.(set|copy|add|sub|multiply|divide)\s*\([^)]*\)\s*;?/g, '// position managed by system');
+    code = code.replace(/group\.rotation\.(set|copy)\s*\([^)]*\)\s*;?/g, '// rotation managed by system');
+    code = code.replace(/group\.position\s*=\s*[^;]+;?/g, '// position managed by system');
+    code = code.replace(/group\.rotation\s*=\s*[^;]+;?/g, '// rotation managed by system');
+    code = code.replace(/group\.position\.[xyz]\s*=\s*[^;]+;?/g, '// position managed by system');
+    code = code.replace(/group\.rotation\.[xyz]\s*=\s*[^;]+;?/g, '// rotation managed by system');
 
     console.log('Generated Three.js code:', code);
     return code;
@@ -306,6 +315,7 @@ FORBIDDEN (these will cause errors):
 - ShaderMaterial, RawShaderMaterial (use MeshBasicMaterial instead)
 - CanvasTexture with dynamic text (not reliable in WebXR)
 - Any external resources or imports
+- NEVER set group.position or group.rotation - the group position is managed by the system
 
 USE ONLY these geometries:
 - BoxGeometry, SphereGeometry, PlaneGeometry, CylinderGeometry
@@ -332,8 +342,8 @@ Output ONLY the JavaScript code, no markdown, no explanation. Skip the design do
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-3-5-haiku-20241022',
-        max_tokens: 3000,
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
         messages: [{
           role: 'user',
           content: `【対象プロンプト】
@@ -361,6 +371,14 @@ ${existingCode}
 
     // マークダウンのコードブロックを除去
     code = code.replace(/```javascript\n?/g, '').replace(/```\n?/g, '');
+
+    // group.positionとgroup.rotationへの直接設定を除去（システムが管理するため）
+    code = code.replace(/group\.position\.(set|copy|add|sub|multiply|divide)\s*\([^)]*\)\s*;?/g, '// position managed by system');
+    code = code.replace(/group\.rotation\.(set|copy)\s*\([^)]*\)\s*;?/g, '// rotation managed by system');
+    code = code.replace(/group\.position\s*=\s*[^;]+;?/g, '// position managed by system');
+    code = code.replace(/group\.rotation\s*=\s*[^;]+;?/g, '// rotation managed by system');
+    code = code.replace(/group\.position\.[xyz]\s*=\s*[^;]+;?/g, '// position managed by system');
+    code = code.replace(/group\.rotation\.[xyz]\s*=\s*[^;]+;?/g, '// rotation managed by system');
 
     console.log('Regenerated Three.js code:', code);
     return code;

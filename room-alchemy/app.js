@@ -194,11 +194,9 @@ async function handleNewGeneration(promptText) {
     const moduleDef = await analyzePrompt(promptText, ANTHROPIC_API_KEY);
     console.log('モジュール定義:', moduleDef);
 
-    // スポーン位置を決定
+    // スポーン位置を決定（常にテキストボックスの上に固定）
     const spawnPosition = new THREE.Vector3();
-    // 同時生成中の数に応じて上にずらす（単独生成なら0.2）
-    const activeGenerations = loadingIndicator.getActiveCount();
-    const offsetY = 0.2 + (activeGenerations * 0.25);
+    const offsetY = 0.2;
 
     if (textPanel.getPanel()) {
       spawnPosition.copy(textPanel.getPanel().position);
@@ -217,7 +215,16 @@ async function handleNewGeneration(promptText) {
       });
 
       if (imageUrl) {
-        const moduleId = moduleManager.spawn('imagePanel', spawnPosition, {
+        // 生成完了後にテキストパネルの現在位置を取得
+        const currentSpawnPosition = new THREE.Vector3();
+        if (textPanel.getPanel()) {
+          currentSpawnPosition.copy(textPanel.getPanel().position);
+          currentSpawnPosition.y += 0.2;
+        } else {
+          currentSpawnPosition.copy(spawnPosition);
+        }
+
+        const moduleId = moduleManager.spawn('imagePanel', currentSpawnPosition, {
           imageUrl: imageUrl,
           imagePrompt: imagePrompt,
           width: moduleDef.params.width || 0.25,
@@ -239,7 +246,16 @@ async function handleNewGeneration(promptText) {
       const threejsPrompt = moduleDef.threejsPrompt || promptText;
       const code = await generateThreejsCode(threejsPrompt, ANTHROPIC_API_KEY);
 
-      moduleManager.spawn('threejs', spawnPosition, {
+      // 生成完了後にテキストパネルの現在位置を取得
+      const currentSpawnPosition = new THREE.Vector3();
+      if (textPanel.getPanel()) {
+        currentSpawnPosition.copy(textPanel.getPanel().position);
+        currentSpawnPosition.y += 0.2;
+      } else {
+        currentSpawnPosition.copy(spawnPosition);
+      }
+
+      moduleManager.spawn('threejs', currentSpawnPosition, {
         code: code,
         prompt: threejsPrompt
       });
@@ -835,6 +851,7 @@ function handleModuleDrag(inputSource, frame, referenceSpace) {
   if (!module) return;
 
   const gripPosition = getGripPosition(inputSource, frame, referenceSpace);
+  if (!gripPosition) return;
 
   if (interactionState.isLaserDragging) {
     const rayPose = frame.getPose(inputSource.targetRaySpace, referenceSpace);
@@ -851,10 +868,13 @@ function handleModuleDrag(inputSource, frame, referenceSpace) {
         rayPose.transform.orientation.z,
         rayPose.transform.orientation.w
       ));
-      const hitPoint = rayOrigin.clone().add(rayDirection.multiplyScalar(interactionState.laserDragDistance));
-      module.group.position.copy(hitPoint.add(interactionState.laserHitOffset));
+      // レイの方向に距離分進んだ点 + オフセット
+      const hitPoint = rayOrigin.clone().add(rayDirection.clone().multiplyScalar(interactionState.laserDragDistance));
+      const newPosition = hitPoint.add(interactionState.laserHitOffset);
+      module.group.position.copy(newPosition);
     }
   } else {
+    // 直接グリップでの移動
     moduleManager.move(interactionState.draggingModule, gripPosition);
   }
 

@@ -110,14 +110,19 @@ export class ModuleManager {
 
   /**
    * 位置でモジュールを検索（当たり判定）
+   * バウンディングボックスを使用して子オブジェクト含めて判定
    * @param {THREE.Vector3} position - 検索位置
-   * @param {number} radius - 検索半径
+   * @param {number} radius - 検索半径（バウンディングボックスの拡張に使用）
    * @returns {Object|null} 見つかったモジュール
    */
   findModuleAtPosition(position, radius = 0.15) {
     for (const module of this.modules.values()) {
-      const distance = module.group.position.distanceTo(position);
-      if (distance < radius) {
+      // バウンディングボックスを計算
+      const box = new THREE.Box3().setFromObject(module.group);
+      // バウンディングボックスを少し拡張
+      box.expandByScalar(radius);
+
+      if (box.containsPoint(position)) {
         return module;
       }
     }
