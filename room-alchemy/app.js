@@ -15,6 +15,7 @@ import {
 import { TextPanel } from './modules/ui/TextPanel.js';
 import { LoadingIndicator } from './modules/ui/LoadingIndicator.js';
 import { GenerateButton } from './modules/ui/GenerateButton.js';
+import { DeleteButton } from './modules/ui/DeleteButton.js';
 import { ConnectionLine } from './modules/ui/ConnectionLine.js';
 
 // サービス
@@ -40,6 +41,7 @@ let hand2 = null;
 let textPanel = null;
 let loadingIndicator = null;
 let generateButton = null;
+let deleteButton = null;
 let connectionLine = null;
 
 // 画像生成サービス
@@ -106,6 +108,11 @@ function init() {
   generateButton = new GenerateButton(scene);
   generateButton.create();
   generateButton.setOnPress(() => submitPrompt());
+
+  // 削除ボタンを初期化
+  deleteButton = new DeleteButton(scene);
+  deleteButton.create();
+  deleteButton.setOnPress(() => handleDelete());
 
   // 接続線を初期化
   connectionLine = new ConnectionLine(scene);
@@ -319,6 +326,8 @@ function selectModule(moduleId) {
 
   interactionState.selectModule(moduleId, kind, code, prompt, imageUrl);
   generateButton.setRegenerateMode(true);
+  deleteButton.show();
+  deleteButton.updatePosition(generateButton.getButton());
   connectionLine.show();
 
   console.log('モジュール選択:', moduleId, kind);
@@ -329,9 +338,25 @@ function selectModule(moduleId) {
 function deselectModule() {
   interactionState.deselectModule();
   generateButton.setRegenerateMode(false);
+  deleteButton.hide();
   connectionLine.hide();
 
   console.log('モジュール選択解除');
+}
+
+// 選択中のモジュールを削除
+function handleDelete() {
+  if (!interactionState.hasSelectedModule()) return;
+
+  const moduleId = interactionState.selectedModule;
+  console.log('モジュール削除:', moduleId);
+
+  // モジュールを削除
+  moduleManager.despawn(moduleId);
+
+  // 選択状態を解除
+  deselectModule();
+  updateInfo('削除しました');
 }
 
 // キーボードイベントを設定
@@ -845,6 +870,11 @@ function animate(timestamp, frame) {
     // 接続線を更新
     updateConnectionLine();
 
+    // 削除ボタンの位置を更新
+    if (deleteButton.isVisible()) {
+      deleteButton.updatePosition(generateButton.getButton());
+    }
+
     // 深度情報を更新
     depthVisualization.update(frame, referenceSpace, camera);
   }
@@ -880,6 +910,14 @@ function updateModuleSelection(frame, referenceSpace) {
       // テキストパネルやGenerateボタンに当たっているか確認
       const textPanelHit = textPanel.isVisible() && raycastTextPanel(inputSource, frame, referenceSpace, textPanel.getPanel());
       const buttonHit = generateButton.isVisible() && raycastTextPanel(inputSource, frame, referenceSpace, generateButton.getButton());
+      const deleteButtonHit = deleteButton.isVisible() && raycastTextPanel(inputSource, frame, referenceSpace, deleteButton.getButton());
+
+      // 削除ボタンに当たっている場合
+      if (deleteButtonHit) {
+        deleteButton.press();
+        wasTriggerPressedState[handedness] = triggerPressed;
+        continue;
+      }
 
       // テキストパネルやボタンに当たっている場合は選択解除しない
       if (textPanelHit || buttonHit) {
