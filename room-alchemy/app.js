@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 
-let scene, camera, renderer, box;
+let scene, camera, renderer;
 let xrSession = null;
 let rightController = null;
 let leftController = null;
-let boxPositioned = false;
 
 // 深度センサー用変数
 let depthDataTexture = null;
@@ -18,6 +17,24 @@ let gridHelper = null;
 // ハンドトラッキング用変数
 let hand1 = null;
 let hand2 = null;
+
+// 3Dテキストボックス用変数
+let textPanel = null;
+let textCanvas = null;
+let textContext = null;
+let textTexture = null;
+let promptText = '';
+let cursorVisible = true;
+let cursorBlinkInterval = null;
+let isTextInputActive = false;
+
+// パネルドラッグ用変数
+let isDraggingPanel = false;
+let draggingController = null;
+let dragOffset = new THREE.Vector3();
+let panelInitialized = false;
+let wasGripPressed = { left: false, right: false };
+
 
 // シーンの初期化
 function init() {
@@ -54,6 +71,12 @@ function init() {
   // ボックスを作成
   createBox();
 
+  // テキストパネルを作成
+  createTextPanel();
+
+  // キーボードイベントを設定
+  setupKeyboardEvents();
+
   // リサイズ対応
   window.addEventListener('resize', onWindowResize);
 
@@ -61,17 +84,207 @@ function init() {
   renderer.setAnimationLoop(animate);
 }
 
-// ボックスを作成
+// ボックスを作成（無効化）
 function createBox() {
-  const geometry = new THREE.BoxGeometry(0.15, 0.15, 0.15);
-  const material = new THREE.MeshStandardMaterial({
-    color: 0x4CAF50,
-    metalness: 0.3,
-    roughness: 0.7
+  // キューブは削除したので何もしない
+}
+
+// 3Dテキストパネルを作成
+function createTextPanel() {
+  // キャンバスを作成（テキスト描画用）
+  textCanvas = document.createElement('canvas');
+  textCanvas.width = 512;
+  textCanvas.height = 128;
+  textContext = textCanvas.getContext('2d');
+
+  // テクスチャを作成
+  textTexture = new THREE.CanvasTexture(textCanvas);
+  textTexture.minFilter = THREE.LinearFilter;
+  textTexture.magFilter = THREE.LinearFilter;
+
+  // パネルのジオメトリとマテリアル（半分のサイズ）
+  const panelGeometry = new THREE.PlaneGeometry(0.4, 0.1);
+  const panelMaterial = new THREE.MeshBasicMaterial({
+    map: textTexture,
+    transparent: true,
+    side: THREE.DoubleSide
   });
-  box = new THREE.Mesh(geometry, material);
-  box.position.set(0, 0, -2);
-  scene.add(box);
+
+  textPanel = new THREE.Mesh(panelGeometry, panelMaterial);
+  textPanel.position.set(0, 1.2, -0.5);
+  textPanel.visible = false;
+  scene.add(textPanel);
+
+  // 初期描画
+  updateTextCanvas();
+
+  // カーソル点滅
+  cursorBlinkInterval = setInterval(() => {
+    if (isTextInputActive) {
+      cursorVisible = !cursorVisible;
+      updateTextCanvas();
+    }
+  }, 500);
+}
+
+// テキストキャンバスを更新
+function updateTextCanvas() {
+  if (!textContext) return;
+
+  const ctx = textContext;
+  const width = textCanvas.width;
+  const height = textCanvas.height;
+
+  // 背景をクリア
+  ctx.clearRect(0, 0, width, height);
+
+  // 背景を描画（不透明の濃いグレー - MRで見やすく）
+  ctx.fillStyle = 'rgba(30, 30, 40, 0.95)';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, width, height, 10);
+  ctx.fill();
+
+  // 枠線を描画（明るい色で目立つように）
+  ctx.strokeStyle = isTextInputActive ? '#4CAF50' : '#AAAAAA';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(2, 2, width - 4, height - 4, 8);
+  ctx.stroke();
+
+  // プレースホルダーまたはテキストを描画
+  ctx.font = 'bold 18px system-ui, sans-serif';
+  ctx.textBaseline = 'middle';
+
+  if (promptText.length === 0 && !isTextInputActive) {
+    ctx.fillStyle = '#888888';
+    ctx.fillText('✨ プロンプトを入力...', 15, height / 2);
+  } else {
+    ctx.fillStyle = '#ffffff';
+    const displayText = promptText + (cursorVisible && isTextInputActive ? '|' : '');
+
+    // テキストが長すぎる場合は省略
+    const maxWidth = width - 30;
+    let text = displayText;
+    while (ctx.measureText(text).width > maxWidth && text.length > 0) {
+      text = text.substring(1);
+    }
+    ctx.fillText(text, 15, height / 2);
+  }
+
+  // ヒントを描画（小さく）
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.fillStyle = '#666666';
+  ctx.textAlign = 'right';
+  ctx.fillText('Enter: 生成', width - 10, height - 10);
+  ctx.textAlign = 'left';
+
+  // テクスチャを更新
+  if (textTexture) {
+    textTexture.needsUpdate = true;
+  }
+}
+
+// テキスト入力を開始
+function startTextInput() {
+  isTextInputActive = true;
+  promptText = '';
+  cursorVisible = true;
+  updateTextCanvas();
+
+  // テキストパネルを表示（初期化フラグをリセット）
+  if (textPanel) {
+    textPanel.visible = true;
+    panelInitialized = false; // 次回表示時にカメラの前に再配置
+    console.log('テキスト入力開始 - パネル表示:', textPanel.visible, 'panelInitialized:', panelInitialized);
+  } else {
+    console.error('textPanelが存在しません');
+  }
+
+  // ボタンの状態を更新
+  const promptToggleButton = document.getElementById('prompt-toggle');
+  if (promptToggleButton) {
+    promptToggleButton.classList.add('active');
+    promptToggleButton.textContent = '❌ 入力を閉じる';
+  }
+}
+
+// テキスト入力を終了
+function stopTextInput() {
+  isTextInputActive = false;
+  cursorVisible = false;
+  updateTextCanvas();
+
+  // ボタンの状態を更新
+  const promptToggleButton = document.getElementById('prompt-toggle');
+  if (promptToggleButton) {
+    promptToggleButton.classList.remove('active');
+    promptToggleButton.textContent = '✨ プロンプト入力';
+  }
+}
+
+// プロンプトを送信（エフェクト生成用 - 後で実装）
+function submitPrompt() {
+  if (promptText.trim().length === 0) return;
+
+  console.log('プロンプト送信:', promptText);
+  updateInfo('プロンプト: ' + promptText);
+
+  // TODO: ここでAIにプロンプトを送信し、エフェクトを生成する
+
+  stopTextInput();
+}
+
+// キーボードイベントを設定
+function setupKeyboardEvents() {
+  document.addEventListener('keydown', (event) => {
+    // Tabキーでテキスト入力を開始/終了
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      if (isTextInputActive) {
+        stopTextInput();
+      } else {
+        startTextInput();
+      }
+      return;
+    }
+
+    // テキスト入力がアクティブでない場合は無視
+    if (!isTextInputActive) return;
+
+    // Escapeでキャンセル
+    if (event.key === 'Escape') {
+      stopTextInput();
+      return;
+    }
+
+    // Enterで送信
+    if (event.key === 'Enter') {
+      submitPrompt();
+      return;
+    }
+
+    // Backspaceで1文字削除
+    if (event.key === 'Backspace') {
+      event.preventDefault();
+      promptText = promptText.slice(0, -1);
+      updateTextCanvas();
+      return;
+    }
+
+    // 通常の文字入力
+    if (event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
+      promptText += event.key;
+      updateTextCanvas();
+    }
+  });
+
+  // IME入力対応（日本語など）
+  document.addEventListener('compositionend', (event) => {
+    if (isTextInputActive && event.data) {
+      promptText += event.data;
+      updateTextCanvas();
+    }
+  });
 }
 
 // 深度可視化用のメッシュを作成
@@ -217,44 +430,181 @@ function removeVREnvironment() {
   vrBackground = null;
 }
 
+// テキストパネルを初期位置（カメラの前）に配置
+function initializeTextPanelPosition(frame, referenceSpace) {
+  if (!textPanel || panelInitialized) return;
+
+  let cameraPosition = new THREE.Vector3();
+  let cameraQuaternion = new THREE.Quaternion();
+
+  if (xrSession && frame && referenceSpace) {
+    // XRセッション中はviewerPoseから位置を取得
+    const viewerPose = frame.getViewerPose(referenceSpace);
+    if (viewerPose) {
+      const transform = viewerPose.transform;
+      cameraPosition.set(
+        transform.position.x,
+        transform.position.y,
+        transform.position.z
+      );
+      cameraQuaternion.set(
+        transform.orientation.x,
+        transform.orientation.y,
+        transform.orientation.z,
+        transform.orientation.w
+      );
+    } else {
+      // viewerPoseが取得できなければ次のフレームで再試行
+      return;
+    }
+  } else {
+    cameraPosition.copy(camera.position);
+    cameraQuaternion.copy(camera.quaternion);
+  }
+
+  // カメラの前方0.5mにパネルを配置（少し下に）
+  const forward = new THREE.Vector3(0, -0.1, -0.5);
+  forward.applyQuaternion(cameraQuaternion);
+  textPanel.position.copy(cameraPosition).add(forward);
+
+  // パネルをカメラに向ける
+  textPanel.quaternion.copy(cameraQuaternion);
+
+  console.log('テキストパネルを配置:', textPanel.position);
+  panelInitialized = true;
+}
+
+// コントローラーの位置を取得
+function getControllerPosition(controller) {
+  if (!controller) return null;
+  const position = new THREE.Vector3();
+  controller.getWorldPosition(position);
+  return position;
+}
+
+// 当たり判定のサイズ（パネルサイズに合わせる: 0.4 x 0.1）
+const COLLISION_SIZE = { x: 0.5, y: 0.15, z: 0.1 };
+
+// パネルとの当たり判定（ボックス）
+function checkPanelCollision(controllerPosition) {
+  if (!textPanel || !controllerPosition) return false;
+
+  // パネルのローカル座標系に変換
+  const localPos = controllerPosition.clone();
+  textPanel.worldToLocal(localPos);
+
+  // ボックス内かどうかチェック
+  const halfX = COLLISION_SIZE.x / 2;
+  const halfY = COLLISION_SIZE.y / 2;
+  const halfZ = COLLISION_SIZE.z / 2;
+
+  return Math.abs(localPos.x) < halfX &&
+         Math.abs(localPos.y) < halfY &&
+         Math.abs(localPos.z) < halfZ;
+}
+
+// グリップボタンの状態を取得
+function isGripPressed(inputSource) {
+  if (!inputSource || !inputSource.gamepad) return false;
+
+  const gamepad = inputSource.gamepad;
+  const buttons = gamepad.buttons;
+
+  // デバッグ用：ボタンの状態をログ出力（初回のみ）
+  if (!isGripPressed.logged) {
+    console.log('Gamepad buttons:', buttons.length);
+    for (let i = 0; i < buttons.length; i++) {
+      console.log(`Button ${i}: pressed=${buttons[i].pressed}, value=${buttons[i].value}`);
+    }
+    isGripPressed.logged = true;
+  }
+
+  // Meta Quest: グリップはbuttons[1]
+  // 他のコントローラー: buttons[2]の場合もある
+  if (buttons && buttons.length > 1) {
+    // buttons[1]がグリップ（Squeeze）
+    return buttons[1].pressed || buttons[1].value > 0.5;
+  }
+  return false;
+}
+
+// コントローラーによるパネル操作を更新
+function updatePanelControllerInteraction(frame, referenceSpace) {
+  if (!textPanel || !textPanel.visible || !xrSession) return;
+
+  const inputSources = xrSession.inputSources;
+  if (!inputSources) return;
+
+  for (const inputSource of inputSources) {
+    if (inputSource.targetRayMode !== 'tracked-pointer') continue;
+
+    const controller = inputSource.handedness === 'right' ? leftController : rightController;
+    if (!controller) continue;
+
+    const controllerPosition = getControllerPosition(controller);
+    const gripPressed = isGripPressed(inputSource);
+    const handedness = inputSource.handedness;
+
+    // ドラッグ中の処理
+    if (isDraggingPanel && draggingController === controller) {
+      if (gripPressed && controllerPosition) {
+        // コントローラーの位置にオフセットを加えてパネルを移動
+        textPanel.position.copy(controllerPosition).add(dragOffset);
+
+        // パネルをカメラに向ける
+        const viewerPose = frame.getViewerPose(referenceSpace);
+        if (viewerPose) {
+          const cameraPos = new THREE.Vector3(
+            viewerPose.transform.position.x,
+            viewerPose.transform.position.y,
+            viewerPose.transform.position.z
+          );
+          textPanel.lookAt(cameraPos);
+        }
+      } else {
+        // グリップを離したらドラッグ終了
+        isDraggingPanel = false;
+        draggingController = null;
+        console.log('パネルをドロップ');
+      }
+      wasGripPressed[handedness] = gripPressed;
+      return;
+    }
+
+    // グリップを押した瞬間にパネルをつかむ
+    const isColliding = checkPanelCollision(controllerPosition);
+
+    if (gripPressed && !wasGripPressed[handedness]) {
+      console.log('グリップ押下:', handedness, 'collision:', isColliding, 'distance:', controllerPosition ? controllerPosition.distanceTo(textPanel.position) : 'N/A');
+
+      if (controllerPosition && isColliding) {
+        isDraggingPanel = true;
+        draggingController = controller;
+        dragOffset.copy(textPanel.position).sub(controllerPosition);
+        console.log('パネルをグリップ:', handedness);
+      }
+    }
+
+    wasGripPressed[handedness] = gripPressed;
+  }
+}
+
 // アニメーションループ
 function animate(timestamp, frame) {
   // XRセッション中の処理
   if (frame && xrSession) {
     const referenceSpace = renderer.xr.getReferenceSpace();
 
+    // テキストパネルの初期位置を設定（一度だけ）
+    if (textPanel && textPanel.visible && !panelInitialized) {
+      initializeTextPanelPosition(frame, referenceSpace);
+    }
+
+    // コントローラーによるパネル操作
+    updatePanelControllerInteraction(frame, referenceSpace);
+
     // 深度情報を更新
     updateDepthInfo(frame, referenceSpace);
-
-    // ボックスを右コントローラーの前に配置
-    if (!boxPositioned && box && rightController) {
-      const controllerPosition = new THREE.Vector3();
-      const controllerQuaternion = new THREE.Quaternion();
-      rightController.getWorldPosition(controllerPosition);
-      rightController.getWorldQuaternion(controllerQuaternion);
-
-      // コントローラーの前方0.3mにボックスを配置
-      const forward = new THREE.Vector3(0, 0, -0.3);
-      forward.applyQuaternion(controllerQuaternion);
-
-      box.position.set(
-        controllerPosition.x + forward.x,
-        controllerPosition.y + forward.y,
-        controllerPosition.z + forward.z
-      );
-
-      // コントローラーの位置が有効な場合のみ配置完了とする
-      if (controllerPosition.lengthSq() > 0) {
-        boxPositioned = true;
-        console.log('ボックスを右コントローラーの前に配置しました');
-      }
-    }
-
-    // ボックスをゆっくり回転させる
-    if (box) {
-      box.rotation.y += 0.01;
-      box.rotation.x += 0.005;
-    }
   }
 
   renderer.render(scene, camera);
@@ -317,8 +667,8 @@ async function startXR() {
     scene.add(hand1);
     scene.add(hand2);
 
-    // ボックス配置フラグをリセット
-    boxPositioned = false;
+    // テキスト入力を開始（MR空間にテキストパネルを表示）
+    startTextInput();
 
     // ボタンを非表示
     const button = document.getElementById('start-button');
@@ -333,7 +683,7 @@ async function startXR() {
     // セッション開始イベントを発火
     window.dispatchEvent(new Event('xr-session-start'));
 
-    updateInfo('MRセッション開始');
+    updateInfo('MRセッション開始 - Tabキーでテキスト入力');
 
     // セッション開始後に深度センサーの状態を確認
     if (xrSession.depthUsage) {
@@ -420,8 +770,8 @@ async function startVR() {
     scene.add(hand1);
     scene.add(hand2);
 
-    // ボックス配置フラグをリセット
-    boxPositioned = false;
+    // テキスト入力を開始（VR空間にテキストパネルを表示）
+    startTextInput();
 
     // ボタンを非表示
     const button = document.getElementById('start-button');
@@ -436,7 +786,7 @@ async function startVR() {
     // セッション開始イベントを発火
     window.dispatchEvent(new Event('xr-session-start'));
 
-    updateInfo('VRセッション開始');
+    updateInfo('VRセッション開始 - Tabキーでテキスト入力');
 
     xrSession.addEventListener('end', () => {
       xrSession = null;
@@ -499,5 +849,17 @@ if (depthToggleButton) {
     depthToggleButton.style.display = 'none';
     showDepthVisualization = false;
     depthToggleButton.textContent = '深度表示 OFF';
+  });
+}
+
+// プロンプト入力ボタン
+const promptToggleButton = document.getElementById('prompt-toggle');
+if (promptToggleButton) {
+  promptToggleButton.addEventListener('click', () => {
+    if (isTextInputActive) {
+      stopTextInput();
+    } else {
+      startTextInput();
+    }
   });
 }

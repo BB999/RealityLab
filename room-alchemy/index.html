@@ -111,6 +111,32 @@
       background: #1976D2;
       transform: scale(1.05);
     }
+
+    #prompt-toggle {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      padding: 10px 20px;
+      font-size: 16px;
+      background: #9C27B0;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      transition: all 0.3s;
+      z-index: 100;
+    }
+
+    #prompt-toggle:hover {
+      background: #7B1FA2;
+      transform: scale(1.05);
+    }
+
+    #prompt-toggle.active {
+      background: #4CAF50;
+    }
   </style>
 </head>
 <body>
@@ -118,6 +144,7 @@
   <button id="start-button">MRを開始</button>
   <button id="vr-button">VRを開始</button>
   <button id="depth-toggle">深度表示 OFF</button>
+  <button id="prompt-toggle">✨ プロンプト入力</button>
   <div id="info">ボックスを表示するには「MRを開始」または「VRを開始」をタップしてください</div>
   <script type="module" src="/app.js"></script>
 </body>
