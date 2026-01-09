@@ -32,8 +32,9 @@ let isTextInputActive = false;
 let generatedImagePanel = null;
 let isGenerating = false;
 
-// fal.ai APIキー（環境変数から読み込み）
+// APIキー（環境変数から読み込み）
 const FAL_API_KEY = import.meta.env.VITE_FAL_API_KEY;
+const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
 
 // 生成ボタン用変数
 let generateButton = null;
@@ -456,17 +457,61 @@ function displayGeneratedImage(imageUrl) {
   );
 }
 
+// Claude APIでプロンプトを強化
+async function enhancePrompt(userPrompt) {
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: `You are an expert at creating prompts for image generation AI. Convert the following user input into a detailed, high-quality English prompt for Nano Banana Pro (a text-to-image AI). Keep it concise but descriptive, focusing on visual details, style, lighting, and composition. Output ONLY the prompt, nothing else.
+
+User input: ${userPrompt}`
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Claude API Error:', errorText);
+      return userPrompt; // エラー時は元のプロンプトを使用
+    }
+
+    const data = await response.json();
+    const enhancedPrompt = data.content[0].text.trim();
+    console.log('Enhanced prompt:', enhancedPrompt);
+    return enhancedPrompt;
+
+  } catch (error) {
+    console.error('プロンプト強化エラー:', error);
+    return userPrompt; // エラー時は元のプロンプトを使用
+  }
+}
+
 // fal.ai APIで画像を生成
-async function generateImage(prompt) {
+async function generateImage(userPrompt) {
   if (isGenerating) {
     console.log('既に生成中です');
     return;
   }
 
   isGenerating = true;
-  updateInfo('画像生成中... ✨');
+  updateInfo('プロンプト強化中... 🧠');
 
   try {
+    // Claude APIでプロンプトを強化
+    const prompt = await enhancePrompt(userPrompt);
+    updateInfo('画像生成中... ✨');
+
     // fal.ai Nano Banana Pro APIを呼び出し（キュー方式）
     const submitResponse = await fetch('https://queue.fal.run/fal-ai/nano-banana-pro', {
       method: 'POST',
