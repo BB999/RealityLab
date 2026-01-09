@@ -184,6 +184,9 @@ async function handleNewGeneration(promptText) {
   updateInfo('解析中... 🧠');
   textPanel.clearPromptText();
 
+  // ボタンを非表示にして押せないようにする
+  generateButton.hide();
+
   let loadingId = null;
 
   try {
@@ -193,8 +196,9 @@ async function handleNewGeneration(promptText) {
 
     // スポーン位置を決定
     const spawnPosition = new THREE.Vector3();
-    const moduleCount = moduleManager.modules.size;
-    const offsetY = 0.15 + (moduleCount * 0.25);
+    // 同時生成中の数に応じて上にずらす（単独生成なら0.2）
+    const activeGenerations = loadingIndicator.getActiveCount();
+    const offsetY = 0.2 + (activeGenerations * 0.25);
 
     if (textPanel.getPanel()) {
       spawnPosition.copy(textPanel.getPanel().position);
@@ -205,6 +209,7 @@ async function handleNewGeneration(promptText) {
 
     if (moduleDef.kind === 'imagePanel') {
       loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating Image');
+      generateButton.show();
       updateInfo('画像生成中... ✨');
       const imagePrompt = moduleDef.imagePrompt || promptText;
       const imageUrl = await imageGenerator.generate(imagePrompt, (current, max) => {
@@ -212,19 +217,24 @@ async function handleNewGeneration(promptText) {
       });
 
       if (imageUrl) {
-        moduleManager.spawn('imagePanel', spawnPosition, {
+        const moduleId = moduleManager.spawn('imagePanel', spawnPosition, {
           imageUrl: imageUrl,
           imagePrompt: imagePrompt,
           width: moduleDef.params.width || 0.25,
           height: moduleDef.params.height || 0.25
         });
+        // カメラに向ける（水平方向のみ）
+        lookAtCameraHorizontal(moduleId);
         loadingIndicator.hide(loadingId);
+        generateButton.show();
         updateInfo('画像生成完了！');
       } else {
         loadingIndicator.hide(loadingId);
+        generateButton.show();
       }
     } else if (moduleDef.kind === 'threejs') {
       loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating 3D');
+      generateButton.show();
       updateInfo('3Dオブジェクト生成中... 🎨');
       const threejsPrompt = moduleDef.threejsPrompt || promptText;
       const code = await generateThreejsCode(threejsPrompt, ANTHROPIC_API_KEY);
@@ -234,12 +244,14 @@ async function handleNewGeneration(promptText) {
         prompt: threejsPrompt
       });
       loadingIndicator.hide(loadingId);
+      generateButton.show();
       updateInfo(`${moduleDef.label || 'Three.js'} を生成しました！`);
     }
 
   } catch (error) {
     console.error('モジュール生成エラー:', error);
     if (loadingId) loadingIndicator.hide(loadingId);
+    generateButton.show();
     updateInfo('エラー: ' + error.message);
   }
 }
@@ -251,11 +263,17 @@ async function handleRegenerate(promptText) {
   updateInfo('再生成中... 🔄');
   textPanel.clearPromptText();
 
+  // ボタンを非表示にして押せないようにする
+  generateButton.hide();
+  deleteButton.hide();
+
   let loadingId = null;
 
   try {
     if (kind === 'threejs') {
       loadingId = loadingIndicator.show(textPanel.getPanel(), 'Regenerating 3D');
+      generateButton.show();
+      deleteButton.show();
       // Three.jsモジュールの再生成
       const newCode = await regenerateThreejsCode(promptText, code, prompt, ANTHROPIC_API_KEY);
 
@@ -267,11 +285,14 @@ async function handleRegenerate(promptText) {
 
       loadingIndicator.hide(loadingId);
       deselectModule();
+      generateButton.show();
       updateInfo('再生成完了！');
       console.log('Three.js再生成完了:', newId);
 
     } else if (kind === 'imagePanel') {
       loadingId = loadingIndicator.show(textPanel.getPanel(), 'Regenerating Image');
+      generateButton.show();
+      deleteButton.show();
       // 画像パネルの再生成
       updateInfo('プロンプト作成中... 📝');
 
@@ -293,13 +314,18 @@ async function handleRegenerate(promptText) {
           width: 0.25,
           height: 0.25
         });
+        // カメラに向ける（水平方向のみ）
+        lookAtCameraHorizontal(newId);
 
         loadingIndicator.hide(loadingId);
         deselectModule();
+        generateButton.show();
         updateInfo('画像再生成完了！');
         console.log('画像再生成完了:', newId);
       } else {
         loadingIndicator.hide(loadingId);
+        deselectModule();
+        generateButton.show();
         updateInfo('画像生成に失敗しました');
       }
     }
@@ -307,6 +333,8 @@ async function handleRegenerate(promptText) {
   } catch (error) {
     console.error('再生成エラー:', error);
     if (loadingId) loadingIndicator.hide(loadingId);
+    deselectModule();
+    generateButton.show();
     updateInfo('エラー: ' + error.message);
   }
 }
@@ -357,6 +385,27 @@ function handleDelete() {
   // 選択状態を解除
   deselectModule();
   updateInfo('削除しました');
+}
+
+// モジュールをカメラに向ける（水平方向のみ）
+function lookAtCameraHorizontal(moduleId) {
+  const module = moduleManager.getModule(moduleId);
+  if (!module) return;
+
+  // XRセッション中はviewerPoseからカメラ位置を取得
+  let cameraPos = camera.position.clone();
+
+  // モジュールの位置からカメラの方向を計算（Y軸回転のみ）
+  const modulePos = module.group.position;
+  const direction = new THREE.Vector3(
+    cameraPos.x - modulePos.x,
+    0, // Y成分を0にして水平方向のみ
+    cameraPos.z - modulePos.z
+  ).normalize();
+
+  // 方向からY軸回転角度を計算
+  const angle = Math.atan2(direction.x, direction.z);
+  module.group.rotation.set(0, angle, 0);
 }
 
 // キーボードイベントを設定
