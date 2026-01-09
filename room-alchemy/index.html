@@ -50,33 +50,6 @@
       transform: translate(-50%, -50%) scale(0.95);
     }
 
-    #vr-button {
-      position: absolute;
-      top: calc(50% + 80px);
-      left: 50%;
-      transform: translate(-50%, -50%);
-      padding: 20px 40px;
-      font-size: 24px;
-      background: #2196F3;
-      color: white;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      font-weight: bold;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-      transition: all 0.3s;
-      z-index: 1000;
-    }
-
-    #vr-button:hover {
-      background: #1976D2;
-      transform: translate(-50%, -50%) scale(1.05);
-    }
-
-    #vr-button:active {
-      transform: translate(-50%, -50%) scale(0.95);
-    }
-
     #info {
       position: absolute;
       top: 10px;
@@ -142,10 +115,9 @@
 <body>
   <div id="app"></div>
   <button id="start-button">MRを開始</button>
-  <button id="vr-button">VRを開始</button>
   <button id="depth-toggle">深度表示 OFF</button>
   <button id="prompt-toggle">✨ プロンプト入力</button>
-  <div id="info">「MRを開始」または「VRを開始」をタップしてください</div>
+  <div id="info">「MRを開始」をタップしてください</div>
 
   <!-- 隠し入力欄（キーボード呼び出し用） -->
   <input type="text" id="hidden-input" style="position:fixed; top:-100px; left:0; opacity:0;" autocomplete="off">

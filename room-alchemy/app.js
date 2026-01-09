@@ -15,9 +15,6 @@ let depthDataTexture = null;
 let depthMesh = null;
 let showDepthVisualization = false;
 
-// VR用背景とグリッド
-let vrBackground = null;
-let gridHelper = null;
 
 // ハンドトラッキング用変数
 let hand1 = null;
@@ -37,10 +34,31 @@ let isTextInputActive = false;
 let generatedImagePanel = null;
 let isGenerating = false;
 
+// ローディングインジケーター用変数
+let loadingIndicator = null;
+let loadingDots = [];
+let loadingAnimationTime = 0;
+
 // モジュールドラッグ用変数
 let draggingModule = null;
 let initialModuleQuaternion = new THREE.Quaternion();
 let initialGripQuaternion = new THREE.Quaternion();
+let isLaserDragging = false;  // レーザーでドラッグ中か
+let laserDragDistance = 0;    // レーザードラッグ時の距離
+let laserHitOffset = new THREE.Vector3();  // レーザーヒット点からモジュール中心へのオフセット
+
+// パネルのレーザードラッグ用変数
+let isPanelLaserDragging = false;  // テキストパネルをレーザーでドラッグ中か
+let panelLaserDragDistance = 0;    // テキストパネルのレーザードラッグ距離
+let isImagePanelLaserDragging = false;  // 画像パネルをレーザーでドラッグ中か
+let imagePanelLaserDragDistance = 0;    // 画像パネルのレーザードラッグ距離
+
+// 両手スケーリング用変数
+let isTwoHandScaling = false;
+let initialGripDistance = 0;
+let initialModuleScale = 1;
+let leftGripInputSource = null;
+let rightGripInputSource = null;
 
 // 手の回転差分からオブジェクトの回転を計算
 function applyGripRotation(targetQuaternion, currentGripQuat) {
@@ -79,7 +97,7 @@ let rightLaser = null;
 let leftLaser = null;
 let laserShowTime = { left: 0, right: 0 };
 let wasTriggerPressed = { left: false, right: false };
-const LASER_DISPLAY_DURATION = 5000; // 5秒
+const LASER_DISPLAY_DURATION = 10000; // 10秒
 
 // レーザーポインターを作成
 function createLaser() {
@@ -245,6 +263,81 @@ function createTextPanel() {
       updateTextCanvas();
     }
   }, 500);
+}
+
+// ローディングインジケーターを作成
+function createLoadingIndicator() {
+  if (loadingIndicator) {
+    scene.remove(loadingIndicator);
+  }
+
+  loadingIndicator = new THREE.Group();
+  loadingDots = [];
+
+  // 5つのドットを作成
+  const dotCount = 5;
+  const dotRadius = 0.015;
+  const spacing = 0.05;
+
+  for (let i = 0; i < dotCount; i++) {
+    const geometry = new THREE.SphereGeometry(dotRadius, 12, 12);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x4CAF50,
+      transparent: true,
+      opacity: 0.3
+    });
+    const dot = new THREE.Mesh(geometry, material);
+    dot.position.x = (i - (dotCount - 1) / 2) * spacing;
+    loadingIndicator.add(dot);
+    loadingDots.push(dot);
+  }
+
+  loadingIndicator.visible = false;
+  scene.add(loadingIndicator);
+}
+
+// ローディングインジケーターを表示
+function showLoadingIndicator() {
+  if (!loadingIndicator) {
+    createLoadingIndicator();
+  }
+
+  if (textPanel) {
+    loadingIndicator.position.copy(textPanel.position);
+    loadingIndicator.position.y -= 0.08;
+    loadingIndicator.quaternion.copy(textPanel.quaternion);
+  }
+
+  loadingIndicator.visible = true;
+  loadingAnimationTime = 0;
+}
+
+// ローディングインジケーターを非表示
+function hideLoadingIndicator() {
+  if (loadingIndicator) {
+    loadingIndicator.visible = false;
+  }
+}
+
+// ローディングアニメーションを更新
+function updateLoadingAnimation(deltaTime) {
+  if (!loadingIndicator || !loadingIndicator.visible) return;
+
+  loadingAnimationTime += deltaTime * 3;
+
+  for (let i = 0; i < loadingDots.length; i++) {
+    const phase = loadingAnimationTime - i * 0.3;
+    const wave = Math.sin(phase) * 0.5 + 0.5;
+    loadingDots[i].material.opacity = 0.3 + wave * 0.7;
+    loadingDots[i].scale.setScalar(0.8 + wave * 0.4);
+  }
+
+  // テキストパネルに追従
+  if (textPanel) {
+    loadingIndicator.position.copy(textPanel.position);
+    loadingIndicator.position.y -= 0.08;
+    loadingIndicator.quaternion.copy(textPanel.quaternion);
+  }
 }
 
 // 生成ボタンを作成
@@ -636,22 +729,24 @@ async function submitPrompt() {
   promptText = '';
   updateTextCanvas();
 
+  // ローディングインジケーターを表示
+  showLoadingIndicator();
+
   try {
     // Claude APIでプロンプトを解析
     const moduleDef = await analyzePrompt(currentPrompt, ANTHROPIC_API_KEY);
     console.log('モジュール定義:', moduleDef);
 
-    // スポーン位置を決定（テキストパネルの下、既存モジュール数に応じてずらす）
+    // スポーン位置を決定（テキストパネルの真上、既存モジュール数に応じて高さをずらす）
     const spawnPosition = new THREE.Vector3();
     const moduleCount = moduleManager.modules.size;
-    const offsetX = (moduleCount % 3 - 1) * 0.4;  // -0.4, 0, 0.4 の順でずらす
+    const offsetY = 0.15 + (moduleCount * 0.25);  // 上に積み重ねる
 
     if (textPanel) {
       spawnPosition.copy(textPanel.position);
-      spawnPosition.y -= 0.3;
-      spawnPosition.x += offsetX;
+      spawnPosition.y += offsetY;
     } else {
-      spawnPosition.set(offsetX, 1.0, -0.5);
+      spawnPosition.set(0, 1.2 + offsetY, -0.5);
     }
 
     if (moduleDef.kind === 'imagePanel') {
@@ -669,7 +764,10 @@ async function submitPrompt() {
           width: moduleDef.params.width || 0.25,
           height: moduleDef.params.height || 0.25
         });
+        hideLoadingIndicator();
         updateInfo('画像生成完了！');
+      } else {
+        hideLoadingIndicator();
       }
     } else if (moduleDef.kind === 'threejs') {
       // Three.jsコードを生成して実行
@@ -684,12 +782,14 @@ async function submitPrompt() {
         code: code,
         prompt: threejsPrompt
       });
+      hideLoadingIndicator();
       console.log('生成されたモジュール:', moduleId, 'prompt:', threejsPrompt);
       updateInfo(`${moduleDef.label || 'Three.js'} を生成しました！`);
     }
 
   } catch (error) {
     console.error('モジュール生成エラー:', error);
+    hideLoadingIndicator();
     updateInfo('エラー: ' + error.message);
   }
 }
@@ -958,28 +1058,6 @@ function updateDepthInfo(frame, referenceSpace) {
   }
 }
 
-// VR環境を作成
-function createVREnvironment() {
-  // 背景色を設定
-  vrBackground = new THREE.Color(0x1a1a2e);
-  scene.background = vrBackground;
-
-  // グリッドヘルパーを追加
-  gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
-  gridHelper.position.y = 0;
-  scene.add(gridHelper);
-}
-
-// VR環境を削除
-function removeVREnvironment() {
-  scene.background = null;
-  if (gridHelper) {
-    scene.remove(gridHelper);
-    gridHelper = null;
-  }
-  vrBackground = null;
-}
-
 // テキストパネルを初期位置（カメラの前）に配置
 function initializeTextPanelPosition(frame, referenceSpace) {
   if (!textPanel || panelInitialized) return;
@@ -1017,8 +1095,11 @@ function initializeTextPanelPosition(frame, referenceSpace) {
   forward.applyQuaternion(cameraQuaternion);
   textPanel.position.copy(cameraPosition).add(forward);
 
-  // パネルをカメラに向ける
-  textPanel.quaternion.copy(cameraQuaternion);
+  // パネルを水平に配置（Y軸回転のみ適用）
+  const euler = new THREE.Euler().setFromQuaternion(cameraQuaternion, 'YXZ');
+  euler.x = 0;  // X軸回転をリセット（水平に）
+  euler.z = 0;  // Z軸回転をリセット
+  textPanel.quaternion.setFromEuler(euler);
 
   // 生成ボタンをパネルの右側に配置
   updateGenerateButtonPosition();
@@ -1086,6 +1167,30 @@ function checkImagePanelCollision(controllerPosition) {
          Math.abs(localPos.z) < halfZ;
 }
 
+// スティックの値を取得 (x: 左右, y: 上下)
+function getStickValues(inputSource) {
+  if (!inputSource || !inputSource.gamepad) return { x: 0, y: 0 };
+
+  const axes = inputSource.gamepad.axes;
+  // axes[2]: X軸 (左右), axes[3]: Y軸 (上下)
+  if (axes && axes.length >= 4) {
+    return { x: axes[2], y: axes[3] };
+  }
+  return { x: 0, y: 0 };
+}
+
+// スティック押し込みの状態を取得
+function isStickPressed(inputSource) {
+  if (!inputSource || !inputSource.gamepad) return false;
+
+  const buttons = inputSource.gamepad.buttons;
+  // buttons[3]: スティック押し込み
+  if (buttons && buttons.length > 3) {
+    return buttons[3].pressed;
+  }
+  return false;
+}
+
 // グリップボタンの状態を取得
 function isGripPressed(inputSource) {
   if (!inputSource || !inputSource.gamepad) return false;
@@ -1142,6 +1247,106 @@ function getGripQuaternion(inputSource, frame, referenceSpace) {
   return null;
 }
 
+// レーザーでモジュールにヒットしているかチェック
+function raycastModules(inputSource, frame, referenceSpace) {
+  if (!inputSource || !inputSource.targetRaySpace || !frame || !referenceSpace) return null;
+
+  const rayPose = frame.getPose(inputSource.targetRaySpace, referenceSpace);
+  if (!rayPose) return null;
+
+  const rayOrigin = new THREE.Vector3(
+    rayPose.transform.position.x,
+    rayPose.transform.position.y,
+    rayPose.transform.position.z
+  );
+  const rayDirection = new THREE.Vector3(0, 0, -1);
+  rayDirection.applyQuaternion(new THREE.Quaternion(
+    rayPose.transform.orientation.x,
+    rayPose.transform.orientation.y,
+    rayPose.transform.orientation.z,
+    rayPose.transform.orientation.w
+  ));
+
+  const raycaster = new THREE.Raycaster(rayOrigin, rayDirection, 0, 10);
+
+  // 全モジュールをチェック
+  for (const module of moduleManager.modules.values()) {
+    const intersects = raycaster.intersectObject(module.group, true);
+    if (intersects.length > 0) {
+      return {
+        module: module,
+        distance: intersects[0].distance,
+        point: intersects[0].point
+      };
+    }
+  }
+  return null;
+}
+
+// レーザーでテキストパネルにヒットしているかチェック
+function raycastTextPanel(inputSource, frame, referenceSpace) {
+  if (!textPanel || !textPanel.visible) return null;
+  if (!inputSource || !inputSource.targetRaySpace || !frame || !referenceSpace) return null;
+
+  const rayPose = frame.getPose(inputSource.targetRaySpace, referenceSpace);
+  if (!rayPose) return null;
+
+  const rayOrigin = new THREE.Vector3(
+    rayPose.transform.position.x,
+    rayPose.transform.position.y,
+    rayPose.transform.position.z
+  );
+  const rayDirection = new THREE.Vector3(0, 0, -1);
+  rayDirection.applyQuaternion(new THREE.Quaternion(
+    rayPose.transform.orientation.x,
+    rayPose.transform.orientation.y,
+    rayPose.transform.orientation.z,
+    rayPose.transform.orientation.w
+  ));
+
+  const raycaster = new THREE.Raycaster(rayOrigin, rayDirection, 0, 10);
+  const intersects = raycaster.intersectObject(textPanel);
+  if (intersects.length > 0) {
+    return {
+      distance: intersects[0].distance,
+      point: intersects[0].point
+    };
+  }
+  return null;
+}
+
+// レーザーで画像パネルにヒットしているかチェック
+function raycastImagePanel(inputSource, frame, referenceSpace) {
+  if (!generatedImagePanel) return null;
+  if (!inputSource || !inputSource.targetRaySpace || !frame || !referenceSpace) return null;
+
+  const rayPose = frame.getPose(inputSource.targetRaySpace, referenceSpace);
+  if (!rayPose) return null;
+
+  const rayOrigin = new THREE.Vector3(
+    rayPose.transform.position.x,
+    rayPose.transform.position.y,
+    rayPose.transform.position.z
+  );
+  const rayDirection = new THREE.Vector3(0, 0, -1);
+  rayDirection.applyQuaternion(new THREE.Quaternion(
+    rayPose.transform.orientation.x,
+    rayPose.transform.orientation.y,
+    rayPose.transform.orientation.z,
+    rayPose.transform.orientation.w
+  ));
+
+  const raycaster = new THREE.Raycaster(rayOrigin, rayDirection, 0, 10);
+  const intersects = raycaster.intersectObject(generatedImagePanel);
+  if (intersects.length > 0) {
+    return {
+      distance: intersects[0].distance,
+      point: intersects[0].point
+    };
+  }
+  return null;
+}
+
 // コントローラーによるパネル操作を更新
 function updatePanelControllerInteraction(frame, referenceSpace) {
   if (!xrSession) return;
@@ -1164,17 +1369,85 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
     // テキストパネルのドラッグ中の処理
     if (isDraggingPanel && draggingInputSource === inputSource) {
       if (gripPressed) {
-        textPanel.position.copy(gripPosition).add(dragOffset);
+        // レーザードラッグか直接グリップかで位置計算を変える
+        if (isPanelLaserDragging) {
+          // レーザードラッグ：レーザーの先端位置にパネルを配置
+          const rayPose = frame.getPose(inputSource.targetRaySpace, referenceSpace);
+          if (rayPose) {
+            const rayOrigin = new THREE.Vector3(
+              rayPose.transform.position.x,
+              rayPose.transform.position.y,
+              rayPose.transform.position.z
+            );
+            const rayDirection = new THREE.Vector3(0, 0, -1);
+            rayDirection.applyQuaternion(new THREE.Quaternion(
+              rayPose.transform.orientation.x,
+              rayPose.transform.orientation.y,
+              rayPose.transform.orientation.z,
+              rayPose.transform.orientation.w
+            ));
+            textPanel.position.copy(rayOrigin).add(rayDirection.multiplyScalar(panelLaserDragDistance)).add(dragOffset);
+          }
+        } else {
+          // 直接グリップ
+          textPanel.position.copy(gripPosition).add(dragOffset);
+        }
 
-        // 手の回転の差分をパネルに適用
-        const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
-        if (currentGripQuat) {
-          applyGripRotation(textPanel.quaternion, currentGripQuat);
+        // スティック操作で距離と角度を調整
+        const stick = getStickValues(inputSource);
+        const stickPressed = isStickPressed(inputSource);
+
+        // スティック上下で奥/手前に移動（上で奥、下で手前）
+        if (Math.abs(stick.y) > 0.1) {
+          if (isPanelLaserDragging) {
+            // レーザードラッグ時は距離を変更
+            panelLaserDragDistance -= stick.y * 0.02;
+            panelLaserDragDistance = Math.max(0.3, Math.min(5.0, panelLaserDragDistance));
+          } else {
+            // 直接グリップ時はZ方向に移動
+            const forward = new THREE.Vector3(0, 0, stick.y * 0.02);
+            forward.applyQuaternion(initialGripQuaternion);
+            textPanel.position.add(forward);
+            dragOffset.add(forward);
+          }
+        }
+
+        // スティック左右で角度変更（Y軸回転）
+        if (Math.abs(stick.x) > 0.1) {
+          textPanel.rotateY(stick.x * 0.03);
+          // 回転後の状態を初期値として更新
+          initialModuleQuaternion.copy(textPanel.quaternion);
+          const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+          if (currentGripQuat) {
+            initialGripQuaternion.copy(currentGripQuat);
+          }
+        }
+
+        // スティック押し込みで水平にリセット
+        if (stickPressed) {
+          const euler = new THREE.Euler().setFromQuaternion(textPanel.quaternion, 'YXZ');
+          euler.x = 0;
+          euler.z = 0;
+          textPanel.quaternion.setFromEuler(euler);
+          initialModuleQuaternion.copy(textPanel.quaternion);
+          const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+          if (currentGripQuat) {
+            initialGripQuaternion.copy(currentGripQuat);
+          }
+        }
+
+        // 手の回転の差分をパネルに適用（スティック左右操作がない場合のみ）
+        if (Math.abs(stick.x) <= 0.1) {
+          const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+          if (currentGripQuat) {
+            applyGripRotation(textPanel.quaternion, currentGripQuat);
+          }
         }
 
         updateGenerateButtonPosition();
       } else {
         isDraggingPanel = false;
+        isPanelLaserDragging = false;
         draggingInputSource = null;
         console.log('テキストパネルをドロップ');
       }
@@ -1185,15 +1458,83 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
     // 画像パネルのドラッグ中の処理
     if (isDraggingImagePanel && draggingInputSource === inputSource) {
       if (gripPressed) {
-        generatedImagePanel.position.copy(gripPosition).add(dragOffset);
+        // レーザードラッグか直接グリップかで位置計算を変える
+        if (isImagePanelLaserDragging) {
+          // レーザードラッグ：レーザーの先端位置にパネルを配置
+          const rayPose = frame.getPose(inputSource.targetRaySpace, referenceSpace);
+          if (rayPose) {
+            const rayOrigin = new THREE.Vector3(
+              rayPose.transform.position.x,
+              rayPose.transform.position.y,
+              rayPose.transform.position.z
+            );
+            const rayDirection = new THREE.Vector3(0, 0, -1);
+            rayDirection.applyQuaternion(new THREE.Quaternion(
+              rayPose.transform.orientation.x,
+              rayPose.transform.orientation.y,
+              rayPose.transform.orientation.z,
+              rayPose.transform.orientation.w
+            ));
+            generatedImagePanel.position.copy(rayOrigin).add(rayDirection.multiplyScalar(imagePanelLaserDragDistance)).add(dragOffset);
+          }
+        } else {
+          // 直接グリップ
+          generatedImagePanel.position.copy(gripPosition).add(dragOffset);
+        }
 
-        // 手の回転の差分をパネルに適用
-        const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
-        if (currentGripQuat) {
-          applyGripRotation(generatedImagePanel.quaternion, currentGripQuat);
+        // スティック操作で距離と角度を調整
+        const stick = getStickValues(inputSource);
+        const stickPressed = isStickPressed(inputSource);
+
+        // スティック上下で奥/手前に移動（上で奥、下で手前）
+        if (Math.abs(stick.y) > 0.1) {
+          if (isImagePanelLaserDragging) {
+            // レーザードラッグ時は距離を変更
+            imagePanelLaserDragDistance -= stick.y * 0.02;
+            imagePanelLaserDragDistance = Math.max(0.3, Math.min(5.0, imagePanelLaserDragDistance));
+          } else {
+            // 直接グリップ時はZ方向に移動
+            const forward = new THREE.Vector3(0, 0, stick.y * 0.02);
+            forward.applyQuaternion(initialGripQuaternion);
+            generatedImagePanel.position.add(forward);
+            dragOffset.add(forward);
+          }
+        }
+
+        // スティック左右で角度変更（Y軸回転）
+        if (Math.abs(stick.x) > 0.1) {
+          generatedImagePanel.rotateY(stick.x * 0.03);
+          // 回転後の状態を初期値として更新
+          initialModuleQuaternion.copy(generatedImagePanel.quaternion);
+          const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+          if (currentGripQuat) {
+            initialGripQuaternion.copy(currentGripQuat);
+          }
+        }
+
+        // スティック押し込みで水平にリセット
+        if (stickPressed) {
+          const euler = new THREE.Euler().setFromQuaternion(generatedImagePanel.quaternion, 'YXZ');
+          euler.x = 0;
+          euler.z = 0;
+          generatedImagePanel.quaternion.setFromEuler(euler);
+          initialModuleQuaternion.copy(generatedImagePanel.quaternion);
+          const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+          if (currentGripQuat) {
+            initialGripQuaternion.copy(currentGripQuat);
+          }
+        }
+
+        // 手の回転の差分をパネルに適用（スティック左右操作がない場合のみ）
+        if (Math.abs(stick.x) <= 0.1) {
+          const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+          if (currentGripQuat) {
+            applyGripRotation(generatedImagePanel.quaternion, currentGripQuat);
+          }
         }
       } else {
         isDraggingImagePanel = false;
+        isImagePanelLaserDragging = false;
         draggingInputSource = null;
         console.log('画像パネルをドロップ');
       }
@@ -1205,10 +1546,11 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
     if (gripPressed && !wasGripPressed[handedness]) {
       const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
 
-      // まず画像パネルをチェック
+      // まず画像パネルを直接グリップでチェック
       const isImageColliding = checkImagePanelCollision(gripPosition);
       if (isImageColliding) {
         isDraggingImagePanel = true;
+        isImagePanelLaserDragging = false;
         draggingInputSource = inputSource;
         dragOffset.copy(generatedImagePanel.position).sub(gripPosition);
         // 初期回転を記録
@@ -1216,16 +1558,17 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
           initialGripQuaternion.copy(currentGripQuat);
           initialModuleQuaternion.copy(generatedImagePanel.quaternion);
         }
-        console.log('画像パネルをグリップ:', handedness);
+        console.log('画像パネルを直接グリップ:', handedness);
         wasGripPressed[handedness] = gripPressed;
         continue;
       }
 
-      // 次にテキストパネルをチェック
+      // 次にテキストパネルを直接グリップでチェック
       if (textPanel && textPanel.visible) {
         const isColliding = checkPanelCollision(gripPosition);
         if (isColliding) {
           isDraggingPanel = true;
+          isPanelLaserDragging = false;
           draggingInputSource = inputSource;
           dragOffset.copy(textPanel.position).sub(gripPosition);
           // 初期回転を記録
@@ -1233,8 +1576,49 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
             initialGripQuaternion.copy(currentGripQuat);
             initialModuleQuaternion.copy(textPanel.quaternion);
           }
-          console.log('テキストパネルをグリップ:', handedness);
+          console.log('テキストパネルを直接グリップ:', handedness);
+          wasGripPressed[handedness] = gripPressed;
+          continue;
         }
+      }
+
+      // 直接グリップできなければレーザーでチェック
+      // 画像パネルをレーザーでチェック
+      const imageHit = raycastImagePanel(inputSource, frame, referenceSpace);
+      if (imageHit) {
+        isDraggingImagePanel = true;
+        isImagePanelLaserDragging = true;
+        imagePanelLaserDragDistance = imageHit.distance;
+        draggingInputSource = inputSource;
+        // ヒット点からパネル中心へのオフセットを記録
+        dragOffset.copy(generatedImagePanel.position).sub(imageHit.point);
+        // 初期回転を記録
+        if (currentGripQuat) {
+          initialGripQuaternion.copy(currentGripQuat);
+          initialModuleQuaternion.copy(generatedImagePanel.quaternion);
+        }
+        console.log('画像パネルをレーザーグリップ:', handedness, 'distance:', imageHit.distance);
+        wasGripPressed[handedness] = gripPressed;
+        continue;
+      }
+
+      // テキストパネルをレーザーでチェック
+      const textHit = raycastTextPanel(inputSource, frame, referenceSpace);
+      if (textHit) {
+        isDraggingPanel = true;
+        isPanelLaserDragging = true;
+        panelLaserDragDistance = textHit.distance;
+        draggingInputSource = inputSource;
+        // ヒット点からパネル中心へのオフセットを記録
+        dragOffset.copy(textPanel.position).sub(textHit.point);
+        // 初期回転を記録
+        if (currentGripQuat) {
+          initialGripQuaternion.copy(currentGripQuat);
+          initialModuleQuaternion.copy(textPanel.quaternion);
+        }
+        console.log('テキストパネルをレーザーグリップ:', handedness, 'distance:', textHit.distance);
+        wasGripPressed[handedness] = gripPressed;
+        continue;
       }
     }
 
@@ -1249,6 +1633,76 @@ function updateModuleControllerInteraction(frame, referenceSpace) {
   const inputSources = xrSession.inputSources;
   if (!inputSources) return;
 
+  // 左右のグリップ状態を収集
+  let leftGripPos = null;
+  let rightGripPos = null;
+  let leftGripPressed = false;
+  let rightGripPressed = false;
+  let leftSource = null;
+  let rightSource = null;
+
+  for (const inputSource of inputSources) {
+    if (inputSource.targetRayMode !== 'tracked-pointer') continue;
+    if (!inputSource.gripSpace) continue;
+
+    const handedness = inputSource.handedness;
+    if (!handedness) continue;
+
+    const gripPosition = getGripPosition(inputSource, frame, referenceSpace);
+    const gripPressed = isGripPressed(inputSource);
+
+    if (handedness === 'left') {
+      leftGripPos = gripPosition;
+      leftGripPressed = gripPressed;
+      leftSource = inputSource;
+    } else if (handedness === 'right') {
+      rightGripPos = gripPosition;
+      rightGripPressed = gripPressed;
+      rightSource = inputSource;
+    }
+  }
+
+  // 両手スケーリング処理
+  if (isTwoHandScaling && draggingModule) {
+    const module = moduleManager.modules.get(draggingModule);
+
+    if (leftGripPressed && rightGripPressed && leftGripPos && rightGripPos && module) {
+      // 両手の距離からスケールを計算
+      const currentDistance = leftGripPos.distanceTo(rightGripPos);
+      const scaleFactor = currentDistance / initialGripDistance;
+      const newScale = Math.max(0.1, Math.min(5.0, initialModuleScale * scaleFactor));
+      module.group.scale.setScalar(newScale);
+      // 位置は変更しない
+    } else {
+      // どちらかの手を離したらスケーリング終了
+      isTwoHandScaling = false;
+      leftGripInputSource = null;
+      rightGripInputSource = null;
+
+      // スケーリング終了時はドラッグも終了（位置を維持）
+      moduleManager.release(draggingModule);
+      draggingModule = null;
+      draggingInputSource = null;
+      console.log('両手スケーリング終了、モジュールをドロップ');
+    }
+    return;
+  }
+
+  // 片手でドラッグ中に反対の手もグリップしたら両手スケーリング開始
+  if (draggingModule && !isTwoHandScaling) {
+    const module = moduleManager.modules.get(draggingModule);
+    if (module && leftGripPressed && rightGripPressed && leftGripPos && rightGripPos) {
+      isTwoHandScaling = true;
+      initialGripDistance = leftGripPos.distanceTo(rightGripPos);
+      initialModuleScale = module.group.scale.x;
+      leftGripInputSource = leftSource;
+      rightGripInputSource = rightSource;
+      console.log('両手スケーリング開始、初期距離:', initialGripDistance.toFixed(2));
+      return;
+    }
+  }
+
+  // 通常の片手操作
   for (const inputSource of inputSources) {
     if (inputSource.targetRayMode !== 'tracked-pointer') continue;
     if (!inputSource.gripSpace) continue;
@@ -1261,23 +1715,97 @@ function updateModuleControllerInteraction(frame, referenceSpace) {
 
     const gripPressed = isGripPressed(inputSource);
 
-    // ドラッグ中のモジュール
+    // ドラッグ中のモジュール（直接グリップまたはレーザードラッグ）
     if (draggingModule && draggingInputSource === inputSource) {
       if (gripPressed) {
-        moduleManager.move(draggingModule, gripPosition);
-
-        // 手の回転の差分をモジュールに適用
         const module = moduleManager.modules.get(draggingModule);
+
+        if (isLaserDragging) {
+          // レーザードラッグ：レーザーの先端位置 + オフセットに移動
+          const rayPose = frame.getPose(inputSource.targetRaySpace, referenceSpace);
+          if (rayPose && module) {
+            const rayOrigin = new THREE.Vector3(
+              rayPose.transform.position.x,
+              rayPose.transform.position.y,
+              rayPose.transform.position.z
+            );
+            const rayDirection = new THREE.Vector3(0, 0, -1);
+            rayDirection.applyQuaternion(new THREE.Quaternion(
+              rayPose.transform.orientation.x,
+              rayPose.transform.orientation.y,
+              rayPose.transform.orientation.z,
+              rayPose.transform.orientation.w
+            ));
+            // 固定距離で移動 + オフセットを加算
+            const hitPoint = rayOrigin.clone().add(rayDirection.multiplyScalar(laserDragDistance));
+            const newPos = hitPoint.clone().add(laserHitOffset);
+            module.group.position.copy(newPos);
+          }
+        } else {
+          // 直接グリップ：グリップ位置に移動
+          moduleManager.move(draggingModule, gripPosition);
+        }
+
+        // スティック操作で距離と角度を調整
         if (module) {
-          const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
-          if (currentGripQuat) {
-            applyGripRotation(module.group.quaternion, currentGripQuat);
+          const stick = getStickValues(inputSource);
+          const stickPressed = isStickPressed(inputSource);
+
+          // スティック上下で奥/手前に移動（上で奥、下で手前）
+          if (Math.abs(stick.y) > 0.1) {
+            if (isLaserDragging) {
+              // レーザードラッグ時は距離を変更（符号反転）
+              laserDragDistance -= stick.y * 0.02;
+              laserDragDistance = Math.max(0.3, Math.min(5.0, laserDragDistance));
+            } else {
+              // 直接グリップ時はZ方向に移動（符号反転）
+              const forward = new THREE.Vector3(0, 0, stick.y * 0.02);
+              forward.applyQuaternion(initialGripQuaternion);
+              module.group.position.add(forward);
+            }
+          }
+
+          // スティック左右で角度変更（Y軸回転）- ボタン離した後も維持
+          if (Math.abs(stick.x) > 0.1) {
+            module.group.rotateY(stick.x * 0.03);
+            // 回転後の状態を初期値として更新
+            initialModuleQuaternion.copy(module.group.quaternion);
+            const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+            if (currentGripQuat) {
+              initialGripQuaternion.copy(currentGripQuat);
+            }
+          }
+
+          // スティック押し込みで水平にリセット
+          if (stickPressed) {
+            const euler = new THREE.Euler().setFromQuaternion(module.group.quaternion, 'YXZ');
+            euler.x = 0;  // X軸回転をリセット
+            euler.z = 0;  // Z軸回転をリセット
+            module.group.quaternion.setFromEuler(euler);
+            // 初期回転も更新
+            initialModuleQuaternion.copy(module.group.quaternion);
+            const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+            if (currentGripQuat) {
+              initialGripQuaternion.copy(currentGripQuat);
+            }
+          }
+        }
+
+        // 手の回転の差分をモジュールに適用（スティック左右操作がない場合のみ）
+        if (module) {
+          const stick = getStickValues(inputSource);
+          if (Math.abs(stick.x) <= 0.1) {
+            const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+            if (currentGripQuat) {
+              applyGripRotation(module.group.quaternion, currentGripQuat);
+            }
           }
         }
       } else {
         moduleManager.release(draggingModule);
         draggingModule = null;
         draggingInputSource = null;
+        isLaserDragging = false;
         console.log('モジュールをドロップ');
       }
       continue;
@@ -1285,10 +1813,26 @@ function updateModuleControllerInteraction(frame, referenceSpace) {
 
     // グリップを押した瞬間にモジュールをつかむ
     if (gripPressed && !isDraggingPanel && !isDraggingImagePanel && !draggingModule) {
-      const module = moduleManager.findModuleAtPosition(gripPosition, 0.2);
+      // まず直接グリップをチェック
+      let module = moduleManager.findModuleAtPosition(gripPosition, 0.2);
+      let useLaser = false;
+
+      // 直接グリップできなければレーザーでチェック
+      if (!module) {
+        const hit = raycastModules(inputSource, frame, referenceSpace);
+        if (hit) {
+          module = hit.module;
+          laserDragDistance = hit.distance;
+          // ヒット点からモジュール中心へのオフセットを記録
+          laserHitOffset.copy(module.group.position).sub(hit.point);
+          useLaser = true;
+        }
+      }
+
       if (module) {
         draggingModule = module.id;
         draggingInputSource = inputSource;
+        isLaserDragging = useLaser;
         moduleManager.grab(module.id, gripPosition);
         // 初期回転を記録
         const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
@@ -1296,7 +1840,7 @@ function updateModuleControllerInteraction(frame, referenceSpace) {
           initialGripQuaternion.copy(currentGripQuat);
           initialModuleQuaternion.copy(module.group.quaternion);
         }
-        console.log('モジュールをグリップ:', module.kind, handedness);
+        console.log('モジュールをグリップ:', module.kind, handedness, useLaser ? '(レーザー)' : '(直接)');
       }
     }
   }
@@ -1338,6 +1882,9 @@ function animate(timestamp, frame) {
     moduleManager.update(deltaTime);
   }
 
+  // ローディングアニメーションを更新
+  updateLoadingAnimation(deltaTime);
+
   renderer.render(scene, camera);
 }
 
@@ -1360,6 +1907,18 @@ async function startXR() {
     updateInfo('WebXRがサポートされていません');
     alert('このデバイスはWebXRをサポートしていません');
     return;
+  }
+
+  // 既にセッションがある場合は何もしない
+  if (xrSession) {
+    console.log('XRセッションは既に開始されています');
+    return;
+  }
+
+  // ボタンを無効化（二重クリック防止）
+  const button = document.getElementById('start-button');
+  if (button) {
+    button.disabled = true;
   }
 
   try {
@@ -1434,8 +1993,8 @@ async function startXR() {
         }
       }
     };
-    rightController.addEventListener('select', onSelect);
-    leftController.addEventListener('select', onSelect);
+    rightController.addEventListener('selectstart', onSelect);
+    leftController.addEventListener('selectstart', onSelect);
 
     // ハンドトラッキングを取得
     hand1 = renderer.xr.getHand(0);
@@ -1450,10 +2009,6 @@ async function startXR() {
     const button = document.getElementById('start-button');
     if (button) {
       button.style.display = 'none';
-    }
-    const vrButton = document.getElementById('vr-button');
-    if (vrButton) {
-      vrButton.style.display = 'none';
     }
 
     // セッション開始イベントを発火
@@ -1487,9 +2042,7 @@ async function startXR() {
       updateInfo('MRセッション終了');
       if (button) {
         button.style.display = 'block';
-      }
-      if (vrButton) {
-        vrButton.style.display = 'block';
+        button.disabled = false;
       }
     });
 
@@ -1500,101 +2053,10 @@ async function startXR() {
     console.error('エラー詳細:', JSON.stringify(error, null, 2));
     updateInfo('エラー: ' + (error.message || error.name || 'Unknown error'));
     alert('MRセッションを開始できませんでした: ' + (error.message || error.name || 'Unknown error'));
-  }
-}
-
-// VRセッション開始
-async function startVR() {
-  if (!navigator.xr) {
-    updateInfo('WebXRがサポートされていません');
-    alert('このデバイスはWebXRをサポートしていません');
-    return;
-  }
-
-  try {
-    updateInfo('VRセッションを開始中...');
-
-    // immersive-vr モードをサポートしているか確認
-    const supported = await navigator.xr.isSessionSupported('immersive-vr');
-
-    if (!supported) {
-      updateInfo('immersive-VRがサポートされていません');
-      alert('このデバイスはVR機能をサポートしていません');
-      return;
-    }
-
-    // XRセッション開始（VRモード）
-    xrSession = await navigator.xr.requestSession('immersive-vr', {
-      requiredFeatures: [],
-      optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
-    });
-
-    await renderer.xr.setSession(xrSession);
-
-    // VR環境（背景とグリッド）を作成
-    createVREnvironment();
-
-    // コントローラーを取得
-    rightController = renderer.xr.getController(0);
-    leftController = renderer.xr.getController(1);
-    scene.add(rightController);
-    scene.add(leftController);
-
-    // レーザーポインターを追加
-    rightLaser = createLaser();
-    leftLaser = createLaser();
-    rightController.add(rightLaser);
-    leftController.add(leftLaser);
-
-    // ハンドトラッキングを取得
-    hand1 = renderer.xr.getHand(0);
-    hand2 = renderer.xr.getHand(1);
-    scene.add(hand1);
-    scene.add(hand2);
-
-    // テキスト入力を開始（VR空間にテキストパネルを表示）
-    startTextInput();
-
-    // ボタンを非表示
-    const button = document.getElementById('start-button');
+    // エラー時もボタンを再度有効化
     if (button) {
-      button.style.display = 'none';
+      button.disabled = false;
     }
-    const vrButton = document.getElementById('vr-button');
-    if (vrButton) {
-      vrButton.style.display = 'none';
-    }
-
-    // セッション開始イベントを発火
-    window.dispatchEvent(new Event('xr-session-start'));
-
-    updateInfo('VRセッション開始 - Tabキーでテキスト入力');
-
-    xrSession.addEventListener('end', () => {
-      xrSession = null;
-
-      // VR環境を削除
-      removeVREnvironment();
-
-      // セッション終了イベントを発火
-      window.dispatchEvent(new Event('xr-session-end'));
-
-      updateInfo('VRセッション終了');
-      if (button) {
-        button.style.display = 'block';
-      }
-      if (vrButton) {
-        vrButton.style.display = 'block';
-      }
-    });
-
-  } catch (error) {
-    console.error('VRセッション開始エラー:', error);
-    console.error('エラー名:', error.name);
-    console.error('エラーメッセージ:', error.message);
-    console.error('エラー詳細:', JSON.stringify(error, null, 2));
-    updateInfo('エラー: ' + (error.message || error.name || 'Unknown error'));
-    alert('VRセッションを開始できませんでした: ' + (error.message || error.name || 'Unknown error'));
   }
 }
 
@@ -1605,11 +2067,6 @@ init();
 const startButton = document.getElementById('start-button');
 if (startButton) {
   startButton.addEventListener('click', startXR);
-}
-
-const vrButton = document.getElementById('vr-button');
-if (vrButton) {
-  vrButton.addEventListener('click', startVR);
 }
 
 // 深度表示切り替えボタン

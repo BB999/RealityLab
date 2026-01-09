@@ -71,7 +71,12 @@ Rules:
       return createFallback(prompt);
     }
 
-    const result = JSON.parse(jsonMatch[0]);
+    // 制御文字を除去してからパース
+    let jsonStr = jsonMatch[0];
+    jsonStr = jsonStr.replace(/[\x00-\x1F\x7F]/g, ' ');  // 制御文字をスペースに置換
+    jsonStr = jsonStr.replace(/\n/g, ' ');  // 改行もスペースに
+
+    const result = JSON.parse(jsonStr);
     console.log('Prompt analysis result:', result);
 
     return result;
@@ -108,15 +113,27 @@ function createFallback(prompt) {
 export async function generateThreejsCode(description, apiKey) {
   const systemPrompt = `You are a Three.js code generator for WebXR. Generate JavaScript code that creates 3D objects.
 
-IMPORTANT CONSTRAINTS:
+CRITICAL CONSTRAINTS:
 - Objects should fit within 0.5m radius (arm's reach in VR/MR)
-- Use MeshBasicMaterial (not MeshStandardMaterial) for WebXR compatibility
+- Use MeshBasicMaterial ONLY (not MeshStandardMaterial, not ShaderMaterial)
 - All objects must be added to the 'group' variable
 - Track meshes in the 'meshes' array for cleanup
 - Use 'animationCallbacks' array to register animation functions
 
+FORBIDDEN (these will cause errors):
+- FontLoader, TextGeometry (not available)
+- GLTFLoader, OBJLoader (no external loaders)
+- ShaderMaterial, RawShaderMaterial (use MeshBasicMaterial instead)
+- CanvasTexture with dynamic text (not reliable in WebXR)
+- Any external resources or imports
+
+USE ONLY these geometries:
+- BoxGeometry, SphereGeometry, PlaneGeometry, CylinderGeometry
+- TorusGeometry, TorusKnotGeometry, ConeGeometry, RingGeometry
+- CircleGeometry, IcosahedronGeometry, OctahedronGeometry
+
 Available variables:
-- THREE: Three.js library
+- THREE: Three.js core library only
 - group: THREE.Group to add objects to
 - meshes: Array to track created meshes
 - animationCallbacks: Array of functions called each frame with (time, deltaTime)
