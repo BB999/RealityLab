@@ -39,6 +39,20 @@ let isGenerating = false;
 
 // モジュールドラッグ用変数
 let draggingModule = null;
+let initialModuleQuaternion = new THREE.Quaternion();
+let initialGripQuaternion = new THREE.Quaternion();
+
+// 手の回転差分からオブジェクトの回転を計算
+function applyGripRotation(targetQuaternion, currentGripQuat) {
+  // グリップの回転差分を計算（ワールド座標系）
+  // deltaRotation = currentGrip * inverse(initialGrip)
+  const invInitialGrip = initialGripQuaternion.clone().invert();
+  const deltaRotation = currentGripQuat.clone().multiply(invInitialGrip);
+
+  // オブジェクトに回転差分を適用（ワールド座標系で回転）
+  // newRotation = deltaRotation * initialModuleRotation
+  targetQuaternion.copy(deltaRotation.multiply(initialModuleQuaternion));
+}
 
 // APIキー（環境変数から読み込み）
 const FAL_API_KEY = import.meta.env.VITE_FAL_API_KEY;
@@ -1112,6 +1126,22 @@ function getGripPosition(inputSource, frame, referenceSpace) {
   return null;
 }
 
+// inputSourceからグリップの回転を取得
+function getGripQuaternion(inputSource, frame, referenceSpace) {
+  if (!inputSource || !inputSource.gripSpace || !frame || !referenceSpace) return null;
+
+  const gripPose = frame.getPose(inputSource.gripSpace, referenceSpace);
+  if (gripPose) {
+    return new THREE.Quaternion(
+      gripPose.transform.orientation.x,
+      gripPose.transform.orientation.y,
+      gripPose.transform.orientation.z,
+      gripPose.transform.orientation.w
+    );
+  }
+  return null;
+}
+
 // コントローラーによるパネル操作を更新
 function updatePanelControllerInteraction(frame, referenceSpace) {
   if (!xrSession) return;
@@ -1136,14 +1166,10 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
       if (gripPressed) {
         textPanel.position.copy(gripPosition).add(dragOffset);
 
-        const viewerPose = frame.getViewerPose(referenceSpace);
-        if (viewerPose) {
-          const cameraPos = new THREE.Vector3(
-            viewerPose.transform.position.x,
-            viewerPose.transform.position.y,
-            viewerPose.transform.position.z
-          );
-          textPanel.lookAt(cameraPos);
+        // 手の回転の差分をパネルに適用
+        const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+        if (currentGripQuat) {
+          applyGripRotation(textPanel.quaternion, currentGripQuat);
         }
 
         updateGenerateButtonPosition();
@@ -1161,14 +1187,10 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
       if (gripPressed) {
         generatedImagePanel.position.copy(gripPosition).add(dragOffset);
 
-        const viewerPose = frame.getViewerPose(referenceSpace);
-        if (viewerPose) {
-          const cameraPos = new THREE.Vector3(
-            viewerPose.transform.position.x,
-            viewerPose.transform.position.y,
-            viewerPose.transform.position.z
-          );
-          generatedImagePanel.lookAt(cameraPos);
+        // 手の回転の差分をパネルに適用
+        const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+        if (currentGripQuat) {
+          applyGripRotation(generatedImagePanel.quaternion, currentGripQuat);
         }
       } else {
         isDraggingImagePanel = false;
@@ -1181,12 +1203,19 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
 
     // グリップを押した瞬間にパネルをつかむ
     if (gripPressed && !wasGripPressed[handedness]) {
+      const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+
       // まず画像パネルをチェック
       const isImageColliding = checkImagePanelCollision(gripPosition);
       if (isImageColliding) {
         isDraggingImagePanel = true;
         draggingInputSource = inputSource;
         dragOffset.copy(generatedImagePanel.position).sub(gripPosition);
+        // 初期回転を記録
+        if (currentGripQuat) {
+          initialGripQuaternion.copy(currentGripQuat);
+          initialModuleQuaternion.copy(generatedImagePanel.quaternion);
+        }
         console.log('画像パネルをグリップ:', handedness);
         wasGripPressed[handedness] = gripPressed;
         continue;
@@ -1199,6 +1228,11 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
           isDraggingPanel = true;
           draggingInputSource = inputSource;
           dragOffset.copy(textPanel.position).sub(gripPosition);
+          // 初期回転を記録
+          if (currentGripQuat) {
+            initialGripQuaternion.copy(currentGripQuat);
+            initialModuleQuaternion.copy(textPanel.quaternion);
+          }
           console.log('テキストパネルをグリップ:', handedness);
         }
       }
@@ -1232,17 +1266,12 @@ function updateModuleControllerInteraction(frame, referenceSpace) {
       if (gripPressed) {
         moduleManager.move(draggingModule, gripPosition);
 
-        // モジュールをカメラに向ける
+        // 手の回転の差分をモジュールに適用
         const module = moduleManager.modules.get(draggingModule);
         if (module) {
-          const viewerPose = frame.getViewerPose(referenceSpace);
-          if (viewerPose) {
-            const cameraPos = new THREE.Vector3(
-              viewerPose.transform.position.x,
-              viewerPose.transform.position.y,
-              viewerPose.transform.position.z
-            );
-            module.group.lookAt(cameraPos);
+          const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+          if (currentGripQuat) {
+            applyGripRotation(module.group.quaternion, currentGripQuat);
           }
         }
       } else {
@@ -1261,6 +1290,12 @@ function updateModuleControllerInteraction(frame, referenceSpace) {
         draggingModule = module.id;
         draggingInputSource = inputSource;
         moduleManager.grab(module.id, gripPosition);
+        // 初期回転を記録
+        const currentGripQuat = getGripQuaternion(inputSource, frame, referenceSpace);
+        if (currentGripQuat) {
+          initialGripQuaternion.copy(currentGripQuat);
+          initialModuleQuaternion.copy(module.group.quaternion);
+        }
         console.log('モジュールをグリップ:', module.kind, handedness);
       }
     }
