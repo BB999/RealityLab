@@ -145,7 +145,10 @@
   <button id="vr-button">VRを開始</button>
   <button id="depth-toggle">深度表示 OFF</button>
   <button id="prompt-toggle">✨ プロンプト入力</button>
-  <div id="info">ボックスを表示するには「MRを開始」または「VRを開始」をタップしてください</div>
+  <div id="info">「MRを開始」または「VRを開始」をタップしてください</div>
+
+  <!-- 隠し入力欄（キーボード呼び出し用） -->
+  <input type="text" id="hidden-input" style="position:fixed; top:-100px; left:0; opacity:0;" autocomplete="off">
   <script type="module" src="/app.js"></script>
 </body>
 </html>

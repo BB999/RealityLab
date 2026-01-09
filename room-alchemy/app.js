@@ -28,13 +28,89 @@ let cursorVisible = true;
 let cursorBlinkInterval = null;
 let isTextInputActive = false;
 
+// 生成ボタン用変数
+let generateButton = null;
+let generateButtonCanvas = null;
+let generateButtonContext = null;
+let generateButtonTexture = null;
+let isButtonPressed = false;
+let buttonPressTime = 0;
+
 // パネルドラッグ用変数
 let isDraggingPanel = false;
-let draggingController = null;
+let draggingInputSource = null;
 let dragOffset = new THREE.Vector3();
 let panelInitialized = false;
 let wasGripPressed = { left: false, right: false };
 
+// レーザーポインター用変数
+let rightLaser = null;
+let leftLaser = null;
+let laserShowTime = { left: 0, right: 0 };
+let wasTriggerPressed = { left: false, right: false };
+const LASER_DISPLAY_DURATION = 5000; // 5秒
+
+// レーザーポインターを作成
+function createLaser() {
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 0, -3)
+  ]);
+  const material = new THREE.LineBasicMaterial({
+    color: 0x00ffff,
+    linewidth: 2,
+    transparent: true,
+    opacity: 0.8
+  });
+  const laser = new THREE.Line(geometry, material);
+  laser.visible = false; // 初期状態は非表示
+  return laser;
+}
+
+// トリガーボタンの状態を取得
+function isTriggerPressed(inputSource) {
+  if (!inputSource || !inputSource.gamepad) return false;
+
+  const buttons = inputSource.gamepad.buttons;
+  // トリガーはbuttons[0]
+  if (buttons && buttons.length > 0) {
+    return buttons[0].pressed || buttons[0].value > 0.5;
+  }
+  return false;
+}
+
+// レーザーの表示状態を更新
+function updateLaserVisibility() {
+  if (!xrSession) return;
+
+  const inputSources = xrSession.inputSources;
+  if (!inputSources) return;
+
+  const now = Date.now();
+
+  for (const inputSource of inputSources) {
+    if (inputSource.targetRayMode !== 'tracked-pointer') continue;
+
+    const triggerPressed = isTriggerPressed(inputSource);
+    const handedness = inputSource.handedness;
+    if (!handedness) continue;
+
+    // トリガーを押した瞬間にタイマーをセット
+    if (triggerPressed && !wasTriggerPressed[handedness]) {
+      laserShowTime[handedness] = now;
+    }
+    wasTriggerPressed[handedness] = triggerPressed;
+  }
+
+  // 5秒以内なら表示
+  // 左右逆に修正（コントローラーの割り当てが逆のため）
+  if (leftLaser) {
+    leftLaser.visible = (now - laserShowTime.right) < LASER_DISPLAY_DURATION;
+  }
+  if (rightLaser) {
+    rightLaser.visible = (now - laserShowTime.left) < LASER_DISPLAY_DURATION;
+  }
+}
 
 // シーンの初期化
 function init() {
@@ -94,7 +170,7 @@ function createTextPanel() {
   // キャンバスを作成（テキスト描画用）
   textCanvas = document.createElement('canvas');
   textCanvas.width = 512;
-  textCanvas.height = 128;
+  textCanvas.height = 64;
   textContext = textCanvas.getContext('2d');
 
   // テクスチャを作成
@@ -102,8 +178,8 @@ function createTextPanel() {
   textTexture.minFilter = THREE.LinearFilter;
   textTexture.magFilter = THREE.LinearFilter;
 
-  // パネルのジオメトリとマテリアル（半分のサイズ）
-  const panelGeometry = new THREE.PlaneGeometry(0.4, 0.1);
+  // パネルのジオメトリとマテリアル
+  const panelGeometry = new THREE.PlaneGeometry(0.4, 0.05);
   const panelMaterial = new THREE.MeshBasicMaterial({
     map: textTexture,
     transparent: true,
@@ -115,6 +191,9 @@ function createTextPanel() {
   textPanel.visible = false;
   scene.add(textPanel);
 
+  // 生成ボタンを作成
+  createGenerateButton();
+
   // 初期描画
   updateTextCanvas();
 
@@ -125,6 +204,99 @@ function createTextPanel() {
       updateTextCanvas();
     }
   }, 500);
+}
+
+// 生成ボタンを作成
+function createGenerateButton() {
+  // キャンバスを作成
+  generateButtonCanvas = document.createElement('canvas');
+  generateButtonCanvas.width = 128;
+  generateButtonCanvas.height = 64;
+  generateButtonContext = generateButtonCanvas.getContext('2d');
+
+  // テクスチャを作成
+  generateButtonTexture = new THREE.CanvasTexture(generateButtonCanvas);
+  generateButtonTexture.minFilter = THREE.LinearFilter;
+  generateButtonTexture.magFilter = THREE.LinearFilter;
+
+  // ボタンのジオメトリとマテリアル
+  const buttonGeometry = new THREE.PlaneGeometry(0.1, 0.05);
+  const buttonMaterial = new THREE.MeshBasicMaterial({
+    map: generateButtonTexture,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+
+  generateButton = new THREE.Mesh(buttonGeometry, buttonMaterial);
+  generateButton.visible = false;
+  scene.add(generateButton);
+
+  // 初期描画
+  updateGenerateButton();
+}
+
+// 生成ボタンを更新
+function updateGenerateButton() {
+  if (!generateButtonContext) return;
+
+  const ctx = generateButtonContext;
+  const width = generateButtonCanvas.width;
+  const height = generateButtonCanvas.height;
+
+  // 背景をクリア
+  ctx.clearRect(0, 0, width, height);
+
+  // ボタンの色（押されているかどうかで変化）
+  const scale = isButtonPressed ? 0.95 : 1.0;
+  const bgColor = isButtonPressed ? '#45a049' : '#4CAF50';
+
+  // 背景を描画
+  ctx.fillStyle = bgColor;
+  ctx.beginPath();
+  ctx.roundRect(0, 0, width, height, 8);
+  ctx.fill();
+
+  // 枠線
+  ctx.strokeStyle = '#2E7D32';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(1, 1, width - 2, height - 2, 7);
+  ctx.stroke();
+
+  // テキスト
+  ctx.font = 'bold 20px system-ui, sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Generate', width / 2, height / 2);
+
+  // テクスチャを更新
+  if (generateButtonTexture) {
+    generateButtonTexture.needsUpdate = true;
+  }
+}
+
+// ボタンを押したアニメーション
+function pressGenerateButton() {
+  isButtonPressed = true;
+  buttonPressTime = Date.now();
+  updateGenerateButton();
+
+  // ボタンを少し縮小
+  if (generateButton) {
+    generateButton.scale.set(0.9, 0.9, 1);
+  }
+
+  // 200ms後に元に戻す
+  setTimeout(() => {
+    isButtonPressed = false;
+    updateGenerateButton();
+    if (generateButton) {
+      generateButton.scale.set(1, 1, 1);
+    }
+    // プロンプトを送信
+    submitPrompt();
+  }, 200);
 }
 
 // テキストキャンバスを更新
@@ -141,42 +313,35 @@ function updateTextCanvas() {
   // 背景を描画（不透明の濃いグレー - MRで見やすく）
   ctx.fillStyle = 'rgba(30, 30, 40, 0.95)';
   ctx.beginPath();
-  ctx.roundRect(0, 0, width, height, 10);
+  ctx.roundRect(0, 0, width, height, 8);
   ctx.fill();
 
   // 枠線を描画（明るい色で目立つように）
   ctx.strokeStyle = isTextInputActive ? '#4CAF50' : '#AAAAAA';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.roundRect(2, 2, width - 4, height - 4, 8);
+  ctx.roundRect(1, 1, width - 2, height - 2, 7);
   ctx.stroke();
 
   // プレースホルダーまたはテキストを描画
-  ctx.font = 'bold 18px system-ui, sans-serif';
+  ctx.font = 'bold 24px system-ui, sans-serif';
   ctx.textBaseline = 'middle';
 
   if (promptText.length === 0 && !isTextInputActive) {
     ctx.fillStyle = '#888888';
-    ctx.fillText('✨ プロンプトを入力...', 15, height / 2);
+    ctx.fillText('✨ プロンプトを入力...', 10, height / 2);
   } else {
     ctx.fillStyle = '#ffffff';
     const displayText = promptText + (cursorVisible && isTextInputActive ? '|' : '');
 
     // テキストが長すぎる場合は省略
-    const maxWidth = width - 30;
+    const maxWidth = width - 20;
     let text = displayText;
     while (ctx.measureText(text).width > maxWidth && text.length > 0) {
       text = text.substring(1);
     }
-    ctx.fillText(text, 15, height / 2);
+    ctx.fillText(text, 10, height / 2);
   }
-
-  // ヒントを描画（小さく）
-  ctx.font = '12px system-ui, sans-serif';
-  ctx.fillStyle = '#666666';
-  ctx.textAlign = 'right';
-  ctx.fillText('Enter: 生成', width - 10, height - 10);
-  ctx.textAlign = 'left';
 
   // テクスチャを更新
   if (textTexture) {
@@ -200,6 +365,11 @@ function startTextInput() {
     console.error('textPanelが存在しません');
   }
 
+  // 生成ボタンを表示
+  if (generateButton) {
+    generateButton.visible = true;
+  }
+
   // ボタンの状態を更新
   const promptToggleButton = document.getElementById('prompt-toggle');
   if (promptToggleButton) {
@@ -213,6 +383,11 @@ function stopTextInput() {
   isTextInputActive = false;
   cursorVisible = false;
   updateTextCanvas();
+
+  // 生成ボタンを非表示
+  if (generateButton) {
+    generateButton.visible = false;
+  }
 
   // ボタンの状態を更新
   const promptToggleButton = document.getElementById('prompt-toggle');
@@ -470,8 +645,23 @@ function initializeTextPanelPosition(frame, referenceSpace) {
   // パネルをカメラに向ける
   textPanel.quaternion.copy(cameraQuaternion);
 
+  // 生成ボタンをパネルの右側に配置
+  updateGenerateButtonPosition();
+
   console.log('テキストパネルを配置:', textPanel.position);
   panelInitialized = true;
+}
+
+// 生成ボタンの位置を更新（パネルの右側）
+function updateGenerateButtonPosition() {
+  if (!generateButton || !textPanel) return;
+
+  // パネルの右側に配置（パネル幅0.4の半分 + ボタン幅0.1の半分 + 少し隙間）
+  const offset = new THREE.Vector3(0.26, 0, 0);
+  offset.applyQuaternion(textPanel.quaternion);
+
+  generateButton.position.copy(textPanel.position).add(offset);
+  generateButton.quaternion.copy(textPanel.quaternion);
 }
 
 // コントローラーの位置を取得
@@ -482,8 +672,8 @@ function getControllerPosition(controller) {
   return position;
 }
 
-// 当たり判定のサイズ（パネルサイズに合わせる: 0.4 x 0.1）
-const COLLISION_SIZE = { x: 0.5, y: 0.15, z: 0.1 };
+// 当たり判定のサイズ（パネルサイズに合わせる: 0.4 x 0.05）
+const COLLISION_SIZE = { x: 0.5, y: 0.1, z: 0.1 };
 
 // パネルとの当たり判定（ボックス）
 function checkPanelCollision(controllerPosition) {
@@ -528,6 +718,21 @@ function isGripPressed(inputSource) {
   return false;
 }
 
+// inputSourceからグリップの位置を取得
+function getGripPosition(inputSource, frame, referenceSpace) {
+  if (!inputSource || !inputSource.gripSpace || !frame || !referenceSpace) return null;
+
+  const gripPose = frame.getPose(inputSource.gripSpace, referenceSpace);
+  if (gripPose) {
+    return new THREE.Vector3(
+      gripPose.transform.position.x,
+      gripPose.transform.position.y,
+      gripPose.transform.position.z
+    );
+  }
+  return null;
+}
+
 // コントローラーによるパネル操作を更新
 function updatePanelControllerInteraction(frame, referenceSpace) {
   if (!textPanel || !textPanel.visible || !xrSession) return;
@@ -537,19 +742,21 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
 
   for (const inputSource of inputSources) {
     if (inputSource.targetRayMode !== 'tracked-pointer') continue;
+    if (!inputSource.gripSpace) continue;
 
-    const controller = inputSource.handedness === 'right' ? leftController : rightController;
-    if (!controller) continue;
-
-    const controllerPosition = getControllerPosition(controller);
-    const gripPressed = isGripPressed(inputSource);
     const handedness = inputSource.handedness;
+    if (!handedness) continue;
+
+    const gripPosition = getGripPosition(inputSource, frame, referenceSpace);
+    if (!gripPosition) continue;
+
+    const gripPressed = isGripPressed(inputSource);
 
     // ドラッグ中の処理
-    if (isDraggingPanel && draggingController === controller) {
-      if (gripPressed && controllerPosition) {
-        // コントローラーの位置にオフセットを加えてパネルを移動
-        textPanel.position.copy(controllerPosition).add(dragOffset);
+    if (isDraggingPanel && draggingInputSource === inputSource) {
+      if (gripPressed) {
+        // グリップの位置にオフセットを加えてパネルを移動
+        textPanel.position.copy(gripPosition).add(dragOffset);
 
         // パネルをカメラに向ける
         const viewerPose = frame.getViewerPose(referenceSpace);
@@ -561,26 +768,29 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
           );
           textPanel.lookAt(cameraPos);
         }
+
+        // 生成ボタンも一緒に移動
+        updateGenerateButtonPosition();
       } else {
         // グリップを離したらドラッグ終了
         isDraggingPanel = false;
-        draggingController = null;
+        draggingInputSource = null;
         console.log('パネルをドロップ');
       }
       wasGripPressed[handedness] = gripPressed;
-      return;
+      continue;
     }
 
     // グリップを押した瞬間にパネルをつかむ
-    const isColliding = checkPanelCollision(controllerPosition);
+    const isColliding = checkPanelCollision(gripPosition);
 
     if (gripPressed && !wasGripPressed[handedness]) {
-      console.log('グリップ押下:', handedness, 'collision:', isColliding, 'distance:', controllerPosition ? controllerPosition.distanceTo(textPanel.position) : 'N/A');
+      console.log('グリップ押下:', handedness, 'collision:', isColliding);
 
-      if (controllerPosition && isColliding) {
+      if (isColliding) {
         isDraggingPanel = true;
-        draggingController = controller;
-        dragOffset.copy(textPanel.position).sub(controllerPosition);
+        draggingInputSource = inputSource;
+        dragOffset.copy(textPanel.position).sub(gripPosition);
         console.log('パネルをグリップ:', handedness);
       }
     }
@@ -599,6 +809,9 @@ function animate(timestamp, frame) {
     if (textPanel && textPanel.visible && !panelInitialized) {
       initializeTextPanelPosition(frame, referenceSpace);
     }
+
+    // レーザーの表示状態を更新
+    updateLaserVisibility();
 
     // コントローラーによるパネル操作
     updatePanelControllerInteraction(frame, referenceSpace);
@@ -660,6 +873,48 @@ async function startXR() {
     leftController = renderer.xr.getController(1);
     scene.add(rightController);
     scene.add(leftController);
+
+    // レーザーポインターを追加
+    rightLaser = createLaser();
+    leftLaser = createLaser();
+    rightController.add(rightLaser);
+    leftController.add(leftLaser);
+
+    // コントローラーのselectイベント（トリガー）でパネルやボタンをタップ
+    const hiddenInput = document.getElementById('hidden-input');
+    const onSelect = (event) => {
+      const controller = event.target;
+      const raycaster = new THREE.Raycaster();
+      const tempMatrix = new THREE.Matrix4();
+      tempMatrix.identity().extractRotation(controller.matrixWorld);
+
+      raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+      raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+      // 生成ボタンをタップしたかチェック
+      if (generateButton && generateButton.visible) {
+        const buttonIntersects = raycaster.intersectObject(generateButton);
+        if (buttonIntersects.length > 0) {
+          pressGenerateButton();
+          console.log('生成ボタンをタップ');
+          return;
+        }
+      }
+
+      // レーザーがパネルに当たっているかチェック
+      if (textPanel && textPanel.visible && hiddenInput) {
+        const intersects = raycaster.intersectObject(textPanel);
+        if (intersects.length > 0) {
+          // 現在のテキストをinputに反映してからフォーカス
+          hiddenInput.value = promptText;
+          hiddenInput.focus();
+          hiddenInput.click();
+          console.log('パネルをタップ - キーボード呼び出し');
+        }
+      }
+    };
+    rightController.addEventListener('select', onSelect);
+    leftController.addEventListener('select', onSelect);
 
     // ハンドトラッキングを取得
     hand1 = renderer.xr.getHand(0);
@@ -764,6 +1019,12 @@ async function startVR() {
     scene.add(rightController);
     scene.add(leftController);
 
+    // レーザーポインターを追加
+    rightLaser = createLaser();
+    leftLaser = createLaser();
+    rightController.add(rightLaser);
+    leftController.add(leftLaser);
+
     // ハンドトラッキングを取得
     hand1 = renderer.xr.getHand(0);
     hand2 = renderer.xr.getHand(1);
@@ -860,6 +1121,28 @@ if (promptToggleButton) {
       stopTextInput();
     } else {
       startTextInput();
+    }
+  });
+}
+
+// 隠し入力欄（キーボード入力用）
+const hiddenInputElement = document.getElementById('hidden-input');
+
+if (hiddenInputElement) {
+  // 入力時にパネルのテキストを更新
+  hiddenInputElement.addEventListener('input', (e) => {
+    promptText = e.target.value;
+    updateTextCanvas();
+  });
+
+  // Enterキーで送信
+  hiddenInputElement.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitPrompt();
+      hiddenInputElement.value = '';
+      promptText = '';
+      updateTextCanvas();
     }
   });
 }
