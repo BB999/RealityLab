@@ -28,6 +28,13 @@ let cursorVisible = true;
 let cursorBlinkInterval = null;
 let isTextInputActive = false;
 
+// 画像生成用変数
+let generatedImagePanel = null;
+let isGenerating = false;
+
+// fal.ai APIキー（環境変数から読み込み）
+const FAL_API_KEY = import.meta.env.VITE_FAL_API_KEY;
+
 // 生成ボタン用変数
 let generateButton = null;
 let generateButtonCanvas = null;
@@ -38,6 +45,7 @@ let buttonPressTime = 0;
 
 // パネルドラッグ用変数
 let isDraggingPanel = false;
+let isDraggingImagePanel = false;
 let draggingInputSource = null;
 let dragOffset = new THREE.Vector3();
 let panelInitialized = false;
@@ -397,14 +405,157 @@ function stopTextInput() {
   }
 }
 
-// プロンプトを送信（エフェクト生成用 - 後で実装）
+// 生成した画像をMR空間に表示
+function displayGeneratedImage(imageUrl) {
+  // テクスチャローダーで画像を読み込み
+  const textureLoader = new THREE.TextureLoader();
+
+  // CORSを回避するため、crossOriginを設定
+  textureLoader.crossOrigin = 'anonymous';
+
+  textureLoader.load(
+    imageUrl,
+    (texture) => {
+      // 既存の画像パネルがあれば削除
+      if (generatedImagePanel) {
+        scene.remove(generatedImagePanel);
+        generatedImagePanel.geometry.dispose();
+        generatedImagePanel.material.dispose();
+      }
+
+      // 画像パネルを作成（正方形、半分のサイズ）
+      const panelGeometry = new THREE.PlaneGeometry(0.25, 0.25);
+      const panelMaterial = new THREE.MeshBasicMaterial({
+        map: texture,
+        side: THREE.DoubleSide,
+        transparent: true
+      });
+
+      generatedImagePanel = new THREE.Mesh(panelGeometry, panelMaterial);
+
+      // テキストパネルの下に配置
+      if (textPanel) {
+        generatedImagePanel.position.copy(textPanel.position);
+        generatedImagePanel.position.y -= 0.35; // パネルの下に配置
+        generatedImagePanel.quaternion.copy(textPanel.quaternion);
+      } else {
+        generatedImagePanel.position.set(0, 0.8, -0.5);
+      }
+
+      scene.add(generatedImagePanel);
+      console.log('画像を表示:', imageUrl);
+      updateInfo('画像生成完了！');
+      isGenerating = false;
+    },
+    undefined,
+    (error) => {
+      console.error('画像読み込みエラー:', error);
+      updateInfo('画像読み込みエラー');
+      isGenerating = false;
+    }
+  );
+}
+
+// fal.ai APIで画像を生成
+async function generateImage(prompt) {
+  if (isGenerating) {
+    console.log('既に生成中です');
+    return;
+  }
+
+  isGenerating = true;
+  updateInfo('画像生成中... ✨');
+
+  try {
+    // fal.ai Nano Banana Pro APIを呼び出し（キュー方式）
+    const submitResponse = await fetch('https://queue.fal.run/fal-ai/nano-banana-pro', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Key ${FAL_API_KEY}`
+      },
+      body: JSON.stringify({
+        prompt: prompt,
+        aspect_ratio: '1:1',
+        resolution: '1K',
+        num_images: 1,
+        output_format: 'png'
+      })
+    });
+
+    if (!submitResponse.ok) {
+      const errorText = await submitResponse.text();
+      throw new Error(`Submit Error: ${submitResponse.status} - ${errorText}`);
+    }
+
+    const submitData = await submitResponse.json();
+    console.log('Submit response:', submitData);
+
+    const requestId = submitData.request_id;
+    if (!requestId) {
+      throw new Error('request_idが取得できませんでした');
+    }
+
+    // ポーリングでステータスを確認
+    const maxAttempts = 30;
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      const statusResponse = await fetch(`https://queue.fal.run/fal-ai/nano-banana-pro/requests/${requestId}/status`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Key ${FAL_API_KEY}`
+        }
+      });
+
+      if (statusResponse.ok) {
+        const statusData = await statusResponse.json();
+        console.log('Status:', statusData);
+
+        if (statusData.status === 'COMPLETED') {
+          // 完了したら結果を取得
+          const resultResponse = await fetch(`https://queue.fal.run/fal-ai/nano-banana-pro/requests/${requestId}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Key ${FAL_API_KEY}`
+            }
+          });
+
+          if (resultResponse.ok) {
+            const resultData = await resultResponse.json();
+            console.log('Result:', resultData);
+
+            if (resultData.images && resultData.images.length > 0) {
+              const imageUrl = resultData.images[0].url;
+              displayGeneratedImage(imageUrl);
+              return;
+            }
+          }
+          throw new Error('結果の取得に失敗しました');
+        }
+      }
+
+      updateInfo(`画像生成中... (${i + 1}/${maxAttempts})`);
+    }
+
+    throw new Error('画像生成がタイムアウトしました');
+
+  } catch (error) {
+    console.error('画像生成エラー:', error);
+    updateInfo('画像生成エラー: ' + error.message);
+    isGenerating = false;
+  }
+}
+
+// プロンプトを送信（画像生成）
 function submitPrompt() {
   if (promptText.trim().length === 0) return;
 
   console.log('プロンプト送信:', promptText);
   updateInfo('プロンプト: ' + promptText);
 
-  // TODO: ここでAIにプロンプトを送信し、エフェクトを生成する
+  // 画像生成を開始
+  generateImage(promptText);
 
   stopTextInput();
 }
@@ -693,6 +844,24 @@ function checkPanelCollision(controllerPosition) {
          Math.abs(localPos.z) < halfZ;
 }
 
+// 画像パネルとの当たり判定
+const IMAGE_COLLISION_SIZE = { x: 0.3, y: 0.3, z: 0.1 };
+
+function checkImagePanelCollision(controllerPosition) {
+  if (!generatedImagePanel || !controllerPosition) return false;
+
+  const localPos = controllerPosition.clone();
+  generatedImagePanel.worldToLocal(localPos);
+
+  const halfX = IMAGE_COLLISION_SIZE.x / 2;
+  const halfY = IMAGE_COLLISION_SIZE.y / 2;
+  const halfZ = IMAGE_COLLISION_SIZE.z / 2;
+
+  return Math.abs(localPos.x) < halfX &&
+         Math.abs(localPos.y) < halfY &&
+         Math.abs(localPos.z) < halfZ;
+}
+
 // グリップボタンの状態を取得
 function isGripPressed(inputSource) {
   if (!inputSource || !inputSource.gamepad) return false;
@@ -735,7 +904,7 @@ function getGripPosition(inputSource, frame, referenceSpace) {
 
 // コントローラーによるパネル操作を更新
 function updatePanelControllerInteraction(frame, referenceSpace) {
-  if (!textPanel || !textPanel.visible || !xrSession) return;
+  if (!xrSession) return;
 
   const inputSources = xrSession.inputSources;
   if (!inputSources) return;
@@ -752,13 +921,11 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
 
     const gripPressed = isGripPressed(inputSource);
 
-    // ドラッグ中の処理
+    // テキストパネルのドラッグ中の処理
     if (isDraggingPanel && draggingInputSource === inputSource) {
       if (gripPressed) {
-        // グリップの位置にオフセットを加えてパネルを移動
         textPanel.position.copy(gripPosition).add(dragOffset);
 
-        // パネルをカメラに向ける
         const viewerPose = frame.getViewerPose(referenceSpace);
         if (viewerPose) {
           const cameraPos = new THREE.Vector3(
@@ -769,29 +936,61 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
           textPanel.lookAt(cameraPos);
         }
 
-        // 生成ボタンも一緒に移動
         updateGenerateButtonPosition();
       } else {
-        // グリップを離したらドラッグ終了
         isDraggingPanel = false;
         draggingInputSource = null;
-        console.log('パネルをドロップ');
+        console.log('テキストパネルをドロップ');
+      }
+      wasGripPressed[handedness] = gripPressed;
+      continue;
+    }
+
+    // 画像パネルのドラッグ中の処理
+    if (isDraggingImagePanel && draggingInputSource === inputSource) {
+      if (gripPressed) {
+        generatedImagePanel.position.copy(gripPosition).add(dragOffset);
+
+        const viewerPose = frame.getViewerPose(referenceSpace);
+        if (viewerPose) {
+          const cameraPos = new THREE.Vector3(
+            viewerPose.transform.position.x,
+            viewerPose.transform.position.y,
+            viewerPose.transform.position.z
+          );
+          generatedImagePanel.lookAt(cameraPos);
+        }
+      } else {
+        isDraggingImagePanel = false;
+        draggingInputSource = null;
+        console.log('画像パネルをドロップ');
       }
       wasGripPressed[handedness] = gripPressed;
       continue;
     }
 
     // グリップを押した瞬間にパネルをつかむ
-    const isColliding = checkPanelCollision(gripPosition);
-
     if (gripPressed && !wasGripPressed[handedness]) {
-      console.log('グリップ押下:', handedness, 'collision:', isColliding);
-
-      if (isColliding) {
-        isDraggingPanel = true;
+      // まず画像パネルをチェック
+      const isImageColliding = checkImagePanelCollision(gripPosition);
+      if (isImageColliding) {
+        isDraggingImagePanel = true;
         draggingInputSource = inputSource;
-        dragOffset.copy(textPanel.position).sub(gripPosition);
-        console.log('パネルをグリップ:', handedness);
+        dragOffset.copy(generatedImagePanel.position).sub(gripPosition);
+        console.log('画像パネルをグリップ:', handedness);
+        wasGripPressed[handedness] = gripPressed;
+        continue;
+      }
+
+      // 次にテキストパネルをチェック
+      if (textPanel && textPanel.visible) {
+        const isColliding = checkPanelCollision(gripPosition);
+        if (isColliding) {
+          isDraggingPanel = true;
+          draggingInputSource = inputSource;
+          dragOffset.copy(textPanel.position).sub(gripPosition);
+          console.log('テキストパネルをグリップ:', handedness);
+        }
       }
     }
 
