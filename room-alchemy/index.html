@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MR Box Template</title>
+  <title>Room Alchemy</title>
   <style>
     * {
       margin: 0;
@@ -16,6 +16,7 @@
       height: 100vh;
       overflow: hidden;
       font-family: system-ui, -apple-system, sans-serif;
+      background: #0a0a0a;
     }
 
     #app {
@@ -23,43 +24,78 @@
       height: 100%;
     }
 
-    #start-button {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      padding: 20px 40px;
-      font-size: 24px;
-      background: #4CAF50;
-      color: white;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      font-weight: bold;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-      transition: all 0.3s;
+    #landing-scene {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 500;
+    }
+
+    #start-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
       z-index: 1000;
+      pointer-events: none;
+    }
+
+    #title {
+      font-size: 48px;
+      font-weight: 300;
+      color: #00ffff;
+      text-transform: uppercase;
+      letter-spacing: 12px;
+      margin-bottom: 20px;
+      text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+      animation: titleGlow 2s ease-in-out infinite alternate;
+    }
+
+    @keyframes titleGlow {
+      from {
+        text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+      }
+      to {
+        text-shadow: 0 0 40px rgba(0, 255, 255, 0.8), 0 0 60px rgba(0, 255, 255, 0.4);
+      }
+    }
+
+    #subtitle {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.5);
+      letter-spacing: 4px;
+      margin-bottom: 60px;
+    }
+
+    #start-button {
+      padding: 16px 48px;
+      font-size: 16px;
+      background: transparent;
+      color: #00ffff;
+      border: 1px solid #00ffff;
+      cursor: pointer;
+      font-weight: 400;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      transition: all 0.3s;
+      pointer-events: auto;
     }
 
     #start-button:hover {
-      background: #45a049;
-      transform: translate(-50%, -50%) scale(1.05);
+      background: rgba(0, 255, 255, 0.1);
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+      transform: scale(1.02);
     }
 
     #start-button:active {
-      transform: translate(-50%, -50%) scale(0.95);
-    }
-
-    #info {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      color: white;
-      background: rgba(0,0,0,0.7);
-      padding: 10px;
-      border-radius: 5px;
-      font-size: 14px;
-      z-index: 100;
+      transform: scale(0.98);
     }
 
     #depth-toggle {
@@ -85,42 +121,341 @@
       transform: scale(1.05);
     }
 
-    #prompt-toggle {
-      position: absolute;
-      bottom: 20px;
-      left: 20px;
-      padding: 10px 20px;
-      font-size: 16px;
-      background: #9C27B0;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      font-weight: bold;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-      transition: all 0.3s;
-      z-index: 100;
-    }
-
-    #prompt-toggle:hover {
-      background: #7B1FA2;
-      transform: scale(1.05);
-    }
-
-    #prompt-toggle.active {
-      background: #4CAF50;
-    }
   </style>
 </head>
 <body>
   <div id="app"></div>
-  <button id="start-button">MRを開始</button>
+
+  <!-- ランディングシーン -->
+  <canvas id="landing-scene"></canvas>
+
+  <!-- スタートオーバーレイ -->
+  <div id="start-overlay">
+    <h1 id="title">Room Alchemy</h1>
+    <p id="subtitle">Transform Your Reality</p>
+    <button id="start-button">Enter Experience</button>
+  </div>
+
   <button id="depth-toggle">深度表示 OFF</button>
-  <button id="prompt-toggle">✨ プロンプト入力</button>
-  <div id="info">「MRを開始」をタップしてください</div>
 
   <!-- 隠し入力欄（キーボード呼び出し用） -->
   <input type="text" id="hidden-input" style="position:fixed; top:-100px; left:0; opacity:0;" autocomplete="off">
+
+  <!-- ランディングシーンスクリプト -->
+  <script type="module">
+    import * as THREE from 'three';
+
+    // ランディングシーンのセットアップ
+    const canvas = document.getElementById('landing-scene');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // ワイヤーフレームマテリアル
+    const wireMaterial = new THREE.LineBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.6
+    });
+
+    const wireMaterialDim = new THREE.LineBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.3
+    });
+
+    // 部屋のワイヤーフレーム
+    function createRoom() {
+      const group = new THREE.Group();
+      const w = 8, h = 4, d = 10;
+
+      // 床のグリッド
+      const floorGrid = new THREE.GridHelper(Math.max(w, d), 20, 0x00ffff, 0x004444);
+      floorGrid.position.y = -h/2;
+      floorGrid.material.transparent = true;
+      floorGrid.material.opacity = 0.3;
+      group.add(floorGrid);
+
+      // 部屋の枠（エッジ）
+      const roomGeometry = new THREE.BoxGeometry(w, h, d);
+      const roomEdges = new THREE.EdgesGeometry(roomGeometry);
+      const roomWireframe = new THREE.LineSegments(roomEdges, wireMaterial);
+      group.add(roomWireframe);
+
+      return group;
+    }
+
+    // ベッドのワイヤーフレーム
+    function createBed() {
+      const group = new THREE.Group();
+
+      // ベッドフレーム
+      const frameGeo = new THREE.BoxGeometry(1.8, 0.4, 2.2);
+      const frameEdges = new THREE.EdgesGeometry(frameGeo);
+      const frame = new THREE.LineSegments(frameEdges, wireMaterial);
+      frame.position.y = 0.2;
+      group.add(frame);
+
+      // マットレス
+      const mattressGeo = new THREE.BoxGeometry(1.6, 0.2, 2.0);
+      const mattressEdges = new THREE.EdgesGeometry(mattressGeo);
+      const mattress = new THREE.LineSegments(mattressEdges, wireMaterialDim);
+      mattress.position.y = 0.5;
+      group.add(mattress);
+
+      // 枕
+      const pillowGeo = new THREE.BoxGeometry(0.5, 0.15, 0.4);
+      const pillowEdges = new THREE.EdgesGeometry(pillowGeo);
+      const pillow = new THREE.LineSegments(pillowEdges, wireMaterialDim);
+      pillow.position.set(0, 0.68, -0.7);
+      group.add(pillow);
+
+      // ヘッドボード
+      const headboardGeo = new THREE.BoxGeometry(1.8, 0.8, 0.1);
+      const headboardEdges = new THREE.EdgesGeometry(headboardGeo);
+      const headboard = new THREE.LineSegments(headboardEdges, wireMaterial);
+      headboard.position.set(0, 0.8, -1.05);
+      group.add(headboard);
+
+      return group;
+    }
+
+    // テーブルのワイヤーフレーム
+    function createTable() {
+      const group = new THREE.Group();
+
+      // 天板
+      const topGeo = new THREE.BoxGeometry(1.2, 0.05, 0.6);
+      const topEdges = new THREE.EdgesGeometry(topGeo);
+      const top = new THREE.LineSegments(topEdges, wireMaterial);
+      top.position.y = 0.75;
+      group.add(top);
+
+      // 脚
+      const legGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.75, 8);
+      const legEdges = new THREE.EdgesGeometry(legGeo);
+      const legPositions = [
+        [-0.5, 0.375, -0.2],
+        [0.5, 0.375, -0.2],
+        [-0.5, 0.375, 0.2],
+        [0.5, 0.375, 0.2]
+      ];
+
+      legPositions.forEach(pos => {
+        const leg = new THREE.LineSegments(legEdges, wireMaterialDim);
+        leg.position.set(...pos);
+        group.add(leg);
+      });
+
+      return group;
+    }
+
+    // 椅子のワイヤーフレーム
+    function createChair() {
+      const group = new THREE.Group();
+
+      // 座面
+      const seatGeo = new THREE.BoxGeometry(0.45, 0.05, 0.45);
+      const seatEdges = new THREE.EdgesGeometry(seatGeo);
+      const seat = new THREE.LineSegments(seatEdges, wireMaterial);
+      seat.position.y = 0.45;
+      group.add(seat);
+
+      // 背もたれ
+      const backGeo = new THREE.BoxGeometry(0.45, 0.5, 0.05);
+      const backEdges = new THREE.EdgesGeometry(backGeo);
+      const back = new THREE.LineSegments(backEdges, wireMaterial);
+      back.position.set(0, 0.72, -0.2);
+      group.add(back);
+
+      // 脚
+      const legGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.45, 6);
+      const legEdges = new THREE.EdgesGeometry(legGeo);
+      const legPositions = [
+        [-0.18, 0.225, -0.18],
+        [0.18, 0.225, -0.18],
+        [-0.18, 0.225, 0.18],
+        [0.18, 0.225, 0.18]
+      ];
+
+      legPositions.forEach(pos => {
+        const leg = new THREE.LineSegments(legEdges, wireMaterialDim);
+        leg.position.set(...pos);
+        group.add(leg);
+      });
+
+      return group;
+    }
+
+    // ペンダントライトのワイヤーフレーム
+    function createPendantLight() {
+      const group = new THREE.Group();
+
+      // シェード（円錐）
+      const shadeGeo = new THREE.ConeGeometry(0.25, 0.3, 12, 1, true);
+      const shadeEdges = new THREE.EdgesGeometry(shadeGeo);
+      const shade = new THREE.LineSegments(shadeEdges, wireMaterial);
+      shade.rotation.x = Math.PI;
+      group.add(shade);
+
+      // コード
+      const cordGeo = new THREE.CylinderGeometry(0.01, 0.01, 1.5, 4);
+      const cordEdges = new THREE.EdgesGeometry(cordGeo);
+      const cord = new THREE.LineSegments(cordEdges, wireMaterialDim);
+      cord.position.y = 0.9;
+      group.add(cord);
+
+      // 電球（小さな球）
+      const bulbGeo = new THREE.SphereGeometry(0.08, 8, 6);
+      const bulbEdges = new THREE.EdgesGeometry(bulbGeo);
+      const bulb = new THREE.LineSegments(bulbEdges, new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.8
+      }));
+      bulb.position.y = -0.1;
+      group.add(bulb);
+
+      return group;
+    }
+
+    // 本棚のワイヤーフレーム
+    function createBookshelf() {
+      const group = new THREE.Group();
+
+      // フレーム
+      const frameGeo = new THREE.BoxGeometry(0.8, 1.6, 0.3);
+      const frameEdges = new THREE.EdgesGeometry(frameGeo);
+      const frame = new THREE.LineSegments(frameEdges, wireMaterial);
+      frame.position.y = 0.8;
+      group.add(frame);
+
+      // 棚板
+      const shelfGeo = new THREE.BoxGeometry(0.76, 0.02, 0.28);
+      const shelfEdges = new THREE.EdgesGeometry(shelfGeo);
+      for (let i = 0; i < 4; i++) {
+        const shelf = new THREE.LineSegments(shelfEdges, wireMaterialDim);
+        shelf.position.y = 0.2 + i * 0.4;
+        group.add(shelf);
+      }
+
+      // 本
+      const bookGeo = new THREE.BoxGeometry(0.15, 0.22, 0.2);
+      const bookEdges = new THREE.EdgesGeometry(bookGeo);
+      for (let i = 0; i < 3; i++) {
+        const book = new THREE.LineSegments(bookEdges, wireMaterialDim);
+        book.position.set(-0.25 + i * 0.25, 0.51, 0);
+        book.rotation.z = (Math.random() - 0.5) * 0.1;
+        group.add(book);
+      }
+
+      return group;
+    }
+
+    // シーン構築
+    const room = createRoom();
+    scene.add(room);
+
+    const bed = createBed();
+    bed.position.set(-2.5, -2, -3);
+    scene.add(bed);
+
+    const table = createTable();
+    table.position.set(2, -2, -2);
+    scene.add(table);
+
+    const chair = createChair();
+    chair.position.set(2, -2, -1);
+    chair.rotation.y = Math.PI;
+    scene.add(chair);
+
+    const light1 = createPendantLight();
+    light1.position.set(0, 2, 0);
+    scene.add(light1);
+
+    const light2 = createPendantLight();
+    light2.position.set(-2, 2, -2);
+    light2.scale.set(0.8, 0.8, 0.8);
+    scene.add(light2);
+
+    const bookshelf = createBookshelf();
+    bookshelf.position.set(3.5, -2, -4);
+    bookshelf.rotation.y = -Math.PI / 2;
+    scene.add(bookshelf);
+
+    // パーティクル（空気中の塵）
+    const particlesGeometry = new THREE.BufferGeometry();
+    const particleCount = 200;
+    const positions = new Float32Array(particleCount * 3);
+
+    for (let i = 0; i < particleCount * 3; i += 3) {
+      positions[i] = (Math.random() - 0.5) * 8;
+      positions[i + 1] = (Math.random() - 0.5) * 4;
+      positions[i + 2] = (Math.random() - 0.5) * 10;
+    }
+
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const particlesMaterial = new THREE.PointsMaterial({
+      color: 0x00ffff,
+      size: 0.02,
+      transparent: true,
+      opacity: 0.4
+    });
+    const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+    scene.add(particles);
+
+    // カメラアニメーション
+    let time = 0;
+    const cameraPath = {
+      radius: 6,
+      height: 1,
+      speed: 0.15
+    };
+
+    function animate() {
+      time += 0.016;
+
+      // カメラの円周軌道
+      const angle = time * cameraPath.speed;
+      camera.position.x = Math.sin(angle) * cameraPath.radius;
+      camera.position.z = Math.cos(angle) * cameraPath.radius;
+      camera.position.y = cameraPath.height + Math.sin(time * 0.3) * 0.5;
+
+      camera.lookAt(0, 0, 0);
+
+      // パーティクルのゆっくりした動き
+      const particlePositions = particles.geometry.attributes.position.array;
+      for (let i = 0; i < particleCount * 3; i += 3) {
+        particlePositions[i + 1] += Math.sin(time + i) * 0.001;
+      }
+      particles.geometry.attributes.position.needsUpdate = true;
+
+      // ライトの揺れ
+      light1.rotation.z = Math.sin(time * 0.5) * 0.05;
+      light2.rotation.z = Math.sin(time * 0.7 + 1) * 0.05;
+
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+
+    // リサイズ対応
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // スタートボタンでランディングシーンを非表示
+    document.getElementById('start-button').addEventListener('click', () => {
+      document.getElementById('landing-scene').style.display = 'none';
+      document.getElementById('start-overlay').style.display = 'none';
+    });
+  </script>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>

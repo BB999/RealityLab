@@ -142,24 +142,12 @@ function startTextInput() {
   textPanel.start();
   generateButton.show();
   generateButton.updatePosition(textPanel.getPanel());
-
-  const promptToggleButton = document.getElementById('prompt-toggle');
-  if (promptToggleButton) {
-    promptToggleButton.classList.add('active');
-    promptToggleButton.textContent = '❌ 入力を閉じる';
-  }
 }
 
 // テキスト入力を終了
 function stopTextInput() {
   textPanel.stop();
   generateButton.hide();
-
-  const promptToggleButton = document.getElementById('prompt-toggle');
-  if (promptToggleButton) {
-    promptToggleButton.classList.remove('active');
-    promptToggleButton.textContent = '✨ プロンプト入力';
-  }
 }
 
 // プロンプトを送信（モジュール生成または再生成）
@@ -1209,17 +1197,6 @@ if (depthToggleButton) {
     depthToggleButton.style.display = 'none';
     depthVisualization.setEnabled(false);
     depthToggleButton.textContent = '深度表示 OFF';
-  });
-}
-
-const promptToggleButton = document.getElementById('prompt-toggle');
-if (promptToggleButton) {
-  promptToggleButton.addEventListener('click', () => {
-    if (textPanel.isActive) {
-      stopTextInput();
-    } else {
-      startTextInput();
-    }
   });
 }
 
