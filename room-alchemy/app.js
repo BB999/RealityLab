@@ -1,6 +1,11 @@
 import * as THREE from 'three';
+import { ModuleManager } from './modules/ModuleManager.js';
+import { createStarfield, createFireworks } from './modules/factories/effects.js';
+import { createImagePanel } from './modules/factories/imagePanel.js';
+import { analyzePrompt } from './modules/PromptAnalyzer.js';
 
 let scene, camera, renderer;
+let moduleManager = null;
 let xrSession = null;
 let rightController = null;
 let leftController = null;
@@ -31,6 +36,9 @@ let isTextInputActive = false;
 // 画像生成用変数
 let generatedImagePanel = null;
 let isGenerating = false;
+
+// モジュールドラッグ用変数
+let draggingModule = null;
 
 // APIキー（環境変数から読み込み）
 const FAL_API_KEY = import.meta.env.VITE_FAL_API_KEY;
@@ -125,6 +133,8 @@ function updateLaserVisibility() {
 function init() {
   // シーン作成
   scene = new THREE.Scene();
+  // 非XRモード用の背景色（XRセッション開始時に変更される）
+  scene.background = new THREE.Color(0x1a1a2e);
 
   // カメラ作成
   camera = new THREE.PerspectiveCamera(
@@ -133,6 +143,9 @@ function init() {
     0.1,
     1000
   );
+  // 非XRモード用のカメラ位置
+  camera.position.set(0, 1.6, 0);
+  camera.lookAt(0, 1.0, -1.0);
 
   // レンダラー作成
   renderer = new THREE.WebGLRenderer({
@@ -155,6 +168,12 @@ function init() {
 
   // ボックスを作成
   createBox();
+
+  // モジュールマネージャーを初期化
+  moduleManager = new ModuleManager(scene);
+  moduleManager.registerFactory('starfield', createStarfield);
+  moduleManager.registerFactory('fireworks', createFireworks);
+  moduleManager.registerFactory('imagePanel', createImagePanel);
 
   // テキストパネルを作成
   createTextPanel();
@@ -592,22 +611,152 @@ async function generateImage(userPrompt) {
   }
 }
 
-// プロンプトを送信（画像生成）
-function submitPrompt() {
+// プロンプトを送信（モジュール生成）
+async function submitPrompt() {
   if (promptText.trim().length === 0) return;
 
   console.log('プロンプト送信:', promptText);
-  updateInfo('プロンプト: ' + promptText);
+  updateInfo('解析中... 🧠');
 
-  // 画像生成を開始
-  generateImage(promptText);
+  const currentPrompt = promptText;
+  // テキストをクリアするが、パネルは表示したまま
+  promptText = '';
+  updateTextCanvas();
 
-  stopTextInput();
+  try {
+    // Claude APIでプロンプトを解析
+    const moduleDef = await analyzePrompt(currentPrompt, ANTHROPIC_API_KEY);
+    console.log('モジュール定義:', moduleDef);
+
+    // スポーン位置を決定（テキストパネルの下、既存モジュール数に応じてずらす）
+    const spawnPosition = new THREE.Vector3();
+    const moduleCount = moduleManager.modules.size;
+    const offsetX = (moduleCount % 3 - 1) * 0.4;  // -0.4, 0, 0.4 の順でずらす
+
+    if (textPanel) {
+      spawnPosition.copy(textPanel.position);
+      spawnPosition.y -= 0.3;
+      spawnPosition.x += offsetX;
+    } else {
+      spawnPosition.set(offsetX, 1.0, -0.5);
+    }
+
+    if (moduleDef.kind === 'imagePanel') {
+      // 画像生成が必要な場合
+      updateInfo('画像生成中... ✨');
+      const imagePrompt = moduleDef.imagePrompt || currentPrompt;
+
+      // 画像を生成
+      const imageUrl = await generateImageForModule(imagePrompt);
+
+      if (imageUrl) {
+        // 画像パネルモジュールをスポーン
+        moduleManager.spawn('imagePanel', spawnPosition, {
+          imageUrl: imageUrl,
+          width: moduleDef.params.width || 0.25,
+          height: moduleDef.params.height || 0.25
+        });
+        updateInfo('画像生成完了！');
+      }
+    } else {
+      // 3Dモジュールをスポーン
+      console.log('スポーン位置:', spawnPosition.x.toFixed(2), spawnPosition.y.toFixed(2), spawnPosition.z.toFixed(2));
+      console.log('テキストパネル位置:', textPanel ? textPanel.position : 'null');
+      console.log('モジュール定義:', JSON.stringify(moduleDef));
+      const moduleId = moduleManager.spawn(moduleDef.kind, spawnPosition, moduleDef.params);
+      console.log('生成されたモジュール:', moduleId, 'kind:', moduleDef.kind);
+      updateInfo(`${moduleDef.label || moduleDef.kind} を生成しました！`);
+    }
+
+  } catch (error) {
+    console.error('モジュール生成エラー:', error);
+    updateInfo('エラー: ' + error.message);
+  }
+}
+
+// モジュール用に画像を生成（URLを返す）
+async function generateImageForModule(prompt) {
+  try {
+    // fal.ai Nano Banana Pro APIを呼び出し
+    const submitResponse = await fetch('https://queue.fal.run/fal-ai/nano-banana-pro', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Key ${FAL_API_KEY}`
+      },
+      body: JSON.stringify({
+        prompt: prompt,
+        aspect_ratio: '1:1',
+        resolution: '1K',
+        num_images: 1,
+        output_format: 'png'
+      })
+    });
+
+    if (!submitResponse.ok) {
+      throw new Error(`Submit Error: ${submitResponse.status}`);
+    }
+
+    const submitData = await submitResponse.json();
+    const requestId = submitData.request_id;
+
+    // ポーリングで結果を待つ
+    const maxAttempts = 30;
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      const statusResponse = await fetch(`https://queue.fal.run/fal-ai/nano-banana-pro/requests/${requestId}/status`, {
+        method: 'GET',
+        headers: { 'Authorization': `Key ${FAL_API_KEY}` }
+      });
+
+      if (statusResponse.ok) {
+        const statusData = await statusResponse.json();
+
+        if (statusData.status === 'COMPLETED') {
+          const resultResponse = await fetch(`https://queue.fal.run/fal-ai/nano-banana-pro/requests/${requestId}`, {
+            method: 'GET',
+            headers: { 'Authorization': `Key ${FAL_API_KEY}` }
+          });
+
+          if (resultResponse.ok) {
+            const resultData = await resultResponse.json();
+            if (resultData.images && resultData.images.length > 0) {
+              return resultData.images[0].url;
+            }
+          }
+        }
+      }
+      updateInfo(`画像生成中... (${i + 1}/${maxAttempts})`);
+    }
+
+    throw new Error('画像生成タイムアウト');
+  } catch (error) {
+    console.error('画像生成エラー:', error);
+    return null;
+  }
 }
 
 // キーボードイベントを設定
 function setupKeyboardEvents() {
   document.addEventListener('keydown', (event) => {
+    // Tキーでテストスポーン（デバッグ用）
+    if (event.key === 't' || event.key === 'T') {
+      if (!isTextInputActive) {
+        const testPosition = new THREE.Vector3(0, 1.0, -1.0);
+        console.log('テストスポーン位置:', testPosition);
+        const moduleId = moduleManager.spawn('starfield', testPosition, {
+          count: 50,
+          color: '#ffff00',
+          size: 0.08,
+          spread: 0.5
+        });
+        console.log('テストスポーン完了:', moduleId);
+        updateInfo('テストスポーン完了');
+        return;
+      }
+    }
+
     // Tabキーでテキスト入力を開始/終了
     if (event.key === 'Tab') {
       event.preventDefault();
@@ -1043,8 +1192,74 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
   }
 }
 
+// モジュールのコントローラー操作
+function updateModuleControllerInteraction(frame, referenceSpace) {
+  if (!moduleManager || !xrSession) return;
+
+  const inputSources = xrSession.inputSources;
+  if (!inputSources) return;
+
+  for (const inputSource of inputSources) {
+    if (inputSource.targetRayMode !== 'tracked-pointer') continue;
+    if (!inputSource.gripSpace) continue;
+
+    const handedness = inputSource.handedness;
+    if (!handedness) continue;
+
+    const gripPosition = getGripPosition(inputSource, frame, referenceSpace);
+    if (!gripPosition) continue;
+
+    const gripPressed = isGripPressed(inputSource);
+
+    // ドラッグ中のモジュール
+    if (draggingModule && draggingInputSource === inputSource) {
+      if (gripPressed) {
+        moduleManager.move(draggingModule, gripPosition);
+
+        // モジュールをカメラに向ける
+        const module = moduleManager.modules.get(draggingModule);
+        if (module) {
+          const viewerPose = frame.getViewerPose(referenceSpace);
+          if (viewerPose) {
+            const cameraPos = new THREE.Vector3(
+              viewerPose.transform.position.x,
+              viewerPose.transform.position.y,
+              viewerPose.transform.position.z
+            );
+            module.group.lookAt(cameraPos);
+          }
+        }
+      } else {
+        moduleManager.release(draggingModule);
+        draggingModule = null;
+        draggingInputSource = null;
+        console.log('モジュールをドロップ');
+      }
+      continue;
+    }
+
+    // グリップを押した瞬間にモジュールをつかむ
+    if (gripPressed && !isDraggingPanel && !isDraggingImagePanel && !draggingModule) {
+      const module = moduleManager.findModuleAtPosition(gripPosition, 0.2);
+      if (module) {
+        draggingModule = module.id;
+        draggingInputSource = inputSource;
+        moduleManager.grab(module.id, gripPosition);
+        console.log('モジュールをグリップ:', module.kind, handedness);
+      }
+    }
+  }
+}
+
+// 前回のタイムスタンプ（deltaTime計算用）
+let lastTimestamp = 0;
+
 // アニメーションループ
 function animate(timestamp, frame) {
+  // deltaTimeを計算（秒単位）
+  const deltaTime = lastTimestamp ? (timestamp - lastTimestamp) / 1000 : 0.016;
+  lastTimestamp = timestamp;
+
   // XRセッション中の処理
   if (frame && xrSession) {
     const referenceSpace = renderer.xr.getReferenceSpace();
@@ -1060,8 +1275,16 @@ function animate(timestamp, frame) {
     // コントローラーによるパネル操作
     updatePanelControllerInteraction(frame, referenceSpace);
 
+    // モジュールのコントローラー操作
+    updateModuleControllerInteraction(frame, referenceSpace);
+
     // 深度情報を更新
     updateDepthInfo(frame, referenceSpace);
+  }
+
+  // モジュールを更新
+  if (moduleManager) {
+    moduleManager.update(deltaTime);
   }
 
   renderer.render(scene, camera);
@@ -1111,6 +1334,9 @@ async function startXR() {
     });
 
     await renderer.xr.setSession(xrSession);
+
+    // MRモードでは背景を透明に
+    scene.background = null;
 
     // コントローラーを取得
     rightController = renderer.xr.getController(0);
