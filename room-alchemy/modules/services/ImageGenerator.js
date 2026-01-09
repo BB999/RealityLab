@@ -168,4 +168,48 @@ User input: ${userPrompt}`
   isCurrentlyGenerating() {
     return this.isGenerating;
   }
+
+  // 元のプロンプトと変更指示を組み合わせて再生成用プロンプトを作成
+  async createRegeneratePrompt(originalPrompt, modificationRequest) {
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.anthropicApiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-3-5-haiku-20241022',
+          max_tokens: 400,
+          messages: [{
+            role: 'user',
+            content: `You are an expert at creating prompts for image generation AI.
+
+Original image prompt: "${originalPrompt}"
+
+User's modification request: "${modificationRequest}"
+
+Create a new, detailed English prompt that incorporates the user's modification into the original image concept. Keep the essence of the original while applying the requested changes. Output ONLY the new prompt, nothing else.`
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        console.error('Claude API Error');
+        // フォールバック: 元のプロンプトと変更指示を単純に結合
+        return `${originalPrompt}, ${modificationRequest}`;
+      }
+
+      const data = await response.json();
+      const newPrompt = data.content[0].text.trim();
+      console.log('Regenerate prompt:', newPrompt);
+      return newPrompt;
+
+    } catch (error) {
+      console.error('再生成プロンプト作成エラー:', error);
+      return `${originalPrompt}, ${modificationRequest}`;
+    }
+  }
 }

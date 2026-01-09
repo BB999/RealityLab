@@ -169,6 +169,74 @@ export class ModuleManager {
   }
 
   /**
+   * モジュールを同じ位置・サイズで置き換え
+   * @param {string} oldId - 置き換えるモジュールID
+   * @param {string} kind - 新しいモジュール種類
+   * @param {Object} params - 新しいモジュールパラメータ
+   * @returns {string} 新しいモジュールID
+   */
+  replaceModule(oldId, kind, params = {}) {
+    const oldModule = this.modules.get(oldId);
+    if (!oldModule) {
+      console.error(`Module not found: ${oldId}`);
+      return null;
+    }
+
+    // 古いモジュールの位置・回転・スケールを保存
+    const position = oldModule.group.position.clone();
+    const quaternion = oldModule.group.quaternion.clone();
+    const scale = oldModule.group.scale.clone();
+
+    // 古いモジュールを削除
+    this.despawn(oldId);
+
+    // 新しいモジュールをスポーン
+    const factory = this.moduleFactories.get(kind);
+    if (!factory) {
+      console.error(`Unknown module kind: ${kind}`);
+      return null;
+    }
+
+    const newId = `module_${this.nextId++}`;
+    const group = new THREE.Group();
+    group.position.copy(position);
+    group.quaternion.copy(quaternion);
+    group.scale.copy(scale);
+    group.userData.moduleId = newId;
+    group.userData.moduleKind = kind;
+
+    // ファクトリでモジュールを生成
+    const instance = factory(group, params);
+
+    // シーンに追加
+    this.scene.add(group);
+    console.log(`Module ${newId} replaced at position:`, group.position.x.toFixed(2), group.position.y.toFixed(2), group.position.z.toFixed(2));
+
+    // モジュールを登録
+    this.modules.set(newId, {
+      id: newId,
+      kind,
+      group,
+      instance,
+      params,
+      isGrabbed: false,
+      grabOffset: new THREE.Vector3()
+    });
+
+    console.log(`Replaced module: ${oldId} -> ${newId} (${kind})`);
+    return newId;
+  }
+
+  /**
+   * モジュールの情報を取得
+   * @param {string} id - モジュールID
+   * @returns {Object|null} モジュール情報
+   */
+  getModule(id) {
+    return this.modules.get(id) || null;
+  }
+
+  /**
    * 全モジュールを破棄
    */
   dispose() {

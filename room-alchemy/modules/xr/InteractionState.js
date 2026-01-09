@@ -30,6 +30,13 @@ export class InteractionState {
     this.draggingInputSource = null;
     this.dragOffset = new THREE.Vector3();
     this.wasGripPressed = { left: false, right: false };
+
+    // 再生成用：選択中モジュール
+    this.selectedModule = null;
+    this.selectedModuleKind = null;  // 'threejs' or 'imagePanel'
+    this.selectedModuleCode = null;
+    this.selectedModulePrompt = null;
+    this.selectedModuleImageUrl = null;
   }
 
   // ドラッグ開始（モジュール）
@@ -121,5 +128,39 @@ export class InteractionState {
   // グリップ状態を取得
   wasGripPressedFor(handedness) {
     return this.wasGripPressed[handedness];
+  }
+
+  // モジュールを選択（再生成用）
+  selectModule(moduleId, kind, code, prompt, imageUrl = null) {
+    this.selectedModule = moduleId;
+    this.selectedModuleKind = kind;
+    this.selectedModuleCode = code;
+    this.selectedModulePrompt = prompt;
+    this.selectedModuleImageUrl = imageUrl;
+  }
+
+  // モジュール選択を解除
+  deselectModule() {
+    this.selectedModule = null;
+    this.selectedModuleKind = null;
+    this.selectedModuleCode = null;
+    this.selectedModulePrompt = null;
+    this.selectedModuleImageUrl = null;
+  }
+
+  // モジュールが選択されているか
+  hasSelectedModule() {
+    return this.selectedModule !== null;
+  }
+
+  // 選択中のモジュール情報を取得
+  getSelectedModuleInfo() {
+    return {
+      moduleId: this.selectedModule,
+      kind: this.selectedModuleKind,
+      code: this.selectedModuleCode,
+      prompt: this.selectedModulePrompt,
+      imageUrl: this.selectedModuleImageUrl
+    };
   }
 }

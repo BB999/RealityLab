@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { ModuleManager } from './modules/ModuleManager.js';
 import { createImagePanel } from './modules/factories/imagePanel.js';
 import { createDynamicThreejs } from './modules/factories/dynamicThreejs.js';
-import { analyzePrompt, generateThreejsCode } from './modules/PromptAnalyzer.js';
+import { analyzePrompt, generateThreejsCode, regenerateThreejsCode } from './modules/PromptAnalyzer.js';
 
 // コントローラー関連
-import { createLaser, setLasers, updateLaserVisibility } from './modules/controllers/LaserController.js';
+import { createLaser, setLasers, updateLaserVisibility, isTriggerPressed } from './modules/controllers/LaserController.js';
 import {
   getStickValues, isStickPressed, isGripPressed,
   getGripPosition, getGripQuaternion, applyGripRotation
@@ -15,6 +15,7 @@ import {
 import { TextPanel } from './modules/ui/TextPanel.js';
 import { LoadingIndicator } from './modules/ui/LoadingIndicator.js';
 import { GenerateButton } from './modules/ui/GenerateButton.js';
+import { ConnectionLine } from './modules/ui/ConnectionLine.js';
 
 // サービス
 import { ImageGenerator } from './modules/services/ImageGenerator.js';
@@ -39,9 +40,13 @@ let hand2 = null;
 let textPanel = null;
 let loadingIndicator = null;
 let generateButton = null;
+let connectionLine = null;
 
 // 画像生成サービス
 let imageGenerator = null;
+
+// トリガー状態のトラッキング
+let wasTriggerPressedState = { left: false, right: false };
 
 // 深度可視化
 let depthVisualization = null;
@@ -102,6 +107,10 @@ function init() {
   generateButton.create();
   generateButton.setOnPress(() => submitPrompt());
 
+  // 接続線を初期化
+  connectionLine = new ConnectionLine(scene);
+  connectionLine.create();
+
   // サービスを初期化
   imageGenerator = new ImageGenerator(FAL_API_KEY, ANTHROPIC_API_KEY);
 
@@ -146,16 +155,29 @@ function stopTextInput() {
   }
 }
 
-// プロンプトを送信（モジュール生成）
+// プロンプトを送信（モジュール生成または再生成）
 async function submitPrompt() {
   const promptText = textPanel.getPromptText();
   if (promptText.trim().length === 0) return;
 
   console.log('プロンプト送信:', promptText);
-  updateInfo('解析中... 🧠');
 
+  // 再生成モードかどうかを確認
+  const isRegenerate = interactionState.hasSelectedModule();
+
+  if (isRegenerate) {
+    await handleRegenerate(promptText);
+  } else {
+    await handleNewGeneration(promptText);
+  }
+}
+
+// 新規生成処理
+async function handleNewGeneration(promptText) {
+  updateInfo('解析中... 🧠');
   textPanel.clearPromptText();
-  loadingIndicator.show(textPanel.getPanel());
+
+  let loadingId = null;
 
   try {
     // Claude APIでプロンプトを解析
@@ -175,6 +197,7 @@ async function submitPrompt() {
     }
 
     if (moduleDef.kind === 'imagePanel') {
+      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating Image');
       updateInfo('画像生成中... ✨');
       const imagePrompt = moduleDef.imagePrompt || promptText;
       const imageUrl = await imageGenerator.generate(imagePrompt, (current, max) => {
@@ -184,15 +207,17 @@ async function submitPrompt() {
       if (imageUrl) {
         moduleManager.spawn('imagePanel', spawnPosition, {
           imageUrl: imageUrl,
+          imagePrompt: imagePrompt,
           width: moduleDef.params.width || 0.25,
           height: moduleDef.params.height || 0.25
         });
-        loadingIndicator.hide();
+        loadingIndicator.hide(loadingId);
         updateInfo('画像生成完了！');
       } else {
-        loadingIndicator.hide();
+        loadingIndicator.hide(loadingId);
       }
     } else if (moduleDef.kind === 'threejs') {
+      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating 3D');
       updateInfo('3Dオブジェクト生成中... 🎨');
       const threejsPrompt = moduleDef.threejsPrompt || promptText;
       const code = await generateThreejsCode(threejsPrompt, ANTHROPIC_API_KEY);
@@ -201,15 +226,112 @@ async function submitPrompt() {
         code: code,
         prompt: threejsPrompt
       });
-      loadingIndicator.hide();
+      loadingIndicator.hide(loadingId);
       updateInfo(`${moduleDef.label || 'Three.js'} を生成しました！`);
     }
 
   } catch (error) {
     console.error('モジュール生成エラー:', error);
-    loadingIndicator.hide();
+    if (loadingId) loadingIndicator.hide(loadingId);
     updateInfo('エラー: ' + error.message);
   }
+}
+
+// 再生成処理
+async function handleRegenerate(promptText) {
+  const { moduleId, kind, code, prompt } = interactionState.getSelectedModuleInfo();
+
+  updateInfo('再生成中... 🔄');
+  textPanel.clearPromptText();
+
+  let loadingId = null;
+
+  try {
+    if (kind === 'threejs') {
+      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Regenerating 3D');
+      // Three.jsモジュールの再生成
+      const newCode = await regenerateThreejsCode(promptText, code, prompt, ANTHROPIC_API_KEY);
+
+      // 同じ位置・サイズで置き換え
+      const newId = moduleManager.replaceModule(moduleId, 'threejs', {
+        code: newCode,
+        prompt: promptText
+      });
+
+      loadingIndicator.hide(loadingId);
+      deselectModule();
+      updateInfo('再生成完了！');
+      console.log('Three.js再生成完了:', newId);
+
+    } else if (kind === 'imagePanel') {
+      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Regenerating Image');
+      // 画像パネルの再生成
+      updateInfo('プロンプト作成中... 📝');
+
+      // 元のプロンプトと変更指示を組み合わせて新しいプロンプトを作成
+      const newImagePrompt = await imageGenerator.createRegeneratePrompt(prompt, promptText);
+
+      updateInfo('画像再生成中... ✨');
+
+      // 新しいプロンプトで画像を生成
+      const imageUrl = await imageGenerator.generate(newImagePrompt, (current, max) => {
+        updateInfo(`画像再生成中... (${current}/${max})`);
+      });
+
+      if (imageUrl) {
+        // 同じ位置・サイズで置き換え
+        const newId = moduleManager.replaceModule(moduleId, 'imagePanel', {
+          imageUrl: imageUrl,
+          imagePrompt: newImagePrompt,
+          width: 0.25,
+          height: 0.25
+        });
+
+        loadingIndicator.hide(loadingId);
+        deselectModule();
+        updateInfo('画像再生成完了！');
+        console.log('画像再生成完了:', newId);
+      } else {
+        loadingIndicator.hide(loadingId);
+        updateInfo('画像生成に失敗しました');
+      }
+    }
+
+  } catch (error) {
+    console.error('再生成エラー:', error);
+    if (loadingId) loadingIndicator.hide(loadingId);
+    updateInfo('エラー: ' + error.message);
+  }
+}
+
+// モジュールを選択
+function selectModule(moduleId) {
+  const module = moduleManager.getModule(moduleId);
+  if (!module) {
+    console.log('モジュールが見つかりません');
+    return;
+  }
+
+  const kind = module.kind;
+  const code = module.params.code || '';
+  const prompt = module.params.prompt || module.params.imagePrompt || '';
+  const imageUrl = module.params.imageUrl || null;
+
+  interactionState.selectModule(moduleId, kind, code, prompt, imageUrl);
+  generateButton.setRegenerateMode(true);
+  connectionLine.show();
+
+  console.log('モジュール選択:', moduleId, kind);
+  updateInfo('再生成モード: プロンプトを入力してください');
+}
+
+// モジュール選択を解除
+function deselectModule() {
+  interactionState.deselectModule();
+  generateButton.setRegenerateMode(false);
+  connectionLine.hide();
+
+  console.log('モジュール選択解除');
 }
 
 // キーボードイベントを設定
@@ -713,9 +835,15 @@ function animate(timestamp, frame) {
     // レーザーの表示状態を更新
     updateLaserVisibility(xrSession);
 
+    // トリガーによるモジュール選択を処理
+    updateModuleSelection(frame, referenceSpace);
+
     // コントローラー操作
     updatePanelControllerInteraction(frame, referenceSpace);
     updateModuleControllerInteraction(frame, referenceSpace);
+
+    // 接続線を更新
+    updateConnectionLine();
 
     // 深度情報を更新
     depthVisualization.update(frame, referenceSpace, camera);
@@ -730,6 +858,72 @@ function animate(timestamp, frame) {
   loadingIndicator.update(deltaTime, textPanel.getPanel());
 
   renderer.render(scene, camera);
+}
+
+// トリガーによるモジュール選択を処理
+function updateModuleSelection(frame, referenceSpace) {
+  if (!xrSession) return;
+
+  const inputSources = xrSession.inputSources;
+  if (!inputSources) return;
+
+  for (const inputSource of inputSources) {
+    if (inputSource.targetRayMode !== 'tracked-pointer') continue;
+
+    const handedness = inputSource.handedness;
+    if (!handedness) continue;
+
+    const triggerPressed = isTriggerPressed(inputSource);
+
+    // トリガーを押した瞬間を検出
+    if (triggerPressed && !wasTriggerPressedState[handedness]) {
+      // テキストパネルやGenerateボタンに当たっているか確認
+      const textPanelHit = textPanel.isVisible() && raycastTextPanel(inputSource, frame, referenceSpace, textPanel.getPanel());
+      const buttonHit = generateButton.isVisible() && raycastTextPanel(inputSource, frame, referenceSpace, generateButton.getButton());
+
+      // テキストパネルやボタンに当たっている場合は選択解除しない
+      if (textPanelHit || buttonHit) {
+        wasTriggerPressedState[handedness] = triggerPressed;
+        continue;
+      }
+
+      // レーザーでモジュールをヒットしているか確認
+      const hit = raycastModules(inputSource, frame, referenceSpace, moduleManager);
+      if (hit && hit.module) {
+        // 既に選択中の場合は選択解除
+        if (interactionState.selectedModule === hit.module.id) {
+          deselectModule();
+        } else {
+          // 新しいモジュールを選択
+          selectModule(hit.module.id);
+        }
+      } else {
+        // モジュールに当たっていない場所でトリガーを押したら選択解除
+        if (interactionState.hasSelectedModule()) {
+          deselectModule();
+        }
+      }
+    }
+
+    wasTriggerPressedState[handedness] = triggerPressed;
+  }
+}
+
+// 接続線を更新
+function updateConnectionLine() {
+  if (!interactionState.hasSelectedModule() || !connectionLine) return;
+
+  const module = moduleManager.getModule(interactionState.selectedModule);
+  if (!module) {
+    deselectModule();
+    return;
+  }
+
+  const panel = textPanel.getPanel();
+  if (!panel) return;
+
+  // モジュールの位置とテキストパネルの位置を接続
+  connectionLine.update(module.group.position, panel.position);
 }
 
 function onWindowResize() {

@@ -10,6 +10,8 @@ export class GenerateButton {
     this.isPressed = false;
     this.pressTime = 0;
     this.onPress = null; // コールバック関数
+    this.buttonText = 'Generate'; // ボタンテキスト
+    this.isRegenerateMode = false; // 再生成モードかどうか
   }
 
   create() {
@@ -69,11 +71,12 @@ export class GenerateButton {
     ctx.stroke();
 
     // テキスト
-    ctx.font = 'bold 20px system-ui, sans-serif';
+    const fontSize = this.isRegenerateMode ? 16 : 20;
+    ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Generate', width / 2, height / 2);
+    ctx.fillText(this.buttonText, width / 2, height / 2);
 
     // テクスチャを更新
     if (this.texture) {
@@ -138,6 +141,18 @@ export class GenerateButton {
 
   setOnPress(callback) {
     this.onPress = callback;
+  }
+
+  // 再生成モードに切り替え
+  setRegenerateMode(enabled) {
+    this.isRegenerateMode = enabled;
+    this.buttonText = enabled ? 'Regenerate' : 'Generate';
+    this.updateCanvas();
+  }
+
+  // 再生成モードかどうか
+  isInRegenerateMode() {
+    return this.isRegenerateMode;
   }
 
   dispose() {

@@ -232,3 +232,92 @@ export function analyzePromptLocal(prompt) {
     imagePrompt: prompt
   };
 }
+
+/**
+ * 既存のThree.jsコードを参照して再生成
+ * @param {string} newPrompt - 新しいプロンプト（変更点の指示）
+ * @param {string} existingCode - 既存のThree.jsコード
+ * @param {string} originalPrompt - 元のプロンプト
+ * @param {string} apiKey - Anthropic APIキー
+ * @returns {Promise<string>} 新しいThree.jsコード
+ */
+export async function regenerateThreejsCode(newPrompt, existingCode, originalPrompt, apiKey) {
+  const systemPrompt = `You are a Three.js code generator for WebXR. You will modify existing Three.js code based on user instructions.
+
+CRITICAL CONSTRAINTS:
+- Objects should fit within 0.5m radius (arm's reach in VR/MR)
+- Use MeshBasicMaterial ONLY (not MeshStandardMaterial, not ShaderMaterial)
+- All objects must be added to the 'group' variable
+- Track meshes in the 'meshes' array for cleanup
+- Use 'animationCallbacks' array to register animation functions
+
+FORBIDDEN (these will cause errors):
+- FontLoader, TextGeometry (not available)
+- GLTFLoader, OBJLoader (no external loaders)
+- ShaderMaterial, RawShaderMaterial (use MeshBasicMaterial instead)
+- CanvasTexture with dynamic text (not reliable in WebXR)
+- Any external resources or imports
+
+USE ONLY these geometries:
+- BoxGeometry, SphereGeometry, PlaneGeometry, CylinderGeometry
+- TorusGeometry, TorusKnotGeometry, ConeGeometry, RingGeometry
+- CircleGeometry, IcosahedronGeometry, OctahedronGeometry
+
+Available variables:
+- THREE: Three.js core library only
+- group: THREE.Group to add objects to
+- meshes: Array to track created meshes
+- animationCallbacks: Array of functions called each frame with (time, deltaTime)
+
+IMPORTANT: Modify the existing code based on the user's instructions while maintaining the overall structure.
+
+Output ONLY the JavaScript code, no markdown, no explanation.`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens: 2000,
+        messages: [{
+          role: 'user',
+          content: `Original prompt: "${originalPrompt}"
+
+Existing Three.js code:
+\`\`\`javascript
+${existingCode}
+\`\`\`
+
+User's modification request: "${newPrompt}"
+
+Please modify the existing code based on the user's request. Keep the same overall structure but apply the requested changes.`
+        }],
+        system: systemPrompt
+      })
+    });
+
+    if (!response.ok) {
+      console.error('Three.js code regeneration failed');
+      return existingCode; // 失敗時は既存のコードを返す
+    }
+
+    const data = await response.json();
+    let code = data.content[0].text.trim();
+
+    // マークダウンのコードブロックを除去
+    code = code.replace(/```javascript\n?/g, '').replace(/```\n?/g, '');
+
+    console.log('Regenerated Three.js code:', code);
+    return code;
+
+  } catch (error) {
+    console.error('Three.js code regeneration error:', error);
+    return existingCode; // エラー時は既存のコードを返す
+  }
+}
