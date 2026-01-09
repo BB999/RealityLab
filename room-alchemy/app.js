@@ -1077,6 +1077,16 @@ async function startXR() {
 
     // selectイベント
     const hiddenInput = document.getElementById('hidden-input');
+    let lastKeyboardCloseTime = 0;
+    const KEYBOARD_COOLDOWN = 1000; // キーボードを閉じてから1秒以内は再オープンしない
+
+    // キーボードが閉じられた時間を記録
+    if (hiddenInput) {
+      hiddenInput.addEventListener('blur', () => {
+        lastKeyboardCloseTime = Date.now();
+      });
+    }
+
     const onSelect = (event) => {
       const controller = event.target;
       const raycaster = new THREE.Raycaster();
@@ -1094,13 +1104,26 @@ async function startXR() {
         }
       }
 
+      // 削除ボタンをタップ
+      if (deleteButton.isVisible()) {
+        const deleteIntersects = raycaster.intersectObject(deleteButton.getButton());
+        if (deleteIntersects.length > 0) {
+          deleteButton.press();
+          return;
+        }
+      }
+
       // テキストパネルをタップ
       if (textPanel.isVisible() && hiddenInput) {
         const intersects = raycaster.intersectObject(textPanel.getPanel());
         if (intersects.length > 0) {
-          hiddenInput.value = textPanel.getPromptText();
-          hiddenInput.focus();
-          hiddenInput.click();
+          const now = Date.now();
+          // キーボードを閉じてからクールダウン中は再オープンしない
+          if (now - lastKeyboardCloseTime > KEYBOARD_COOLDOWN) {
+            hiddenInput.value = textPanel.getPromptText();
+            hiddenInput.focus();
+            hiddenInput.click();
+          }
         }
       }
     };
