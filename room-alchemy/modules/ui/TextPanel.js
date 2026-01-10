@@ -4,6 +4,7 @@ export class TextPanel {
   constructor(scene) {
     this.scene = scene;
     this.panel = null;
+    this.panelGroup = null;
     this.canvas = null;
     this.context = null;
     this.texture = null;
@@ -12,9 +13,15 @@ export class TextPanel {
     this.cursorBlinkInterval = null;
     this.isActive = false;
     this.initialized = false;
+    this.isHovered = false;
+    this.animationTime = 0;
+    this.targetScale = 1;
+    this.currentScale = 1;
   }
 
   create() {
+    const group = new THREE.Group();
+
     // キャンバスを作成（テキスト描画用）
     this.canvas = document.createElement('canvas');
     this.canvas.width = 512;
@@ -35,9 +42,12 @@ export class TextPanel {
     });
 
     this.panel = new THREE.Mesh(panelGeometry, panelMaterial);
-    this.panel.position.set(0, 1.2, -0.5);
-    this.panel.visible = false;
-    this.scene.add(this.panel);
+    group.add(this.panel);
+
+    this.panelGroup = group;
+    this.panelGroup.position.set(0, 1.2, -0.5);
+    this.panelGroup.visible = false;
+    this.scene.add(this.panelGroup);
 
     // 初期描画
     this.updateCanvas();
@@ -108,8 +118,8 @@ export class TextPanel {
     this.cursorVisible = true;
     this.updateCanvas();
 
-    if (this.panel) {
-      this.panel.visible = true;
+    if (this.panelGroup) {
+      this.panelGroup.visible = true;
       this.initialized = false; // 次回表示時にカメラの前に再配置
     }
   }
@@ -120,8 +130,28 @@ export class TextPanel {
     this.updateCanvas();
   }
 
+  // ホバー状態を設定
+  setHovered(hovered) {
+    if (this.isHovered !== hovered) {
+      this.isHovered = hovered;
+      this.targetScale = hovered ? 1.05 : 1;
+      this.updateCanvas();
+    }
+  }
+
+  // 毎フレーム更新
+  update(deltaTime) {
+    this.animationTime += deltaTime;
+
+    // スムーズなスケールアニメーション
+    this.currentScale += (this.targetScale - this.currentScale) * 0.2;
+    if (this.panelGroup) {
+      this.panelGroup.scale.setScalar(this.currentScale);
+    }
+  }
+
   initializePosition(frame, referenceSpace, xrSession, camera) {
-    if (!this.panel || this.initialized) return;
+    if (!this.panelGroup || this.initialized) return;
 
     let cameraPosition = new THREE.Vector3();
     let cameraQuaternion = new THREE.Quaternion();
@@ -154,15 +184,15 @@ export class TextPanel {
     // カメラの前方0.5mにパネルを配置（少し下に）
     const forward = new THREE.Vector3(0, -0.1, -0.5);
     forward.applyQuaternion(cameraQuaternion);
-    this.panel.position.copy(cameraPosition).add(forward);
+    this.panelGroup.position.copy(cameraPosition).add(forward);
 
     // パネルを水平に配置（Y軸回転のみ適用）
     const euler = new THREE.Euler().setFromQuaternion(cameraQuaternion, 'YXZ');
     euler.x = 0;  // X軸回転をリセット（水平に）
     euler.z = 0;  // Z軸回転をリセット
-    this.panel.quaternion.setFromEuler(euler);
+    this.panelGroup.quaternion.setFromEuler(euler);
 
-    console.log('テキストパネルを配置:', this.panel.position);
+    console.log('テキストパネルを配置:', this.panelGroup.position);
     this.initialized = true;
   }
 
@@ -201,11 +231,11 @@ export class TextPanel {
   }
 
   isVisible() {
-    return this.panel && this.panel.visible;
+    return this.panelGroup && this.panelGroup.visible;
   }
 
   getPanel() {
-    return this.panel;
+    return this.panelGroup;
   }
 
   isInitialized() {
@@ -216,8 +246,10 @@ export class TextPanel {
     if (this.cursorBlinkInterval) {
       clearInterval(this.cursorBlinkInterval);
     }
+    if (this.panelGroup) {
+      this.scene.remove(this.panelGroup);
+    }
     if (this.panel) {
-      this.scene.remove(this.panel);
       this.panel.geometry.dispose();
       this.panel.material.dispose();
     }

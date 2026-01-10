@@ -79,3 +79,33 @@ export function setLasers(left, right) {
 export function getLasers() {
   return { leftLaser, rightLaser };
 }
+
+// どちらかのレーザーが表示されているか
+export function isAnyLaserVisible() {
+  return (leftLaser && leftLaser.visible) || (rightLaser && rightLaser.visible);
+}
+
+// 指定したコントローラーのレーザーが表示されているか
+export function isLaserVisibleForController(controller) {
+  if (!controller) return false;
+  // コントローラーの子要素にレーザーがあるかチェック
+  let laserVisible = false;
+  controller.traverse((child) => {
+    if (child.isLine && child.visible) {
+      laserVisible = true;
+    }
+  });
+  return laserVisible;
+}
+
+// inputSourceのhandednessでレーザーが表示されているか判定
+export function isLaserVisibleForHandedness(handedness) {
+  if (!handedness) return false;
+  // 左右逆（コントローラーの割り当てが逆のため）
+  if (handedness === 'left') {
+    return rightLaser && rightLaser.visible;
+  } else if (handedness === 'right') {
+    return leftLaser && leftLaser.visible;
+  }
+  return false;
+}

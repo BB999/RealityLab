@@ -7,7 +7,7 @@ import { createHyper3DModel } from './modules/factories/hyper3dModel.js';
 import { analyzePrompt, generateThreejsCode, regenerateThreejsCode } from './modules/PromptAnalyzer.js';
 
 // コントローラー関連
-import { createLaser, setLasers, updateLaserVisibility, isTriggerPressed } from './modules/controllers/LaserController.js';
+import { createLaser, setLasers, updateLaserVisibility, isTriggerPressed, isAnyLaserVisible, isLaserVisibleForController, isLaserVisibleForHandedness } from './modules/controllers/LaserController.js';
 import {
   getStickValues, isStickPressed, isGripPressed,
   getGripPosition, getGripQuaternion, applyGripRotation
@@ -178,8 +178,7 @@ async function handleNewGeneration(promptText) {
   updateInfo('解析中... 🧠');
   textPanel.clearPromptText();
 
-  // ボタンを非表示にして押せないようにする
-  generateButton.hide();
+  // ボタンはローディング状態（press()内でsetLoading(true)が呼ばれている）
 
   let loadingId = null;
 
@@ -200,8 +199,8 @@ async function handleNewGeneration(promptText) {
     }
 
     if (moduleDef.kind === 'imagePanel') {
-      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating Image');
-      generateButton.show();
+      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating Image', 'green');
+      generateButton.setLoading(false); // ボタンのローディング状態を解除
       updateInfo('画像生成中... ✨');
       const imagePrompt = moduleDef.imagePrompt || promptText;
       const imageUrl = await imageGenerator.generate(imagePrompt, (current, max) => {
@@ -234,8 +233,8 @@ async function handleNewGeneration(promptText) {
         generateButton.show();
       }
     } else if (moduleDef.kind === 'threejs') {
-      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating 3D');
-      generateButton.show();
+      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating 3D', 'green');
+      generateButton.setLoading(false); // ボタンのローディング状態を解除
       updateInfo('3Dオブジェクト生成中... 🎨');
       const threejsPrompt = moduleDef.threejsPrompt || promptText;
       const code = await generateThreejsCode(threejsPrompt, ANTHROPIC_API_KEY);
@@ -258,8 +257,8 @@ async function handleNewGeneration(promptText) {
       updateInfo(`${moduleDef.label || 'Three.js'} を生成しました！`);
     } else if (moduleDef.kind === 'hyper3d') {
       // Hyper3D 3Dモデル生成
-      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating 3D Model');
-      generateButton.show();
+      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating 3D Model', 'green');
+      generateButton.setLoading(false); // ボタンのローディング状態を解除
 
       // Step 1: 参照画像を生成
       updateInfo('参照画像を生成中... 📸');
@@ -334,16 +333,16 @@ async function handleRegenerate(promptText) {
   updateInfo('再生成中... 🔄');
   textPanel.clearPromptText();
 
-  // ボタンを非表示にして押せないようにする
-  generateButton.hide();
+  // ボタンはローディング状態（press()内でsetLoading(true)が呼ばれている）
+  // 削除ボタンは非表示
   deleteButton.hide();
 
   let loadingId = null;
 
   try {
     if (kind === 'threejs') {
-      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Regenerating 3D');
-      generateButton.show();
+      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Regenerating 3D', 'orange');
+      generateButton.setLoading(false); // ボタンのローディング状態を解除
       deleteButton.show();
       // Three.jsモジュールの再生成
       const newCode = await regenerateThreejsCode(promptText, code, prompt, ANTHROPIC_API_KEY);
@@ -361,8 +360,8 @@ async function handleRegenerate(promptText) {
       console.log('Three.js再生成完了:', newId);
 
     } else if (kind === 'imagePanel') {
-      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Regenerating Image');
-      generateButton.show();
+      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Regenerating Image', 'orange');
+      generateButton.setLoading(false); // ボタンのローディング状態を解除
       deleteButton.show();
       // 画像パネルの再生成
       updateInfo('プロンプト作成中... 📝');
@@ -984,6 +983,9 @@ function animate(timestamp, frame) {
     // レーザーの表示状態を更新
     updateLaserVisibility(xrSession);
 
+    // ボタンのホバー検出
+    updateButtonHover(frame, referenceSpace);
+
     // トリガーによるモジュール選択を処理
     updateModuleSelection(frame, referenceSpace);
 
@@ -1010,6 +1012,12 @@ function animate(timestamp, frame) {
 
   // ローディングアニメーションを更新
   loadingIndicator.update(deltaTime, textPanel.getPanel());
+
+  // ボタンのアニメーションを更新
+  generateButton.update(deltaTime);
+
+  // テキストパネルのアニメーションを更新
+  textPanel.update(deltaTime);
 
   renderer.render(scene, camera);
 }
@@ -1069,6 +1077,43 @@ function updateModuleSelection(frame, referenceSpace) {
 
     wasTriggerPressedState[handedness] = triggerPressed;
   }
+}
+
+// ボタンとテキストパネルのホバー検出
+function updateButtonHover(frame, referenceSpace) {
+  if (!xrSession) return;
+
+  const inputSources = xrSession.inputSources;
+  if (!inputSources) return;
+
+  let isHoveringButton = false;
+  let isHoveringTextPanel = false;
+
+  for (const inputSource of inputSources) {
+    if (inputSource.targetRayMode !== 'tracked-pointer') continue;
+
+    // このコントローラーのレーザーが出ていない場合はスキップ
+    if (!isLaserVisibleForHandedness(inputSource.handedness)) continue;
+
+    // Generateボタンのホバーチェック
+    if (generateButton.isVisible()) {
+      const buttonHit = raycastTextPanel(inputSource, frame, referenceSpace, generateButton.getButton());
+      if (buttonHit) {
+        isHoveringButton = true;
+      }
+    }
+
+    // テキストパネルのホバーチェック
+    if (textPanel.isVisible()) {
+      const panelHit = raycastTextPanel(inputSource, frame, referenceSpace, textPanel.getPanel());
+      if (panelHit) {
+        isHoveringTextPanel = true;
+      }
+    }
+  }
+
+  generateButton.setHovered(isHoveringButton);
+  textPanel.setHovered(isHoveringTextPanel);
 }
 
 // 接続線を更新
@@ -1164,6 +1209,12 @@ async function startXR() {
 
     const onSelect = (event) => {
       const controller = event.target;
+
+      // このコントローラーのレーザーが表示されていない場合は何もしない
+      if (!isLaserVisibleForController(controller)) {
+        return;
+      }
+
       const raycaster = new THREE.Raycaster();
       const tempMatrix = new THREE.Matrix4();
       tempMatrix.identity().extractRotation(controller.matrixWorld);
@@ -1172,7 +1223,7 @@ async function startXR() {
 
       // 生成ボタンをタップ
       if (generateButton.isVisible()) {
-        const buttonIntersects = raycaster.intersectObject(generateButton.getButton());
+        const buttonIntersects = raycaster.intersectObject(generateButton.getButton(), true);
         if (buttonIntersects.length > 0) {
           generateButton.press();
           return;
@@ -1181,7 +1232,7 @@ async function startXR() {
 
       // 削除ボタンをタップ
       if (deleteButton.isVisible()) {
-        const deleteIntersects = raycaster.intersectObject(deleteButton.getButton());
+        const deleteIntersects = raycaster.intersectObject(deleteButton.getButton(), true);
         if (deleteIntersects.length > 0) {
           deleteButton.press();
           return;
@@ -1190,7 +1241,7 @@ async function startXR() {
 
       // テキストパネルをタップ
       if (textPanel.isVisible() && hiddenInput) {
-        const intersects = raycaster.intersectObject(textPanel.getPanel());
+        const intersects = raycaster.intersectObject(textPanel.getPanel(), true);
         if (intersects.length > 0) {
           const now = Date.now();
           // キーボードを閉じてからクールダウン中は再オープンしない

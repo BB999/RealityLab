@@ -58,7 +58,8 @@ export function raycastTextPanel(inputSource, frame, referenceSpace, textPanel) 
   ));
 
   const raycaster = new THREE.Raycaster(rayOrigin, rayDirection, 0, 10);
-  const intersects = raycaster.intersectObject(textPanel);
+  // Groupの場合も子オブジェクトを検索するためにtrue
+  const intersects = raycaster.intersectObject(textPanel, true);
   if (intersects.length > 0) {
     return {
       distance: intersects[0].distance,

@@ -18,11 +18,12 @@ export class LoadingIndicator {
    * 新しいローディングインジケーターを表示
    * @param {THREE.Object3D} textPanel - テキストパネル
    * @param {string} label - 表示するラベル（オプション）
+   * @param {string} colorTheme - 色テーマ 'cyan' または 'orange'（オプション）
    * @returns {number} インジケーターID
    */
-  show(textPanel, label = 'Generating') {
+  show(textPanel, label = 'Generating', colorTheme = 'cyan') {
     const id = this.nextId++;
-    const indicator = this._createIndicator(label);
+    const indicator = this._createIndicator(label, colorTheme);
 
     // 既存のインジケーター数に応じて位置をずらす
     const offset = this.indicators.size * 0.12;
@@ -43,8 +44,31 @@ export class LoadingIndicator {
   /**
    * インジケーターを作成
    */
-  _createIndicator(label) {
+  _createIndicator(label, colorTheme = 'cyan') {
     const group = new THREE.Group();
+
+    // 色テーマの設定
+    let colors;
+    if (colorTheme === 'orange') {
+      colors = {
+        border: '#ffcc00',
+        text: '#ffcc00',
+        spinner: 0xffcc00
+      };
+    } else if (colorTheme === 'green') {
+      colors = {
+        border: '#4CAF50',
+        text: '#4CAF50',
+        spinner: 0x4CAF50
+      };
+    } else {
+      // デフォルト: cyan
+      colors = {
+        border: '#00ffff',
+        text: '#00ffff',
+        spinner: 0x00ffff
+      };
+    }
 
     // テキストの幅を計算
     const measureCanvas = document.createElement('canvas');
@@ -75,7 +99,7 @@ export class LoadingIndicator {
     bgCtx.fill();
 
     // 枠線
-    bgCtx.strokeStyle = '#00ffff';
+    bgCtx.strokeStyle = colors.border;
     bgCtx.lineWidth = 2;
     bgCtx.beginPath();
     bgCtx.roundRect(2, 2, canvasWidth - 4, canvasHeight - 4, 10);
@@ -115,7 +139,7 @@ export class LoadingIndicator {
     // スピナーリング
     const ringGeometry = new THREE.RingGeometry(0.012, 0.016, 32, 1, 0, Math.PI * 1.5);
     const ringMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ffff,
+      color: colors.spinner,
       transparent: true,
       opacity: 0.9,
       side: THREE.DoubleSide
@@ -127,7 +151,7 @@ export class LoadingIndicator {
     // 内側の光るドット
     const dotGeometry = new THREE.CircleGeometry(0.006, 16);
     const dotMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ffff,
+      color: colors.spinner,
       transparent: true,
       opacity: 0.6
     });
@@ -135,29 +159,16 @@ export class LoadingIndicator {
     dot.position.set(spinnerX, 0, 0.002);
     group.add(dot);
 
-    // パルスリング（外側のエフェクト）
-    const pulseGeometry = new THREE.RingGeometry(0.018, 0.02, 32);
-    const pulseMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ffff,
-      transparent: true,
-      opacity: 0.3,
-      side: THREE.DoubleSide
-    });
-    const pulse = new THREE.Mesh(pulseGeometry, pulseMaterial);
-    pulse.position.set(spinnerX, 0, 0.001);
-    group.add(pulse);
-
     return {
       group,
       ring,
       dot,
-      pulse,
-      pulseMaterial,
       textCanvas,
       textCtx,
       textTexture,
       canvasWidth,
       label,
+      textColor: colors.text,
       animationTime: 0,
       dotCount: 0
     };
@@ -177,7 +188,7 @@ export class LoadingIndicator {
 
     // テキスト描画（スピナーの右側に配置）
     ctx.font = 'bold 18px "SF Pro", "Segoe UI", system-ui, sans-serif';
-    ctx.fillStyle = '#00ffff';
+    ctx.fillStyle = indicator.textColor || '#00ffff';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${indicator.label}${dots}`, 45, canvas.height / 2);
@@ -253,12 +264,6 @@ export class LoadingIndicator {
       // 内側ドットの明滅
       const dotPulse = Math.sin(indicator.animationTime * 6) * 0.3 + 0.7;
       indicator.dot.material.opacity = dotPulse;
-
-      // パルスリングのアニメーション
-      const pulseScale = 1 + (indicator.animationTime % 1) * 0.5;
-      const pulseOpacity = 0.4 * (1 - (indicator.animationTime % 1));
-      indicator.pulse.scale.setScalar(pulseScale);
-      indicator.pulseMaterial.opacity = pulseOpacity;
 
       // テキストのドットアニメーション（0.4秒ごと）
       const newDotCount = Math.floor(indicator.animationTime * 2.5);
