@@ -17,6 +17,8 @@ export class TextPanel {
     this.animationTime = 0;
     this.targetScale = 1;
     this.currentScale = 1;
+    // ピン留め（カメラ追従）状態
+    this.isPinned = false;
   }
 
   create() {
@@ -148,6 +150,62 @@ export class TextPanel {
     if (this.panelGroup) {
       this.panelGroup.scale.setScalar(this.currentScale);
     }
+  }
+
+  // ピン留め状態を設定
+  setPinned(pinned) {
+    this.isPinned = pinned;
+  }
+
+  // ピン留め状態を取得
+  isPinnedState() {
+    return this.isPinned;
+  }
+
+  // カメラ追従更新（ピン留め時に毎フレーム呼び出す）
+  followCamera(frame, referenceSpace, xrSession, camera) {
+    if (!this.panelGroup || !this.isPinned) return;
+
+    let cameraPosition = new THREE.Vector3();
+    let cameraQuaternion = new THREE.Quaternion();
+
+    if (xrSession && frame && referenceSpace) {
+      const viewerPose = frame.getViewerPose(referenceSpace);
+      if (viewerPose) {
+        const transform = viewerPose.transform;
+        cameraPosition.set(
+          transform.position.x,
+          transform.position.y,
+          transform.position.z
+        );
+        cameraQuaternion.set(
+          transform.orientation.x,
+          transform.orientation.y,
+          transform.orientation.z,
+          transform.orientation.w
+        );
+      } else {
+        return;
+      }
+    } else {
+      cameraPosition.copy(camera.position);
+      cameraQuaternion.copy(camera.quaternion);
+    }
+
+    // カメラの前方0.5m、下にパネルを配置
+    const forward = new THREE.Vector3(0, -0.28, -0.5);
+    forward.applyQuaternion(cameraQuaternion);
+    const targetPosition = cameraPosition.clone().add(forward);
+
+    // スムーズに移動（lerp）
+    this.panelGroup.position.lerp(targetPosition, 0.1);
+
+    // 常にカメラに向く（Y軸回転のみ）
+    const euler = new THREE.Euler().setFromQuaternion(cameraQuaternion, 'YXZ');
+    euler.x = 0;
+    euler.z = 0;
+    const targetQuaternion = new THREE.Quaternion().setFromEuler(euler);
+    this.panelGroup.quaternion.slerp(targetQuaternion, 0.1);
   }
 
   initializePosition(frame, referenceSpace, xrSession, camera) {

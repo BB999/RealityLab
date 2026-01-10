@@ -19,6 +19,7 @@ import { LoadingIndicator } from './modules/ui/LoadingIndicator.js';
 import { GenerateButton } from './modules/ui/GenerateButton.js';
 import { DeleteButton } from './modules/ui/DeleteButton.js';
 import { ConnectionLine } from './modules/ui/ConnectionLine.js';
+import { PinButton } from './modules/ui/PinButton.js';
 
 // サービス
 import { ImageGenerator } from './modules/services/ImageGenerator.js';
@@ -46,6 +47,7 @@ let loadingIndicator = null;
 let generateButton = null;
 let deleteButton = null;
 let connectionLine = null;
+let pinButton = null;
 
 // 画像生成サービス
 let imageGenerator = null;
@@ -123,6 +125,11 @@ function init() {
   connectionLine = new ConnectionLine(scene);
   connectionLine.create();
 
+  // ピン留めボタンを初期化
+  pinButton = new PinButton(scene);
+  pinButton.create();
+  pinButton.setOnPress((isPinned) => handlePinToggle(isPinned));
+
   // サービスを初期化
   imageGenerator = new ImageGenerator(FAL_API_KEY, ANTHROPIC_API_KEY);
   hyper3DService = new Hyper3DService();
@@ -148,12 +155,21 @@ function startTextInput() {
   textPanel.start();
   generateButton.show();
   generateButton.updatePosition(textPanel.getPanel());
+  pinButton.show();
+  pinButton.updatePosition(textPanel.getPanel());
 }
 
 // テキスト入力を終了
 function stopTextInput() {
   textPanel.stop();
   generateButton.hide();
+  pinButton.hide();
+}
+
+// ピン留めトグル処理
+function handlePinToggle(isPinned) {
+  textPanel.setPinned(isPinned);
+  console.log('ピン留め状態:', isPinned ? 'ON' : 'OFF');
 }
 
 // プロンプトを送信（モジュール生成または再生成）
@@ -977,7 +993,17 @@ function animate(timestamp, frame) {
     // テキストパネルの初期位置を設定
     if (textPanel.isVisible() && !textPanel.isInitialized()) {
       textPanel.initializePosition(frame, referenceSpace, xrSession, camera);
+    }
+
+    // ピン留め時はカメラに追従
+    if (textPanel.isPinnedState()) {
+      textPanel.followCamera(frame, referenceSpace, xrSession, camera);
+    }
+
+    // ボタン位置を常にテキストパネルに追従
+    if (textPanel.isVisible()) {
       generateButton.updatePosition(textPanel.getPanel());
+      pinButton.updatePosition(textPanel.getPanel());
     }
 
     // レーザーの表示状態を更新
@@ -1015,6 +1041,7 @@ function animate(timestamp, frame) {
 
   // ボタンのアニメーションを更新
   generateButton.update(deltaTime);
+  pinButton.update(deltaTime);
 
   // テキストパネルのアニメーションを更新
   textPanel.update(deltaTime);
@@ -1088,6 +1115,7 @@ function updateButtonHover(frame, referenceSpace) {
 
   let isHoveringButton = false;
   let isHoveringTextPanel = false;
+  let isHoveringPinButton = false;
 
   for (const inputSource of inputSources) {
     if (inputSource.targetRayMode !== 'tracked-pointer') continue;
@@ -1103,6 +1131,14 @@ function updateButtonHover(frame, referenceSpace) {
       }
     }
 
+    // ピン留めボタンのホバーチェック
+    if (pinButton.isVisible()) {
+      const pinHit = raycastTextPanel(inputSource, frame, referenceSpace, pinButton.getButton());
+      if (pinHit) {
+        isHoveringPinButton = true;
+      }
+    }
+
     // テキストパネルのホバーチェック
     if (textPanel.isVisible()) {
       const panelHit = raycastTextPanel(inputSource, frame, referenceSpace, textPanel.getPanel());
@@ -1113,6 +1149,7 @@ function updateButtonHover(frame, referenceSpace) {
   }
 
   generateButton.setHovered(isHoveringButton);
+  pinButton.setHovered(isHoveringPinButton);
   textPanel.setHovered(isHoveringTextPanel);
 }
 
@@ -1226,6 +1263,15 @@ async function startXR() {
         const buttonIntersects = raycaster.intersectObject(generateButton.getButton(), true);
         if (buttonIntersects.length > 0) {
           generateButton.press();
+          return;
+        }
+      }
+
+      // ピン留めボタンをタップ
+      if (pinButton.isVisible()) {
+        const pinIntersects = raycaster.intersectObject(pinButton.getButton(), true);
+        if (pinIntersects.length > 0) {
+          pinButton.press();
           return;
         }
       }
