@@ -249,7 +249,7 @@ async function handleNewGeneration(promptText) {
         generateButton.show();
       }
     } else if (moduleDef.kind === 'threejs') {
-      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating 3D', 'green');
+      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Generate App', 'green');
       generateButton.setLoading(false); // ボタンのローディング状態を解除
       updateInfo('3Dオブジェクト生成中... 🎨');
       const threejsPrompt = moduleDef.threejsPrompt || promptText;
@@ -357,7 +357,7 @@ async function handleRegenerate(promptText) {
 
   try {
     if (kind === 'threejs') {
-      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Regenerating 3D', 'orange');
+      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Generate App', 'orange');
       generateButton.setLoading(false); // ボタンのローディング状態を解除
       deleteButton.show();
       // Three.jsモジュールの再生成
