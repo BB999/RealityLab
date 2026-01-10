@@ -3,44 +3,6 @@
  * Claude APIを使ってプロンプトからモジュール種類とパラメータを判定
  */
 
-// Three.js用の詳細プロンプト
-const THREEJS_DESIGN_PROMPT = `あなたはThree.jsのプロのエンジニア兼、工業製品の3Dモデリング設計者です。
-展示・製品レベルを想定して、以下のプロンプトの対象物をThree.jsで生成してください。
-
-【最重要ルール】
-- 1 unit = 1m。現実の寸法・構造・比率で"リアル"を表現する（質感頼み禁止）。
-- 形状は見た目だけでなく、構造・厚み・接合が論理的に説明できること。
-- 抽象化・省略・シルエット誤魔化しは禁止（「なんとなくそれっぽい」は不可）。
-- まず形状構造を文章で整理し、その設計に忠実なコードを出すこと。
-
-【出力フォーマット（必ずこの順番）】
-1) 設計仕様（Design Spec）
-   - 全体寸法（W/H/D）をmm換算でも併記
-   - 厚み（板厚/肉厚）を数値で明記（例：t=18mm等）
-   - クリアランス/隙間（例：嵌合クリアランス0.5mm）
-   - 面取り/角丸の方針（例：R=2mm相当）
-2) 部品表（BOM: Bill of Materials）
-   - パーツを必ず分割：id, 名称, 寸法, 厚み, 材料想定, 接合方式（ねじ/ほぞ/溶接/接着等）
-3) 接合設計（Joints）
-   - どのパーツがどこで、どう固定されるかを文章で説明
-   - 組み立て順（Assembly steps）を3〜8手順で書く
-4) Three.js実装（Code）
-   - パーツごとに関数化を意識し、BOMのidと対応させる
-   - 各パーツは局所座標系で作り、最後に組み立て（transform）して全体にする
-   - すべての寸法は定数（mm→m変換）から計算し、ハードコードの魔法数を避ける
-5) 自己検証（Validation）
-   - 指定寸法と一致しているか（W/H/D）
-   - 厚みが全パーツで定義され一貫しているか
-   - 接合が物理的に成立しているか（浮き/めり込み/貫通がないか）
-   - "省略"が入り込んでいないか（BOMに無い形状がないか）
-
-【禁止】
-- 「詳細は省略」「適当に」「いい感じ」などの曖昧処理
-- 外部モデル(GLB)前提、外部テクスチャ必須
-- 参照不能な架空寸法（必ず数値化）
-
-最初に 想定する製造方法（木工/板金/射出成形/3Dプリント）を1つ選び、その制約（板厚や曲げRなど）に従え`;
-
 /**
  * プロンプトを解析してモジュール定義を生成
  * @param {string} prompt - ユーザー入力
@@ -155,56 +117,15 @@ function createFallback(prompt) {
  * @returns {Promise<string>} Three.jsコード
  */
 export async function generateThreejsCode(description, apiKey) {
-  const systemPrompt = `You are a Three.js code generator for WebXR.
+  const systemPrompt = `You are a Three.js code generator for WebXR. Output ONLY executable JavaScript code.
 
-${THREEJS_DESIGN_PROMPT}
-
----
-
-CRITICAL CONSTRAINTS FOR CODE OUTPUT:
-- Objects should fit within 0.5m radius (arm's reach in VR/MR)
-- Use MeshBasicMaterial ONLY (not MeshStandardMaterial, not ShaderMaterial)
-- All objects must be added to the 'group' variable
-- Track meshes in the 'meshes' array for cleanup
-- Use 'animationCallbacks' array to register animation functions
-
-FORBIDDEN (these will cause errors):
-- FontLoader, TextGeometry (not available)
-- GLTFLoader, OBJLoader (no external loaders)
-- ShaderMaterial, RawShaderMaterial (use MeshBasicMaterial instead)
-- CanvasTexture with dynamic text (not reliable in WebXR)
-- Any external resources or imports
-- NEVER set group.position or group.rotation - the group position is managed by the system
-
-USE ONLY these geometries:
-- BoxGeometry, SphereGeometry, PlaneGeometry, CylinderGeometry
-- TorusGeometry, TorusKnotGeometry, ConeGeometry, RingGeometry
-- CircleGeometry, IcosahedronGeometry, OctahedronGeometry
-
-Available variables:
-- THREE: Three.js core library only
-- group: THREE.Group to add objects to
-- meshes: Array to track created meshes
-- animationCallbacks: Array of functions called each frame with (time, deltaTime)
-
-Example code structure:
-\`\`\`javascript
-// Create geometry and material
-const geometry = new THREE.SphereGeometry(0.05, 16, 16);
-const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-
-// Create mesh and add to group
-const mesh = new THREE.Mesh(geometry, material);
-group.add(mesh);
-meshes.push(mesh);
-
-// Optional: Add animation
-animationCallbacks.push((time, deltaTime) => {
-  mesh.rotation.y = time;
-});
-\`\`\`
-
-Output ONLY the JavaScript code, no markdown, no explanation. Skip the design documentation and output only the final code.`;
+RULES:
+- No import/export statements (THREE is already available as global)
+- No markdown code blocks
+- These variables already exist, do NOT redeclare them: THREE, group, meshes, animationCallbacks
+- Add all meshes to 'group' and 'meshes' array
+- Use 'animationCallbacks' for animations: animationCallbacks.push((time, deltaTime) => {...})
+- Objects should fit within 0.5m radius`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -216,7 +137,7 @@ Output ONLY the JavaScript code, no markdown, no explanation. Skip the design do
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 4000,
         messages: [{
           role: 'user',
@@ -302,41 +223,15 @@ export function analyzePromptLocal(prompt) {
  * @returns {Promise<string>} 新しいThree.jsコード
  */
 export async function regenerateThreejsCode(newPrompt, existingCode, originalPrompt, apiKey) {
-  const systemPrompt = `You are a Three.js code generator for WebXR. You will modify existing Three.js code based on user instructions.
+  const systemPrompt = `You are a Three.js code generator for WebXR. Modify existing code based on user instructions. Output ONLY executable JavaScript code.
 
-${THREEJS_DESIGN_PROMPT}
-
----
-
-CRITICAL CONSTRAINTS FOR CODE OUTPUT:
-- Objects should fit within 0.5m radius (arm's reach in VR/MR)
-- Use MeshBasicMaterial ONLY (not MeshStandardMaterial, not ShaderMaterial)
-- All objects must be added to the 'group' variable
-- Track meshes in the 'meshes' array for cleanup
-- Use 'animationCallbacks' array to register animation functions
-
-FORBIDDEN (these will cause errors):
-- FontLoader, TextGeometry (not available)
-- GLTFLoader, OBJLoader (no external loaders)
-- ShaderMaterial, RawShaderMaterial (use MeshBasicMaterial instead)
-- CanvasTexture with dynamic text (not reliable in WebXR)
-- Any external resources or imports
-- NEVER set group.position or group.rotation - the group position is managed by the system
-
-USE ONLY these geometries:
-- BoxGeometry, SphereGeometry, PlaneGeometry, CylinderGeometry
-- TorusGeometry, TorusKnotGeometry, ConeGeometry, RingGeometry
-- CircleGeometry, IcosahedronGeometry, OctahedronGeometry
-
-Available variables:
-- THREE: Three.js core library only
-- group: THREE.Group to add objects to
-- meshes: Array to track created meshes
-- animationCallbacks: Array of functions called each frame with (time, deltaTime)
-
-IMPORTANT: Modify the existing code based on the user's instructions while maintaining the overall structure and realistic dimensions.
-
-Output ONLY the JavaScript code, no markdown, no explanation. Skip the design documentation and output only the final code.`;
+RULES:
+- No import/export statements (THREE is already available as global)
+- No markdown code blocks
+- These variables already exist, do NOT redeclare them: THREE, group, meshes, animationCallbacks
+- Add all meshes to 'group' and 'meshes' array
+- Use 'animationCallbacks' for animations: animationCallbacks.push((time, deltaTime) => {...})
+- Objects should fit within 0.5m radius`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -348,7 +243,7 @@ Output ONLY the JavaScript code, no markdown, no explanation. Skip the design do
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 4000,
         messages: [{
           role: 'user',
