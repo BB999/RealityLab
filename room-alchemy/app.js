@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { ModuleManager } from './modules/ModuleManager.js';
 import { createImagePanel } from './modules/factories/imagePanel.js';
 import { createDynamicThreejs } from './modules/factories/dynamicThreejs.js';
+import { createHyper3DModel } from './modules/factories/hyper3dModel.js';
 import { analyzePrompt, generateThreejsCode, regenerateThreejsCode } from './modules/PromptAnalyzer.js';
 
 // コントローラー関連
@@ -20,6 +22,7 @@ import { ConnectionLine } from './modules/ui/ConnectionLine.js';
 
 // サービス
 import { ImageGenerator } from './modules/services/ImageGenerator.js';
+import { Hyper3DService } from './modules/services/Hyper3DService.js';
 
 // XR関連
 import { DepthVisualization } from './modules/xr/DepthVisualization.js';
@@ -46,6 +49,7 @@ let connectionLine = null;
 
 // 画像生成サービス
 let imageGenerator = null;
+let hyper3DService = null;
 
 // トリガー状態のトラッキング
 let wasTriggerPressedState = { left: false, right: false };
@@ -97,6 +101,7 @@ function init() {
   moduleManager = new ModuleManager(scene);
   moduleManager.registerFactory('imagePanel', createImagePanel);
   moduleManager.registerFactory('threejs', createDynamicThreejs);
+  moduleManager.registerFactory('hyper3d', createHyper3DModel);
 
   // UIコンポーネントを初期化
   textPanel = new TextPanel(scene);
@@ -120,6 +125,7 @@ function init() {
 
   // サービスを初期化
   imageGenerator = new ImageGenerator(FAL_API_KEY, ANTHROPIC_API_KEY);
+  hyper3DService = new Hyper3DService();
 
   // 深度可視化を初期化
   depthVisualization = new DepthVisualization(scene);
@@ -250,6 +256,67 @@ async function handleNewGeneration(promptText) {
       loadingIndicator.hide(loadingId);
       generateButton.show();
       updateInfo(`${moduleDef.label || 'Three.js'} を生成しました！`);
+    } else if (moduleDef.kind === 'hyper3d') {
+      // Hyper3D 3Dモデル生成
+      loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating 3D Model');
+      generateButton.show();
+
+      // Step 1: 参照画像を生成
+      updateInfo('参照画像を生成中... 📸');
+      const imagePrompt = moduleDef.imagePrompt || promptText;
+      const imageUrl = await imageGenerator.generate(imagePrompt, (current, max) => {
+        updateInfo(`参照画像生成中... (${current}/${max})`);
+      });
+
+      if (!imageUrl) {
+        loadingIndicator.hide(loadingId);
+        generateButton.show();
+        updateInfo('画像生成に失敗しました');
+        return;
+      }
+
+      // Step 2: Hyper3D APIで3Dモデル生成
+      updateInfo('3Dモデル生成中... 🎨');
+      const glbUrl = await hyper3DService.generate(imageUrl, '', (current, max) => {
+        updateInfo(`3Dモデル生成中... (${current}/${max})`);
+      });
+
+      if (!glbUrl) {
+        loadingIndicator.hide(loadingId);
+        generateButton.show();
+        updateInfo('3Dモデル生成に失敗しました');
+        return;
+      }
+
+      // 生成完了後にテキストパネルの現在位置を取得
+      const currentSpawnPosition = new THREE.Vector3();
+      if (textPanel.getPanel()) {
+        currentSpawnPosition.copy(textPanel.getPanel().position);
+        currentSpawnPosition.y += 0.2;
+      } else {
+        currentSpawnPosition.copy(spawnPosition);
+      }
+
+      // 3Dモデルをスポーン（ローディング完了まで表示を維持）
+      updateInfo('3Dモデルをロード中...');
+      moduleManager.spawn('hyper3d', currentSpawnPosition, {
+        glbUrl: glbUrl,
+        scale: 0.3,
+        onProgress: (loaded, total) => {
+          const percent = (loaded / total * 100).toFixed(0);
+          updateInfo(`3Dモデルをロード中... ${percent}%`);
+        },
+        onLoad: () => {
+          loadingIndicator.hide(loadingId);
+          generateButton.show();
+          updateInfo(`${moduleDef.label || '3Dモデル'} を生成しました！`);
+        },
+        onError: (error) => {
+          loadingIndicator.hide(loadingId);
+          generateButton.show();
+          updateInfo('3Dモデルのロードに失敗しました');
+        }
+      });
     }
 
   } catch (error) {

@@ -47,7 +47,7 @@ User input: ${userPrompt}`
     }
   }
 
-  // fal.ai APIで画像を生成（URLを返す）
+  // サーバー経由でfal.ai APIで画像を生成（URLを返す）
   async generate(prompt, onProgress) {
     if (this.isGenerating) {
       console.log('既に生成中です');
@@ -57,12 +57,18 @@ User input: ${userPrompt}`
     this.isGenerating = true;
 
     try {
-      // fal.ai Nano Banana Pro APIを呼び出し
-      const submitResponse = await fetch('https://queue.fal.run/fal-ai/nano-banana-pro', {
+      console.log('Image generation prompt:', prompt);
+
+      // 進捗表示開始
+      if (onProgress) {
+        onProgress(0, 1);
+      }
+
+      // サーバー経由でfal.ai Nano Banana Pro APIを呼び出し
+      const response = await fetch('/api/generate-image', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Key ${this.falApiKey}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           prompt: prompt,
@@ -73,52 +79,24 @@ User input: ${userPrompt}`
         })
       });
 
-      if (!submitResponse.ok) {
-        throw new Error(`Submit Error: ${submitResponse.status}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Server Error: ${response.status}`);
       }
 
-      const submitData = await submitResponse.json();
-      const requestId = submitData.request_id;
+      const result = await response.json();
+      console.log('Image generation result:', result);
 
-      if (!requestId) {
-        throw new Error('request_idが取得できませんでした');
-      }
-
-      // ポーリングで結果を待つ
-      const maxAttempts = 30;
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        const statusResponse = await fetch(`https://queue.fal.run/fal-ai/nano-banana-pro/requests/${requestId}/status`, {
-          method: 'GET',
-          headers: { 'Authorization': `Key ${this.falApiKey}` }
-        });
-
-        if (statusResponse.ok) {
-          const statusData = await statusResponse.json();
-
-          if (statusData.status === 'COMPLETED') {
-            const resultResponse = await fetch(`https://queue.fal.run/fal-ai/nano-banana-pro/requests/${requestId}`, {
-              method: 'GET',
-              headers: { 'Authorization': `Key ${this.falApiKey}` }
-            });
-
-            if (resultResponse.ok) {
-              const resultData = await resultResponse.json();
-              if (resultData.images && resultData.images.length > 0) {
-                this.isGenerating = false;
-                return resultData.images[0].url;
-              }
-            }
-          }
-        }
-
+      if (result.images && result.images.length > 0) {
+        this.isGenerating = false;
         if (onProgress) {
-          onProgress(i + 1, maxAttempts);
+          onProgress(1, 1);
         }
+        return result.images[0].url;
       }
 
-      throw new Error('画像生成タイムアウト');
+      throw new Error('画像が見つかりません');
+
     } catch (error) {
       console.error('画像生成エラー:', error);
       this.isGenerating = false;

@@ -51,25 +51,31 @@ export async function analyzePrompt(prompt, apiKey) {
   const systemPrompt = `You are an AI that analyzes user prompts and determines what to create in a WebXR environment.
 
 Available types:
-1. "threejs" - For any 3D object, effect, or animation that can be created with Three.js code
-   Examples: stars, fireworks, cubes, spheres, particles, geometric shapes, animated objects, etc.
+1. "threejs" - For simple 3D effects, particles, geometric shapes, animations created with Three.js code
+   Examples: stars, fireworks, particles, geometric shapes, animated effects, abstract visuals
 
 2. "imagePanel" - For 2D artwork, illustrations, photos, paintings that should be generated as an image
    Examples: portraits, landscapes, artwork, photos, illustrations, etc.
 
+3. "hyper3d" - For realistic 3D models of real-world objects that need high-quality mesh and textures
+   Examples: furniture (chair, table, lamp), animals, vehicles, food, plants, characters, products, etc.
+   Use this when the user wants a realistic 3D model of a physical object.
+
 Respond ONLY with valid JSON in this exact format:
 {
-  "kind": "threejs|imagePanel",
+  "kind": "threejs|imagePanel|hyper3d",
   "label": "brief description in user's language",
   "params": {},
-  "imagePrompt": "only if kind is imagePanel, detailed English prompt for image generation",
-  "threejsPrompt": "only if kind is threejs, detailed description of what 3D object/effect to create"
+  "imagePrompt": "only if kind is imagePanel or hyper3d, detailed English prompt for image generation",
+  "threejsPrompt": "only if kind is threejs, detailed description of what 3D effect to create"
 }
 
 Rules:
-- If the request is for 3D objects, effects, particles, geometric shapes, animations -> threejs
+- If the request is for simple 3D effects, particles, geometric shapes, animations -> threejs
 - If the request is for 2D images, artwork, illustrations, photos -> imagePanel
-- For threejs, describe in detail what 3D effect/object should be created
+- If the request is for realistic 3D models of physical objects (furniture, animals, products, etc.) -> hyper3d
+- For hyper3d, create a detailed English prompt for generating a reference image of the object
+- For threejs, describe in detail what 3D effect should be created
 - For imagePanel, create a detailed English prompt for high-quality image generation`;
 
   try {
