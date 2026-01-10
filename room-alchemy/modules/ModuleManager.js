@@ -116,13 +116,33 @@ export class ModuleManager {
    * @returns {Object|null} 見つかったモジュール
    */
   findModuleAtPosition(position, radius = 0.15) {
+    const MAX_GRAB_SIZE = 0.5; // つかみ判定の最大サイズ（メートル）
+
     for (const module of this.modules.values()) {
       // バウンディングボックスを計算
       const box = new THREE.Box3().setFromObject(module.group);
-      // バウンディングボックスを少し拡張
-      box.expandByScalar(radius);
 
-      if (box.containsPoint(position)) {
+      // バウンディングボックスのサイズを制限
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+
+      // 各軸のサイズを最大値に制限
+      const clampedHalfSize = new THREE.Vector3(
+        Math.min(size.x / 2, MAX_GRAB_SIZE),
+        Math.min(size.y / 2, MAX_GRAB_SIZE),
+        Math.min(size.z / 2, MAX_GRAB_SIZE)
+      );
+
+      // 制限されたバウンディングボックスを作成
+      const clampedBox = new THREE.Box3(
+        center.clone().sub(clampedHalfSize),
+        center.clone().add(clampedHalfSize)
+      );
+
+      // バウンディングボックスを少し拡張
+      clampedBox.expandByScalar(radius);
+
+      if (clampedBox.containsPoint(position)) {
         return module;
       }
     }
@@ -139,7 +159,16 @@ export class ModuleManager {
     if (!module) return;
 
     module.isGrabbed = true;
-    module.grabOffset.copy(module.group.position).sub(grabPosition);
+
+    // バウンディングボックスの中心を基準にオフセットを計算
+    const box = new THREE.Box3().setFromObject(module.group);
+    const center = box.getCenter(new THREE.Vector3());
+
+    // group.positionとバウンディングボックス中心の差を保存
+    module.centerOffset = module.group.position.clone().sub(center);
+
+    // 掴んだ位置からの相対オフセット
+    module.grabOffset.copy(center).sub(grabPosition);
   }
 
   /**
@@ -151,7 +180,11 @@ export class ModuleManager {
     const module = this.modules.get(id);
     if (!module || !module.isGrabbed) return;
 
-    module.group.position.copy(handPosition).add(module.grabOffset);
+    // 新しい中心位置を計算
+    const newCenter = handPosition.clone().add(module.grabOffset);
+
+    // centerOffsetを加えてgroup.positionを設定
+    module.group.position.copy(newCenter).add(module.centerOffset || new THREE.Vector3());
   }
 
   /**
