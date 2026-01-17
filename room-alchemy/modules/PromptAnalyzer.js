@@ -23,22 +23,29 @@ Available types:
    Examples: furniture (chair, table, lamp), animals, vehicles, food, plants, characters, products, etc.
    Use this when the user wants a realistic 3D model of a physical object.
 
+4. "manga" - For creating manga/comic books with multiple pages
+   Examples: manga, comic, 漫画, コミック, マンガ, comic book, graphic novel
+   Use this when the user wants to create a manga or comic book.
+
 Respond ONLY with valid JSON in this exact format:
 {
-  "kind": "threejs|imagePanel|hyper3d",
+  "kind": "threejs|imagePanel|hyper3d|manga",
   "label": "brief description in user's language",
   "params": {},
   "imagePrompt": "only if kind is imagePanel or hyper3d, detailed English prompt for image generation",
-  "threejsPrompt": "only if kind is threejs, detailed description of what 3D effect to create"
+  "threejsPrompt": "only if kind is threejs, detailed description of what 3D effect to create",
+  "mangaPrompt": "only if kind is manga, the theme/story for the manga in English"
 }
 
 Rules:
 - If the request is for simple 3D effects, particles, geometric shapes, animations -> threejs
 - If the request is for 2D images, artwork, illustrations, photos -> imagePanel
 - If the request is for realistic 3D models of physical objects (furniture, animals, products, etc.) -> hyper3d
+- If the request is for manga, comic, 漫画, コミック, or any comic book creation -> manga
 - For hyper3d, create a detailed English prompt for generating a reference image of the object
 - For threejs, describe in detail what 3D effect should be created
-- For imagePanel, create a detailed English prompt for high-quality image generation`;
+- For imagePanel, create a detailed English prompt for high-quality image generation
+- For manga, extract the theme/story the user wants and translate to English`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {

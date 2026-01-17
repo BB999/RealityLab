@@ -4,6 +4,7 @@ import { ModuleManager } from './modules/ModuleManager.js';
 import { createImagePanel } from './modules/factories/imagePanel.js';
 import { createDynamicThreejs } from './modules/factories/dynamicThreejs.js';
 import { createHyper3DModel } from './modules/factories/hyper3dModel.js';
+import { createMangaBook } from './modules/factories/mangaBook.js';
 import { analyzePrompt, generateThreejsCode, regenerateThreejsCode } from './modules/PromptAnalyzer.js';
 
 // コントローラー関連
@@ -24,6 +25,7 @@ import { PinButton } from './modules/ui/PinButton.js';
 // サービス
 import { ImageGenerator } from './modules/services/ImageGenerator.js';
 import { Hyper3DService } from './modules/services/Hyper3DService.js';
+import { MangaGenerator } from './modules/services/MangaGenerator.js';
 
 // XR関連
 import { DepthVisualization } from './modules/xr/DepthVisualization.js';
@@ -52,6 +54,7 @@ let pinButton = null;
 // 画像生成サービス
 let imageGenerator = null;
 let hyper3DService = null;
+let mangaGenerator = null;
 
 // トリガー状態のトラッキング
 let wasTriggerPressedState = { left: false, right: false };
@@ -104,6 +107,7 @@ function init() {
   moduleManager.registerFactory('imagePanel', createImagePanel);
   moduleManager.registerFactory('threejs', createDynamicThreejs);
   moduleManager.registerFactory('hyper3d', createHyper3DModel);
+  moduleManager.registerFactory('mangaBook', createMangaBook);
 
   // UIコンポーネントを初期化
   textPanel = new TextPanel(scene);
@@ -133,6 +137,7 @@ function init() {
   // サービスを初期化
   imageGenerator = new ImageGenerator(FAL_API_KEY, ANTHROPIC_API_KEY);
   hyper3DService = new Hyper3DService();
+  mangaGenerator = new MangaGenerator(ANTHROPIC_API_KEY, imageGenerator);
 
   // 深度可視化を初期化
   depthVisualization = new DepthVisualization(scene);
@@ -199,6 +204,18 @@ async function handleNewGeneration(promptText) {
   let loadingId = null;
 
   try {
+    // 漫画生成モードを検出
+    if (promptText.toLowerCase().startsWith('manga:') || promptText.toLowerCase().startsWith('漫画:')) {
+      const mangaTheme = promptText.replace(/^(manga:|漫画:)\s*/i, '').trim();
+      if (!mangaTheme) {
+        updateInfo('漫画のテーマを入力してください');
+        generateButton.show();
+        return;
+      }
+      await handleMangaGeneration(mangaTheme);
+      return;
+    }
+
     // Claude APIでプロンプトを解析
     const moduleDef = await analyzePrompt(promptText, ANTHROPIC_API_KEY);
     console.log('モジュール定義:', moduleDef);
@@ -332,6 +349,11 @@ async function handleNewGeneration(promptText) {
           updateInfo('3Dモデルのロードに失敗しました');
         }
       });
+    } else if (moduleDef.kind === 'manga') {
+      // 漫画生成
+      const mangaTheme = moduleDef.mangaPrompt || promptText;
+      await handleMangaGeneration(mangaTheme);
+      return; // handleMangaGenerationでloadingIndicatorを管理するので早期リターン
     }
 
   } catch (error) {
@@ -339,6 +361,61 @@ async function handleNewGeneration(promptText) {
     if (loadingId) loadingIndicator.hide(loadingId);
     generateButton.show();
     updateInfo('エラー: ' + error.message);
+  }
+}
+
+// 漫画生成処理
+async function handleMangaGeneration(theme) {
+  let loadingId = null;
+
+  try {
+    loadingId = loadingIndicator.show(textPanel.getPanel(), 'Creating Manga', 'green');
+    generateButton.setLoading(false);
+
+    updateInfo(`漫画「${theme}」を生成開始...`);
+
+    // 漫画を生成（表紙 + 6ページ + 裏表紙）
+    const mangaResult = await mangaGenerator.generateManga(theme, (current, total, status) => {
+      updateInfo(`${status} (${current}/${total})`);
+      console.log(`漫画生成進捗: ${current}/${total} - ${status}`);
+    });
+
+    if (!mangaResult) {
+      throw new Error('漫画生成に失敗しました');
+    }
+
+    console.log('漫画生成完了:', mangaResult);
+
+    // スポーン位置を決定
+    const spawnPosition = new THREE.Vector3();
+    if (textPanel.getPanel()) {
+      spawnPosition.copy(textPanel.getPanel().position);
+      spawnPosition.y += 0.15;
+    } else {
+      spawnPosition.set(0, 1.2, -0.8);
+    }
+
+    // 漫画本をスポーン
+    const moduleId = moduleManager.spawn('mangaBook', spawnPosition, {
+      pages: mangaResult.pages,
+      coverUrl: mangaResult.cover,
+      backCoverUrl: mangaResult.backCover,
+      width: 0.18,
+      height: 0.25
+    });
+
+    // カメラに向ける
+    lookAtCameraHorizontal(moduleId);
+
+    loadingIndicator.hide(loadingId);
+    generateButton.show();
+    updateInfo(`漫画「${theme}」が完成しました！トリガーで開閉`);
+
+  } catch (error) {
+    console.error('漫画生成エラー:', error);
+    if (loadingId) loadingIndicator.hide(loadingId);
+    generateButton.show();
+    updateInfo('漫画生成エラー: ' + error.message);
   }
 }
 
@@ -513,6 +590,15 @@ animationCallbacks.push((time, deltaTime) => {
 `;
       moduleManager.spawn('threejs', testPosition, { code: testCode, prompt: 'test cube' });
       updateInfo('テストスポーン完了');
+      return;
+    }
+
+    // Mキーで漫画生成モードを開始（デバッグ用）
+    if ((event.key === 'm' || event.key === 'M') && !textPanel.isActive) {
+      // テキスト入力を開始して漫画生成モードに
+      startTextInput();
+      textPanel.setPromptText('manga: ');
+      updateInfo('漫画テーマを入力してください（例: manga: プログラミング入門）');
       return;
     }
 
@@ -1087,6 +1173,19 @@ function updateModuleSelection(frame, referenceSpace) {
       // レーザーでモジュールをヒットしているか確認
       const hit = raycastModules(inputSource, frame, referenceSpace, moduleManager);
       if (hit && hit.module) {
+        // 漫画本の場合は開閉/ページめくりを処理
+        if (hit.module.kind === 'mangaBook' && hit.module.instance) {
+          const mangaBook = hit.module.instance;
+          if (mangaBook.onPress) {
+            // 閉じていれば開く、開いていれば次のページ、最後なら閉じる
+            mangaBook.onPress();
+          } else {
+            mangaBook.toggle();
+          }
+          wasTriggerPressedState[handedness] = triggerPressed;
+          continue;
+        }
+
         // 既に選択中の場合は選択解除
         if (interactionState.selectedModule === hit.module.id) {
           deselectModule();
