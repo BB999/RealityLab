@@ -9,8 +9,11 @@ import {
   positionCarAtController,
   updateGrabPosition,
   getGrabbingState,
+  getGrabbedObject,
   getWheelSpeed,
-  setResetCallback
+  setResetCallback,
+  setSpawnCallback,
+  addGrabbableObject
 } from './controllers.js';
 import { startXR, startVR } from './xrSession.js';
 import {
@@ -28,7 +31,9 @@ import {
   updateCollisionColor,
   applyDriveForce,
   stabilizeCar,
-  resetCarPosition
+  resetCarPosition,
+  createSpawnedObjectColliders,
+  updateSpawnedObjectColliders
 } from './physics.js';
 
 let scene, camera, renderer, mini4car;
@@ -42,6 +47,10 @@ let mini4carPositioned = false;
 let physicsInitialized = false;
 let lastTime = 0;
 let wasGrabbing = false;
+
+// スポーンされたオブジェクト
+let spawnedObjects = [];
+let spawnModelLoaded = null; // 事前読み込みしたモデル
 
 // シーンの初期化
 function init() {
@@ -88,6 +97,9 @@ function init() {
   // ミニ四駆モデルを読み込み
   loadMini4Car();
 
+  // スポーン用モデルを事前読み込み
+  loadSpawnModel();
+
   // リサイズ対応
   window.addEventListener('resize', onWindowResize);
 
@@ -133,6 +145,10 @@ function loadMini4Car() {
       createCarBody(mini4car);
       addCarDebugMesh(mini4car);
       physicsInitialized = true;
+
+      // ミニ四駆をグラブ可能オブジェクトに登録
+      addGrabbableObject(mini4car);
+
       console.log('物理エンジン初期化完了');
     },
     (progress) => {
@@ -142,6 +158,62 @@ function loadMini4Car() {
       console.error('モデル読み込みエラー:', error);
     }
   );
+}
+
+// スポーン用モデルを事前読み込み
+function loadSpawnModel() {
+  const loader = new GLTFLoader();
+  loader.load(
+    '/laen_strait.glb',
+    (gltf) => {
+      spawnModelLoaded = gltf.scene;
+      console.log('スポーン用モデルを読み込みました');
+    },
+    (progress) => {
+      console.log('スポーンモデル読み込み中...', (progress.loaded / progress.total * 100) + '%');
+    },
+    (error) => {
+      console.error('スポーンモデル読み込みエラー:', error);
+    }
+  );
+}
+
+// 左コントローラーの前にオブジェクトをスポーン
+function spawnObjectAtLeftController() {
+  if (!spawnModelLoaded || !leftController) {
+    console.log('スポーンできません: モデルまたはコントローラーが未準備');
+    return;
+  }
+
+  const controllerPosition = new THREE.Vector3();
+  const controllerQuaternion = new THREE.Quaternion();
+  leftController.getWorldPosition(controllerPosition);
+  leftController.getWorldQuaternion(controllerQuaternion);
+
+  // コントローラーの前方0.3mに配置
+  const forward = new THREE.Vector3(0, 0, -0.3);
+  forward.applyQuaternion(controllerQuaternion);
+
+  // モデルをクローン
+  const spawnedObject = spawnModelLoaded.clone();
+  spawnedObject.position.set(
+    controllerPosition.x + forward.x,
+    controllerPosition.y + forward.y,
+    controllerPosition.z + forward.z
+  );
+  spawnedObject.quaternion.copy(controllerQuaternion);
+  spawnedObject.scale.set(0.18, 0.18, 0.18); // 0.2倍大きく（0.15 * 1.2）
+
+  scene.add(spawnedObject);
+  spawnedObjects.push(spawnedObject);
+
+  // グラブ可能オブジェクトに登録
+  addGrabbableObject(spawnedObject);
+
+  // 当たり判定を追加（floor, laen_left, laen_rightごと）
+  createSpawnedObjectColliders(spawnedObject);
+
+  console.log('オブジェクトをスポーンしました (合計:', spawnedObjects.length, '個)');
 }
 
 // アニメーションループ
@@ -169,23 +241,32 @@ function animate(timestamp, frame) {
     }
 
     // グラブ中はコントローラーに追従（位置と回転）
-    if (getGrabbingState() && mini4car && rightController) {
-      updateGrabPosition(mini4car, rightController);
+    if (getGrabbingState() && rightController) {
+      updateGrabPosition(null, rightController);
+
+      // スポーンオブジェクトを掴んでいる場合、当たり判定も更新
+      const grabbedObj = getGrabbedObject();
+      if (grabbedObj && spawnedObjects.includes(grabbedObj)) {
+        updateSpawnedObjectColliders(grabbedObj);
+      }
     }
   }
 
-  // グラブ状態の変化を検出
+  // グラブ状態の変化を検出（ミニ四駆を掴んでいる場合のみ物理処理）
   const isGrabbing = getGrabbingState();
-  if (isGrabbing !== wasGrabbing) {
+  const grabbedObj = getGrabbedObject();
+  const isGrabbingMini4car = isGrabbing && grabbedObj === mini4car;
+
+  if (isGrabbingMini4car !== wasGrabbing) {
     if (physicsInitialized) {
-      setCarKinematic(isGrabbing);
+      setCarKinematic(isGrabbingMini4car);
     }
-    wasGrabbing = isGrabbing;
+    wasGrabbing = isGrabbingMini4car;
   }
 
   // 物理シミュレーション
   if (physicsInitialized && mini4car) {
-    if (isGrabbing) {
+    if (isGrabbingMini4car) {
       // グラブ中は物理ボディの位置を手動で更新
       updateCarBodyPosition(mini4car.position, mini4car.quaternion);
     } else {
@@ -239,6 +320,11 @@ function updateInfo(text) {
 // セッション開始時のコールバック
 function onSessionStart() {
   mini4carPositioned = false;
+
+  // Xボタンでスポーンするコールバックを設定
+  setSpawnCallback(() => {
+    spawnObjectAtLeftController();
+  });
 
   // Yボタンでリセットするコールバックを設定
   setResetCallback(() => {

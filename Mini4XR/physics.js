@@ -6,6 +6,9 @@ let world;
 let carBody;
 let floorBody;
 
+// スポーンされたオブジェクトの物理ボディ
+let spawnedBodies = [];
+
 // デバッグ用メッシュ
 let debugMeshes = [];
 let debugGroup;
@@ -20,9 +23,10 @@ export function initPhysics() {
   world = new CANNON.World();
   world.gravity.set(0, -9.82, 0);
 
-  // 衝突検出の設定
-  world.broadphase = new CANNON.NaiveBroadphase();
-  world.solver.iterations = 10;
+  // 衝突検出の設定（SAPBroadphaseで効率的に）
+  world.broadphase = new CANNON.SAPBroadphase(world);
+  world.solver.iterations = 20; // より正確な衝突解決
+  world.solver.tolerance = 0.001;
 
   // 床の物理ボディを作成（少し下に配置して当たり判定を浮かせる）
   const floorShape = new CANNON.Plane();
@@ -67,7 +71,9 @@ export function createCarBody(mini4car) {
     shape: carShape,
     material: new CANNON.Material('car'),
     linearDamping: 0.1, // 減衰を小さく
-    angularDamping: 0.3
+    angularDamping: 0.3,
+    ccdSpeedThreshold: 0.1, // CCD（連続衝突検出）を有効化
+    ccdIterations: 10 // CCD反復回数
   });
 
   // 初期位置を設定（オフセットを考慮）
@@ -142,8 +148,8 @@ export function addCarDebugMesh(mini4car) {
 export function updatePhysics(deltaTime) {
   if (!world) return;
 
-  // 物理シミュレーションを進める
-  world.step(1 / 60, deltaTime, 3);
+  // 物理シミュレーションを進める（固定タイムステップ、サブステップを増やして精度向上）
+  world.step(1 / 120, deltaTime, 10);
 }
 
 // Three.jsのオブジェクトを物理ボディに同期（オフセットを考慮）
@@ -245,11 +251,17 @@ export function updateCollisionColor() {
 
 // タイヤの回転に応じて前進する力を加える
 export function applyDriveForce(wheelSpeed, carQuaternion) {
-  if (!carBody || wheelSpeed <= 0) return;
+  if (!carBody || !world || wheelSpeed <= 0) return;
 
-  // 床に接地している時のみ前進
-  const onFloor = carBody.position.y <= boxSize.y / 2 + 0.05;
-  if (!onFloor) {
+  // 何かに接触している時のみ前進（ワールドの接触リストをチェック）
+  let isGrounded = false;
+  for (const contact of world.contacts) {
+    if (contact.bi === carBody || contact.bj === carBody) {
+      isGrounded = true;
+      break;
+    }
+  }
+  if (!isGrounded) {
     return;
   }
 
@@ -306,4 +318,228 @@ export function resetCarPosition(position, quaternion) {
     position.z + rotatedOffset.z
   );
   carBody.quaternion.copy(quaternion);
+}
+
+// メッシュから実際の頂点範囲を計算してBoxコライダーを作成（レールのパーツ用）
+function createBoxCollidersFromMesh(child, partType) {
+  child.updateWorldMatrix(true, false);
+
+  const geometry = child.geometry;
+  const positionAttribute = geometry.getAttribute('position');
+
+  // 実際の頂点からバウンディングボックスを手動で計算
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let minZ = Infinity, maxZ = -Infinity;
+
+  for (let i = 0; i < positionAttribute.count; i++) {
+    const x = positionAttribute.getX(i);
+    const y = positionAttribute.getY(i);
+    const z = positionAttribute.getZ(i);
+
+    // wall_rightの場合、X座標が正の頂点だけを使用（モデルデータの問題を回避）
+    if (partType === 'wall_right' && x < 0) {
+      continue;
+    }
+    // wall_leftの場合、X座標が負の頂点だけを使用
+    if (partType === 'wall_left' && x > 0) {
+      continue;
+    }
+
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+    minZ = Math.min(minZ, z);
+    maxZ = Math.max(maxZ, z);
+  }
+
+  console.log(`${child.name} (${partType}) 頂点範囲: X[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y[${minY.toFixed(3)}, ${maxY.toFixed(3)}], Z[${minZ.toFixed(3)}, ${maxZ.toFixed(3)}]`);
+
+  // ローカルサイズを計算
+  const localSize = new THREE.Vector3(maxX - minX, maxY - minY, maxZ - minZ);
+
+  // ローカル中心を計算
+  const localCenter = new THREE.Vector3(
+    (minX + maxX) / 2,
+    (minY + maxY) / 2,
+    (minZ + maxZ) / 2
+  );
+
+  // スケールを取得
+  const scale = new THREE.Vector3();
+  const position = new THREE.Vector3();
+  const rotation = new THREE.Quaternion();
+  child.matrixWorld.decompose(position, rotation, scale);
+
+  // ワールドサイズを計算
+  const worldSize = new THREE.Vector3(
+    localSize.x * Math.abs(scale.x),
+    localSize.y * Math.abs(scale.y),
+    localSize.z * Math.abs(scale.z)
+  );
+
+  // ワールド変換を適用
+  const worldCenter = localCenter.clone().applyMatrix4(child.matrixWorld);
+
+  // パーツタイプに応じて薄いコライダーを作成
+  // floor: 床は薄い板（Y方向を薄く）
+  const thickness = 0.01; // 1cm厚
+
+  if (partType === 'floor') {
+    // 床: Y方向を薄くする
+    worldSize.y = thickness;
+    // 床の上面に配置
+    worldCenter.y = minY * Math.abs(scale.y) + position.y + thickness / 2;
+  }
+  return { center: worldCenter, size: worldSize, rotation: rotation };
+}
+
+// スポーンされたオブジェクトに当たり判定を追加（Boxコライダーを使用）
+export function createSpawnedObjectColliders(spawnedObject) {
+  if (!world || !spawnedObject) return null;
+
+  const bodies = [];
+  const meshData = [];
+
+  // 壁用のマテリアル（一度だけ作成）
+  const wallMaterial = new CANNON.Material('wall');
+
+  // ミニ四駆との摩擦設定（一度だけ作成）
+  if (carBody) {
+    const existingContact = world.contactmaterials.find(
+      cm => (cm.materials[0] === carBody.material && cm.materials[1] === wallMaterial) ||
+            (cm.materials[1] === carBody.material && cm.materials[0] === wallMaterial)
+    );
+    if (!existingContact) {
+      const contactMaterial = new CANNON.ContactMaterial(
+        carBody.material,
+        wallMaterial,
+        {
+          friction: 0.001,
+          restitution: 0.3,
+          contactEquationStiffness: 1e8,
+          contactEquationRelaxation: 3
+        }
+      );
+      world.addContactMaterial(contactMaterial);
+    }
+  }
+
+  // オブジェクト内のfloor, laen_left, laen_rightを探す
+  spawnedObject.traverse((child) => {
+    if (child.isMesh && child.geometry) {
+      // メッシュ名、親ノード名、祖父母ノード名をチェック
+      const meshName = child.name.toLowerCase();
+      const parentName = child.parent ? child.parent.name.toLowerCase() : '';
+      const grandParentName = child.parent?.parent ? child.parent.parent.name.toLowerCase() : '';
+
+      console.log(`メッシュ探索: name=${child.name}, parent=${child.parent?.name}, grandParent=${child.parent?.parent?.name}`);
+
+      // floor, laen_left, laen_rightに当たり判定をつける（どの階層でもマッチ）
+      const allNames = meshName + ' ' + parentName + ' ' + grandParentName;
+
+      // パーツタイプを判定
+      let partType = null;
+      if (allNames.includes('floor')) {
+        partType = 'floor';
+      } else if (allNames.includes('laen_left') || allNames.includes('left')) {
+        partType = 'wall_left';
+      } else if (allNames.includes('laen_right') || allNames.includes('right')) {
+        partType = 'wall_right';
+      } else if (allNames.includes('laen')) {
+        // laenだけの場合はX座標で判定
+        const tempCenter = new THREE.Vector3();
+        child.getWorldPosition(tempCenter);
+        partType = tempCenter.x < 0 ? 'wall_left' : 'wall_right';
+      }
+
+      if (partType) {
+        const boxData = createBoxCollidersFromMesh(child, partType);
+
+        console.log(`当たり判定作成 (${partType}): ${child.name}, サイズ: ${boxData.size.x.toFixed(3)}, ${boxData.size.y.toFixed(3)}, ${boxData.size.z.toFixed(3)}`);
+
+        // Boxシェイプを作成
+        const halfExtents = new CANNON.Vec3(
+          boxData.size.x / 2,
+          boxData.size.y / 2,
+          boxData.size.z / 2
+        );
+        const boxShape = new CANNON.Box(halfExtents);
+
+        // 静的物理ボディを作成
+        const body = new CANNON.Body({
+          mass: 0, // 静的オブジェクト
+          material: wallMaterial,
+          type: CANNON.Body.STATIC
+        });
+        body.addShape(boxShape);
+
+        // 位置と回転を設定
+        body.position.set(boxData.center.x, boxData.center.y, boxData.center.z);
+        body.quaternion.set(boxData.rotation.x, boxData.rotation.y, boxData.rotation.z, boxData.rotation.w);
+
+        world.addBody(body);
+        bodies.push(body);
+
+        // デバッグメッシュを作成（Boxで表示）
+        if (debugGroup) {
+          const debugGeometry = new THREE.BoxGeometry(boxData.size.x, boxData.size.y, boxData.size.z);
+          // 床はシアン、左壁は緑、右壁はマゼンタ
+          let debugColor = 0x00ffff;
+          if (partType === 'wall_left') debugColor = 0x00ff00;
+          else if (partType === 'wall_right') debugColor = 0xff00ff;
+
+          const debugMaterial = new THREE.MeshBasicMaterial({
+            color: debugColor,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.7
+          });
+          const debugMesh = new THREE.Mesh(debugGeometry, debugMaterial);
+          debugMesh.position.copy(boxData.center);
+          debugMesh.quaternion.copy(boxData.rotation);
+          debugGroup.add(debugMesh);
+          debugMeshes.push({ mesh: debugMesh, body: body, isFloor: false, isSpawned: true, sourceMesh: child, partType: partType });
+        }
+
+        meshData.push({ child, body, boxData, partType });
+      }
+    }
+  });
+
+  // スポーンされたボディを保存
+  spawnedBodies.push({ object: spawnedObject, bodies, meshData });
+
+  console.log(`スポーンオブジェクトに${bodies.length}個のBox当たり判定を追加`);
+
+  return bodies;
+}
+
+// スポーンされたオブジェクトの当たり判定を更新（移動時）
+export function updateSpawnedObjectColliders(spawnedObject) {
+  const spawnedData = spawnedBodies.find(item => item.object === spawnedObject);
+  if (!spawnedData) return;
+
+  for (const data of spawnedData.meshData) {
+    // メッシュのワールド座標を再計算
+    data.child.updateWorldMatrix(true, false);
+
+    // Boxの位置と回転を再計算（partTypeを渡す）
+    const boxData = createBoxCollidersFromMesh(data.child, data.partType);
+
+    // 物理ボディの位置と回転を更新
+    data.body.position.set(boxData.center.x, boxData.center.y, boxData.center.z);
+    data.body.quaternion.set(boxData.rotation.x, boxData.rotation.y, boxData.rotation.z, boxData.rotation.w);
+
+    // AABBを更新
+    data.body.aabbNeedsUpdate = true;
+
+    // デバッグメッシュも更新
+    const debugItem = debugMeshes.find(item => item.body === data.body);
+    if (debugItem) {
+      debugItem.mesh.position.copy(boxData.center);
+      debugItem.mesh.quaternion.copy(boxData.rotation);
+    }
+  }
 }

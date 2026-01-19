@@ -2,46 +2,83 @@ import * as THREE from 'three';
 
 // グラブ用変数
 let isGrabbing = false;
+let grabbedObject = null; // 現在掴んでいるオブジェクト
 let grabOffset = new THREE.Vector3();
 let grabQuaternionOffset = new THREE.Quaternion();
+
+// グラブ可能なオブジェクトのリスト
+let grabbableObjects = [];
 
 // タイヤ回転用変数
 let isWheelSpinning = false;
 let aButtonPreviouslyPressed = false;
 let bButtonPreviouslyPressed = false;
 let yButtonPreviouslyPressed = false;
+let xButtonPreviouslyPressed = false;
 let wheelSpeed = 0; // 現在の回転速度
 
 // リセットコールバック
 let resetCallback = null;
+// スポーンコールバック（Xボタン）
+let spawnCallback = null;
 const wheelMaxSpeed = 0.8; // 最大回転速度
 const wheelAcceleration = 0.02; // 加速度
 const wheelDeceleration = 0.005; // 減速度（慣性）
 
+// グラブ可能なオブジェクトを追加
+export function addGrabbableObject(object) {
+  if (!grabbableObjects.includes(object)) {
+    grabbableObjects.push(object);
+    console.log('グラブ可能オブジェクト追加 (合計:', grabbableObjects.length, '個)');
+  }
+}
+
+// グラブ可能なオブジェクトを削除
+export function removeGrabbableObject(object) {
+  const index = grabbableObjects.indexOf(object);
+  if (index > -1) {
+    grabbableObjects.splice(index, 1);
+  }
+}
+
 // グラブ開始
 export function onSelectStart(mini4car, rightController) {
-  if (!mini4car) return;
-
   const controllerPosition = new THREE.Vector3();
   const controllerQuaternion = new THREE.Quaternion();
   rightController.getWorldPosition(controllerPosition);
   rightController.getWorldQuaternion(controllerQuaternion);
 
-  const carPosition = new THREE.Vector3();
-  mini4car.getWorldPosition(carPosition);
+  // 最も近いオブジェクトを探す
+  let closestObject = null;
+  let closestDistance = 0.5; // 最大距離0.5m
 
-  // コントローラーとミニ四駆の距離をチェック（0.5m以内なら掴む）
-  const distance = controllerPosition.distanceTo(carPosition);
-  if (distance < 0.5) {
+  // 全てのグラブ可能オブジェクトをチェック
+  for (const obj of grabbableObjects) {
+    if (!obj) continue;
+    const objPosition = new THREE.Vector3();
+    obj.getWorldPosition(objPosition);
+    const distance = controllerPosition.distanceTo(objPosition);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestObject = obj;
+    }
+  }
+
+  if (closestObject) {
     isGrabbing = true;
+    grabbedObject = closestObject;
+
+    const objPosition = new THREE.Vector3();
+    closestObject.getWorldPosition(objPosition);
+
     // 位置オフセットを保存（コントローラーのローカル座標系で）
     const inverseControllerQuat = controllerQuaternion.clone().invert();
-    grabOffset.copy(carPosition).sub(controllerPosition).applyQuaternion(inverseControllerQuat);
+    grabOffset.copy(objPosition).sub(controllerPosition).applyQuaternion(inverseControllerQuat);
 
     // 回転オフセットを保存
-    grabQuaternionOffset.copy(inverseControllerQuat).multiply(mini4car.quaternion);
+    grabQuaternionOffset.copy(inverseControllerQuat).multiply(closestObject.quaternion);
 
-    console.log('ミニ四駆を掴みました');
+    console.log('オブジェクトを掴みました');
   }
 }
 
@@ -49,7 +86,8 @@ export function onSelectStart(mini4car, rightController) {
 export function onSelectEnd() {
   if (isGrabbing) {
     isGrabbing = false;
-    console.log('ミニ四駆を離しました');
+    grabbedObject = null;
+    console.log('オブジェクトを離しました');
   }
 }
 
@@ -58,9 +96,14 @@ export function getGrabbingState() {
   return isGrabbing;
 }
 
+// 掴んでいるオブジェクトを取得
+export function getGrabbedObject() {
+  return grabbedObject;
+}
+
 // グラブ中の位置・回転更新
 export function updateGrabPosition(mini4car, rightController) {
-  if (!isGrabbing || !mini4car || !rightController) return;
+  if (!isGrabbing || !grabbedObject || !rightController) return;
 
   const controllerPosition = new THREE.Vector3();
   const controllerQuaternion = new THREE.Quaternion();
@@ -69,10 +112,10 @@ export function updateGrabPosition(mini4car, rightController) {
 
   // 位置を更新
   const rotatedOffset = grabOffset.clone().applyQuaternion(controllerQuaternion);
-  mini4car.position.copy(controllerPosition).add(rotatedOffset);
+  grabbedObject.position.copy(controllerPosition).add(rotatedOffset);
 
   // 回転を更新
-  mini4car.quaternion.copy(controllerQuaternion).multiply(grabQuaternionOffset);
+  grabbedObject.quaternion.copy(controllerQuaternion).multiply(grabQuaternionOffset);
 }
 
 // Aボタン（buttons[4]）とBボタン（buttons[5]）の状態をチェック
@@ -101,8 +144,20 @@ export function checkControllerButtons(renderer, moveCarCallback) {
       bButtonPreviouslyPressed = bButton ? bButton.pressed : false;
     }
 
-    // 左コントローラーのYボタン - リセット
+    // 左コントローラーのボタン
     if (source.gamepad && source.handedness === 'left') {
+      // Xボタン - オブジェクトをスポーン
+      const xButton = source.gamepad.buttons[4]; // Xボタン
+      if (xButton && xButton.pressed && !xButtonPreviouslyPressed) {
+        console.log('Xボタン押下検出');
+        if (spawnCallback) {
+          spawnCallback();
+          console.log('Xボタン: スポーン実行');
+        }
+      }
+      xButtonPreviouslyPressed = xButton ? xButton.pressed : false;
+
+      // Yボタン - リセット
       const yButton = source.gamepad.buttons[5]; // Yボタン
       if (yButton && yButton.pressed && !yButtonPreviouslyPressed) {
         console.log('Yボタン押下検出, resetCallback:', resetCallback ? '設定済み' : 'null');
@@ -114,6 +169,11 @@ export function checkControllerButtons(renderer, moveCarCallback) {
       yButtonPreviouslyPressed = yButton ? yButton.pressed : false;
     }
   }
+}
+
+// スポーンコールバックを設定
+export function setSpawnCallback(callback) {
+  spawnCallback = callback;
 }
 
 // リセットコールバックを設定
