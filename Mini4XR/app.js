@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 let scene, camera, renderer, mini4car;
+let wheels = []; // タイヤオブジェクトを格納
 let xrSession = null;
 let rightController = null;
 let leftController = null;
@@ -19,6 +20,10 @@ let gridHelper = null;
 // ハンドトラッキング用変数
 let hand1 = null;
 let hand2 = null;
+
+// グラブ用変数
+let isGrabbing = false;
+let grabOffset = new THREE.Vector3();
 
 // シーンの初期化
 function init() {
@@ -73,10 +78,32 @@ function loadMini4Car() {
     '/mini4car1.glb',
     (gltf) => {
       mini4car = gltf.scene;
-      mini4car.scale.set(0.5, 0.5, 0.5);
+      mini4car.scale.set(0.167, 0.167, 0.167);
       mini4car.position.set(0, 0, -2);
       scene.add(mini4car);
       console.log('ミニ四駆モデルを読み込みました');
+
+      // タイヤオブジェクトを探して中心を設定
+      wheels = [];
+      mini4car.traverse((child) => {
+        // taiya_mae と yaiya_usiro を探す
+        if (child.name === 'taiya_mae' || child.name === 'yaiya_usiro') {
+          // タイヤのジオメトリの中心を計算
+          if (child.isMesh && child.geometry) {
+            child.geometry.computeBoundingBox();
+            const box = child.geometry.boundingBox;
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+
+            // ジオメトリを中心に移動
+            child.geometry.translate(-center.x, -center.y, -center.z);
+            // メッシュの位置を調整
+            child.position.add(center);
+          }
+          wheels.push(child);
+          console.log('タイヤ発見:', child.name);
+        }
+      });
     },
     (progress) => {
       console.log('読み込み中...', (progress.loaded / progress.total * 100) + '%');
@@ -263,6 +290,19 @@ function animate(timestamp, frame) {
       }
     }
 
+    // グラブ中はコントローラーに追従
+    if (isGrabbing && mini4car && rightController) {
+      const controllerPosition = new THREE.Vector3();
+      rightController.getWorldPosition(controllerPosition);
+      mini4car.position.copy(controllerPosition).add(grabOffset);
+    }
+  }
+
+  // タイヤを回転させる（X軸で回転）
+  if (wheels.length > 0) {
+    wheels.forEach((wheel) => {
+      wheel.rotation.x += 0.1;
+    });
   }
 
   renderer.render(scene, camera);
@@ -278,6 +318,34 @@ function updateInfo(text) {
   const info = document.getElementById('info');
   if (info) {
     info.textContent = text;
+  }
+}
+
+// グラブ開始
+function onSelectStart() {
+  if (!mini4car) return;
+
+  const controllerPosition = new THREE.Vector3();
+  rightController.getWorldPosition(controllerPosition);
+
+  const carPosition = new THREE.Vector3();
+  mini4car.getWorldPosition(carPosition);
+
+  // コントローラーとミニ四駆の距離をチェック（0.5m以内なら掴む）
+  const distance = controllerPosition.distanceTo(carPosition);
+  if (distance < 0.5) {
+    isGrabbing = true;
+    // オフセットを保存
+    grabOffset.copy(carPosition).sub(controllerPosition);
+    console.log('ミニ四駆を掴みました');
+  }
+}
+
+// グラブ終了
+function onSelectEnd() {
+  if (isGrabbing) {
+    isGrabbing = false;
+    console.log('ミニ四駆を離しました');
   }
 }
 
@@ -318,6 +386,10 @@ async function startXR() {
     leftController = renderer.xr.getController(1);
     scene.add(rightController);
     scene.add(leftController);
+
+    // 右コントローラーのグラブイベント（MR用）- グリップボタンで掴む
+    rightController.addEventListener('squeezestart', onSelectStart);
+    rightController.addEventListener('squeezeend', onSelectEnd);
 
     // ハンドトラッキングを取得
     hand1 = renderer.xr.getHand(0);
@@ -421,6 +493,10 @@ async function startVR() {
     leftController = renderer.xr.getController(1);
     scene.add(rightController);
     scene.add(leftController);
+
+    // 右コントローラーのグラブイベント（VR用）- グリップボタンで掴む
+    rightController.addEventListener('squeezestart', onSelectStart);
+    rightController.addEventListener('squeezeend', onSelectEnd);
 
     // ハンドトラッキングを取得
     hand1 = renderer.xr.getHand(0);
