@@ -9,7 +9,11 @@ let grabQuaternionOffset = new THREE.Quaternion();
 let isWheelSpinning = false;
 let aButtonPreviouslyPressed = false;
 let bButtonPreviouslyPressed = false;
+let yButtonPreviouslyPressed = false;
 let wheelSpeed = 0; // 現在の回転速度
+
+// リセットコールバック
+let resetCallback = null;
 const wheelMaxSpeed = 0.8; // 最大回転速度
 const wheelAcceleration = 0.02; // 加速度
 const wheelDeceleration = 0.005; // 減速度（慣性）
@@ -96,7 +100,24 @@ export function checkControllerButtons(renderer, moveCarCallback) {
       }
       bButtonPreviouslyPressed = bButton ? bButton.pressed : false;
     }
+
+    // 左コントローラーのYボタン - リセット
+    if (source.gamepad && source.handedness === 'left') {
+      const yButton = source.gamepad.buttons[5]; // Yボタン
+      if (yButton && yButton.pressed && !yButtonPreviouslyPressed) {
+        if (resetCallback) {
+          resetCallback();
+        }
+        console.log('Yボタン: リセット');
+      }
+      yButtonPreviouslyPressed = yButton ? yButton.pressed : false;
+    }
   }
+}
+
+// リセットコールバックを設定
+export function setResetCallback(callback) {
+  resetCallback = callback;
 }
 
 // ミニ四駆を右コントローラーの前に移動
@@ -123,6 +144,11 @@ export function updateWheelSpeed() {
     // 減速（慣性）
     wheelSpeed = Math.max(wheelSpeed - wheelDeceleration, 0);
   }
+  return wheelSpeed;
+}
+
+// 現在のタイヤ速度を取得
+export function getWheelSpeed() {
   return wheelSpeed;
 }
 

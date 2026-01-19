@@ -8,7 +8,9 @@ import {
   rotateWheels,
   positionCarAtController,
   updateGrabPosition,
-  getGrabbingState
+  getGrabbingState,
+  getWheelSpeed,
+  setResetCallback
 } from './controllers.js';
 import { startXR, startVR } from './xrSession.js';
 import {
@@ -23,7 +25,10 @@ import {
   updateCarBodyPosition,
   toggleDebugVisibility,
   isDebugVisible,
-  updateCollisionColor
+  updateCollisionColor,
+  applyDriveForce,
+  stabilizeCar,
+  resetCarPosition
 } from './physics.js';
 
 let scene, camera, renderer, mini4car;
@@ -184,6 +189,15 @@ function animate(timestamp, frame) {
       // グラブ中は物理ボディの位置を手動で更新
       updateCarBodyPosition(mini4car.position, mini4car.quaternion);
     } else {
+      // タイヤの回転に応じて前進する力を加える
+      const wheelSpeed = getWheelSpeed();
+      if (wheelSpeed > 0) {
+        applyDriveForce(wheelSpeed, mini4car.quaternion);
+      }
+
+      // 走行中の姿勢を安定させる
+      stabilizeCar();
+
       // 物理シミュレーションを更新
       updatePhysics(deltaTime);
       // Three.jsのメッシュを物理ボディに同期
@@ -225,6 +239,35 @@ function updateInfo(text) {
 // セッション開始時のコールバック
 function onSessionStart() {
   mini4carPositioned = false;
+
+  // Yボタンでリセットするコールバックを設定
+  setResetCallback(() => {
+    if (mini4car && rightController) {
+      const controllerPosition = new THREE.Vector3();
+      const controllerQuaternion = new THREE.Quaternion();
+      rightController.getWorldPosition(controllerPosition);
+      rightController.getWorldQuaternion(controllerQuaternion);
+
+      // コントローラーの前方0.3mに配置
+      const forward = new THREE.Vector3(0, 0, -0.3);
+      forward.applyQuaternion(controllerQuaternion);
+
+      const newPosition = new THREE.Vector3(
+        controllerPosition.x + forward.x,
+        controllerPosition.y + forward.y,
+        controllerPosition.z + forward.z
+      );
+
+      // メッシュの位置を更新
+      mini4car.position.copy(newPosition);
+      mini4car.quaternion.copy(controllerQuaternion);
+
+      // 物理ボディをリセット
+      resetCarPosition(newPosition, controllerQuaternion);
+
+      console.log('ミニ四駆をリセットしました');
+    }
+  });
 }
 
 // セッション終了時のコールバック

@@ -24,7 +24,7 @@ export function initPhysics() {
   world.broadphase = new CANNON.NaiveBroadphase();
   world.solver.iterations = 10;
 
-  // 床の物理ボディを作成
+  // 床の物理ボディを作成（少し下に配置して当たり判定を浮かせる）
   const floorShape = new CANNON.Plane();
   floorBody = new CANNON.Body({
     mass: 0, // 静的オブジェクト
@@ -32,6 +32,7 @@ export function initPhysics() {
     material: new CANNON.Material('floor')
   });
   floorBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+  floorBody.position.y = 0; // 元に戻す
   world.addBody(floorBody);
 
   return world;
@@ -62,11 +63,11 @@ export function createCarBody(mini4car) {
 
   // 物理ボディを作成（中心位置で）
   carBody = new CANNON.Body({
-    mass: 0.1, // 100g
+    mass: 0.05, // 50g（軽くして動きやすく）
     shape: carShape,
     material: new CANNON.Material('car'),
-    linearDamping: 0.3,
-    angularDamping: 0.5
+    linearDamping: 0.1, // 減衰を小さく
+    angularDamping: 0.3
   });
 
   // 初期位置を設定（オフセットを考慮）
@@ -79,13 +80,15 @@ export function createCarBody(mini4car) {
 
   world.addBody(carBody);
 
-  // 床との摩擦設定
+  // 床との摩擦設定（反応を鈍くする）
   const contactMaterial = new CANNON.ContactMaterial(
     carBody.material,
     floorBody.material,
     {
-      friction: 0.4,
-      restitution: 0.3 // 弾性
+      friction: 0.001,      // 摩擦をほぼゼロに
+      restitution: 0.0,     // 弾性なし
+      contactEquationStiffness: 1e3,  // 剛性をさらに下げる
+      contactEquationRelaxation: 50   // リラクゼーションをさらに大きく
     }
   );
   world.addContactMaterial(contactMaterial);
@@ -238,4 +241,69 @@ export function updateCollisionColor() {
   } else {
     carMesh.mesh.material.color.setHex(0xff0000); // 赤
   }
+}
+
+// タイヤの回転に応じて前進する力を加える
+export function applyDriveForce(wheelSpeed, carQuaternion) {
+  if (!carBody || wheelSpeed <= 0) return;
+
+  // 床に接地している時のみ前進
+  const onFloor = carBody.position.y <= boxSize.y / 2 + 0.05;
+  if (!onFloor) {
+    return;
+  }
+
+  // 物理ボディの向きを使用
+  const bodyQuat = new THREE.Quaternion(
+    carBody.quaternion.x,
+    carBody.quaternion.y,
+    carBody.quaternion.z,
+    carBody.quaternion.w
+  );
+
+  // 前方向を計算（Z軸正方向）
+  const forward = new THREE.Vector3(0, 0, 1);
+  forward.applyQuaternion(bodyQuat);
+
+  // 水平成分だけ使う
+  forward.y = 0;
+  forward.normalize();
+
+  // タイヤ速度に応じた速度を設定
+  const speed = wheelSpeed * 2.0;
+
+  // 水平方向の速度を設定（Y軸は物理エンジンに任せる）
+  carBody.velocity.x = forward.x * speed;
+  carBody.velocity.z = forward.z * speed;
+}
+
+// 走行中の姿勢を安定させる（自然な物理挙動を維持）
+export function stabilizeCar() {
+  // 何もしない - 自然な物理挙動に任せる
+}
+
+// 床に接地しているか確認
+export function isOnFloor() {
+  if (!carBody) return false;
+  return carBody.position.y <= boxSize.y / 2 + 0.02;
+}
+
+// ミニ四駆をリセット（コントローラーの前に戻す）
+export function resetCarPosition(position, quaternion) {
+  if (!carBody) return;
+
+  // 速度をリセット
+  carBody.velocity.set(0, 0, 0);
+  carBody.angularVelocity.set(0, 0, 0);
+
+  // 回転を考慮してオフセットを変換
+  const rotatedOffset = boxOffset.clone().applyQuaternion(quaternion);
+
+  // 位置を設定
+  carBody.position.set(
+    position.x + rotatedOffset.x,
+    position.y + rotatedOffset.y,
+    position.z + rotatedOffset.z
+  );
+  carBody.quaternion.copy(quaternion);
 }
