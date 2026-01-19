@@ -24,6 +24,16 @@ let hand2 = null;
 // グラブ用変数
 let isGrabbing = false;
 let grabOffset = new THREE.Vector3();
+let grabQuaternionOffset = new THREE.Quaternion();
+
+// タイヤ回転用変数
+let isWheelSpinning = false;
+let aButtonPreviouslyPressed = false;
+let bButtonPreviouslyPressed = false;
+let wheelSpeed = 0; // 現在の回転速度
+const wheelMaxSpeed = 0.8; // 最大回転速度
+const wheelAcceleration = 0.02; // 加速度
+const wheelDeceleration = 0.005; // 減速度（慣性）
 
 // シーンの初期化
 function init() {
@@ -290,18 +300,38 @@ function animate(timestamp, frame) {
       }
     }
 
-    // グラブ中はコントローラーに追従
+    // グラブ中はコントローラーに追従（位置と回転）
     if (isGrabbing && mini4car && rightController) {
       const controllerPosition = new THREE.Vector3();
+      const controllerQuaternion = new THREE.Quaternion();
       rightController.getWorldPosition(controllerPosition);
-      mini4car.position.copy(controllerPosition).add(grabOffset);
+      rightController.getWorldQuaternion(controllerQuaternion);
+
+      // 位置を更新
+      const rotatedOffset = grabOffset.clone().applyQuaternion(controllerQuaternion);
+      mini4car.position.copy(controllerPosition).add(rotatedOffset);
+
+      // 回転を更新
+      mini4car.quaternion.copy(controllerQuaternion).multiply(grabQuaternionOffset);
     }
   }
 
+  // コントローラーボタンの状態をチェック
+  checkControllerButtons();
+
+  // タイヤの速度を更新（加速・減速）
+  if (isWheelSpinning) {
+    // 加速
+    wheelSpeed = Math.min(wheelSpeed + wheelAcceleration, wheelMaxSpeed);
+  } else {
+    // 減速（慣性）
+    wheelSpeed = Math.max(wheelSpeed - wheelDeceleration, 0);
+  }
+
   // タイヤを回転させる（X軸で回転）
-  if (wheels.length > 0) {
+  if (wheels.length > 0 && wheelSpeed > 0) {
     wheels.forEach((wheel) => {
-      wheel.rotation.x += 0.1;
+      wheel.rotation.x += wheelSpeed;
     });
   }
 
@@ -326,7 +356,9 @@ function onSelectStart() {
   if (!mini4car) return;
 
   const controllerPosition = new THREE.Vector3();
+  const controllerQuaternion = new THREE.Quaternion();
   rightController.getWorldPosition(controllerPosition);
+  rightController.getWorldQuaternion(controllerQuaternion);
 
   const carPosition = new THREE.Vector3();
   mini4car.getWorldPosition(carPosition);
@@ -335,8 +367,13 @@ function onSelectStart() {
   const distance = controllerPosition.distanceTo(carPosition);
   if (distance < 0.5) {
     isGrabbing = true;
-    // オフセットを保存
-    grabOffset.copy(carPosition).sub(controllerPosition);
+    // 位置オフセットを保存（コントローラーのローカル座標系で）
+    const inverseControllerQuat = controllerQuaternion.clone().invert();
+    grabOffset.copy(carPosition).sub(controllerPosition).applyQuaternion(inverseControllerQuat);
+
+    // 回転オフセットを保存
+    grabQuaternionOffset.copy(inverseControllerQuat).multiply(mini4car.quaternion);
+
     console.log('ミニ四駆を掴みました');
   }
 }
@@ -347,6 +384,47 @@ function onSelectEnd() {
     isGrabbing = false;
     console.log('ミニ四駆を離しました');
   }
+}
+
+// Aボタン（buttons[4]）とBボタン（buttons[5]）の状態をチェック
+function checkControllerButtons() {
+  const session = renderer.xr.getSession();
+  if (!session) return;
+
+  for (const source of session.inputSources) {
+    if (source.gamepad && source.handedness === 'right') {
+      // Aボタン - タイヤ回転切り替え
+      const aButton = source.gamepad.buttons[4];
+      if (aButton && aButton.pressed && !aButtonPreviouslyPressed) {
+        isWheelSpinning = !isWheelSpinning;
+        console.log('タイヤ回転:', isWheelSpinning ? 'ON' : 'OFF');
+      }
+      aButtonPreviouslyPressed = aButton ? aButton.pressed : false;
+
+      // Bボタン - ミニ四駆を右コントローラーの前に移動
+      const bButton = source.gamepad.buttons[5];
+      if (bButton && bButton.pressed && !bButtonPreviouslyPressed) {
+        moveCarToController();
+        console.log('ミニ四駆をコントローラーの前に移動');
+      }
+      bButtonPreviouslyPressed = bButton ? bButton.pressed : false;
+    }
+  }
+}
+
+// ミニ四駆を右コントローラーの前に移動
+function moveCarToController() {
+  if (!mini4car || !rightController) return;
+
+  const controllerPosition = new THREE.Vector3();
+  rightController.getWorldPosition(controllerPosition);
+
+  // コントローラーの前方0.1mに配置（常に同じオフセット）
+  mini4car.position.set(
+    controllerPosition.x,
+    controllerPosition.y,
+    controllerPosition.z - 0.1
+  );
 }
 
 // MRセッション開始
