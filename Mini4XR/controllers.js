@@ -105,10 +105,11 @@ export function checkControllerButtons(renderer, moveCarCallback) {
     if (source.gamepad && source.handedness === 'left') {
       const yButton = source.gamepad.buttons[5]; // Yボタン
       if (yButton && yButton.pressed && !yButtonPreviouslyPressed) {
+        console.log('Yボタン押下検出, resetCallback:', resetCallback ? '設定済み' : 'null');
         if (resetCallback) {
           resetCallback();
+          console.log('Yボタン: リセット実行');
         }
-        console.log('Yボタン: リセット');
       }
       yButtonPreviouslyPressed = yButton ? yButton.pressed : false;
     }
