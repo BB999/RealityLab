@@ -11,6 +11,20 @@ import {
   getGrabbingState
 } from './controllers.js';
 import { startXR, startVR } from './xrSession.js';
+import {
+  initPhysics,
+  createCarBody,
+  createDebugMeshes,
+  addCarDebugMesh,
+  updatePhysics,
+  syncMeshToBody,
+  updateDebugMeshes,
+  setCarKinematic,
+  updateCarBodyPosition,
+  toggleDebugVisibility,
+  isDebugVisible,
+  updateCollisionColor
+} from './physics.js';
 
 let scene, camera, renderer, mini4car;
 let wheels = []; // タイヤオブジェクトを格納
@@ -18,6 +32,11 @@ let xrSession = null;
 let rightController = null;
 let leftController = null;
 let mini4carPositioned = false;
+
+// 物理関連
+let physicsInitialized = false;
+let lastTime = 0;
+let wasGrabbing = false;
 
 // シーンの初期化
 function init() {
@@ -55,6 +74,12 @@ function init() {
   directionalLight2.position.set(-1, 0.5, -1);
   scene.add(directionalLight2);
 
+  // 物理エンジンを初期化
+  initPhysics();
+
+  // デバッグメッシュを作成（当たり判定可視化）
+  createDebugMeshes(scene);
+
   // ミニ四駆モデルを読み込み
   loadMini4Car();
 
@@ -73,7 +98,7 @@ function loadMini4Car() {
     (gltf) => {
       mini4car = gltf.scene;
       mini4car.scale.set(0.167, 0.167, 0.167);
-      mini4car.position.set(0, 0, -2);
+      mini4car.position.set(0, 1, -2); // 少し高い位置から落下
       scene.add(mini4car);
       console.log('ミニ四駆モデルを読み込みました');
 
@@ -98,6 +123,12 @@ function loadMini4Car() {
           console.log('タイヤ発見:', child.name);
         }
       });
+
+      // 物理ボディを作成
+      createCarBody(mini4car);
+      addCarDebugMesh(mini4car);
+      physicsInitialized = true;
+      console.log('物理エンジン初期化完了');
     },
     (progress) => {
       console.log('読み込み中...', (progress.loaded / progress.total * 100) + '%');
@@ -110,6 +141,10 @@ function loadMini4Car() {
 
 // アニメーションループ
 function animate(timestamp, frame) {
+  // デルタタイム計算
+  const deltaTime = lastTime ? (timestamp - lastTime) / 1000 : 0.016;
+  lastTime = timestamp;
+
   // XRセッション中の処理
   if (frame && xrSession) {
     const referenceSpace = renderer.xr.getReferenceSpace();
@@ -121,6 +156,10 @@ function animate(timestamp, frame) {
     if (!mini4carPositioned && mini4car && rightController) {
       if (positionCarAtController(mini4car, rightController)) {
         mini4carPositioned = true;
+        // 物理ボディの位置も更新
+        if (physicsInitialized) {
+          updateCarBodyPosition(mini4car.position, mini4car.quaternion);
+        }
       }
     }
 
@@ -128,6 +167,34 @@ function animate(timestamp, frame) {
     if (getGrabbingState() && mini4car && rightController) {
       updateGrabPosition(mini4car, rightController);
     }
+  }
+
+  // グラブ状態の変化を検出
+  const isGrabbing = getGrabbingState();
+  if (isGrabbing !== wasGrabbing) {
+    if (physicsInitialized) {
+      setCarKinematic(isGrabbing);
+    }
+    wasGrabbing = isGrabbing;
+  }
+
+  // 物理シミュレーション
+  if (physicsInitialized && mini4car) {
+    if (isGrabbing) {
+      // グラブ中は物理ボディの位置を手動で更新
+      updateCarBodyPosition(mini4car.position, mini4car.quaternion);
+    } else {
+      // 物理シミュレーションを更新
+      updatePhysics(deltaTime);
+      // Three.jsのメッシュを物理ボディに同期
+      syncMeshToBody(mini4car);
+    }
+
+    // デバッグメッシュを更新
+    updateDebugMeshes();
+
+    // 衝突時の色を更新
+    updateCollisionColor();
   }
 
   // コントローラーボタンの状態をチェック
@@ -220,5 +287,15 @@ if (depthToggleButton) {
     depthToggleButton.style.display = 'none';
     resetDepthVisualization();
     depthToggleButton.textContent = '深度表示 OFF';
+  });
+}
+
+// 当たり判定可視化切り替えボタン
+const physicsToggleButton = document.getElementById('physics-toggle');
+if (physicsToggleButton) {
+  physicsToggleButton.addEventListener('click', () => {
+    const isOn = toggleDebugVisibility();
+    physicsToggleButton.textContent = isOn ? '当たり判定 ON' : '当たり判定 OFF';
+    console.log('当たり判定表示:', isOn);
   });
 }
