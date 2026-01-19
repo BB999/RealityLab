@@ -1,5 +1,16 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { updateDepthInfo, toggleDepthVisualization, resetDepthVisualization } from './depthSensor.js';
+import {
+  checkControllerButtons,
+  moveCarToController,
+  updateWheelSpeed,
+  rotateWheels,
+  positionCarAtController,
+  updateGrabPosition,
+  getGrabbingState
+} from './controllers.js';
+import { startXR, startVR } from './xrSession.js';
 
 let scene, camera, renderer, mini4car;
 let wheels = []; // タイヤオブジェクトを格納
@@ -7,33 +18,6 @@ let xrSession = null;
 let rightController = null;
 let leftController = null;
 let mini4carPositioned = false;
-
-// 深度センサー用変数
-let depthDataTexture = null;
-let depthMesh = null;
-let showDepthVisualization = false;
-
-// VR用背景とグリッド
-let vrBackground = null;
-let gridHelper = null;
-
-// ハンドトラッキング用変数
-let hand1 = null;
-let hand2 = null;
-
-// グラブ用変数
-let isGrabbing = false;
-let grabOffset = new THREE.Vector3();
-let grabQuaternionOffset = new THREE.Quaternion();
-
-// タイヤ回転用変数
-let isWheelSpinning = false;
-let aButtonPreviouslyPressed = false;
-let bButtonPreviouslyPressed = false;
-let wheelSpeed = 0; // 現在の回転速度
-const wheelMaxSpeed = 0.8; // 最大回転速度
-const wheelAcceleration = 0.02; // 加速度
-const wheelDeceleration = 0.005; // 減速度（慣性）
 
 // シーンの初期化
 function init() {
@@ -124,149 +108,6 @@ function loadMini4Car() {
   );
 }
 
-// 深度可視化用のメッシュを作成
-function createDepthVisualizationMesh() {
-  const geometry = new THREE.PlaneGeometry(2, 2, 128, 128);
-  const material = new THREE.ShaderMaterial({
-    uniforms: {
-      depthTexture: { value: null },
-      depthWidth: { value: 0 },
-      depthHeight: { value: 0 },
-      rawValueToMeters: { value: 0 },
-      maxDistance: { value: 5.0 }
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D depthTexture;
-      uniform float rawValueToMeters;
-      uniform float maxDistance;
-      varying vec2 vUv;
-
-      vec3 depthToColor(float depth) {
-        float normalizedDepth = clamp(depth / maxDistance, 0.0, 1.0);
-        vec3 nearColor = vec3(1.0, 0.0, 0.0);
-        vec3 midColor = vec3(1.0, 1.0, 0.0);
-        vec3 farColor = vec3(0.0, 0.0, 1.0);
-
-        if (normalizedDepth < 0.5) {
-          return mix(nearColor, midColor, normalizedDepth * 2.0);
-        } else {
-          return mix(midColor, farColor, (normalizedDepth - 0.5) * 2.0);
-        }
-      }
-
-      void main() {
-        vec4 depthData = texture2D(depthTexture, vUv);
-        float rawDepth = depthData.r + depthData.g * 256.0;
-        float depthInMeters = rawDepth * rawValueToMeters;
-
-        if (depthInMeters <= 0.0 || depthInMeters > maxDistance) {
-          gl_FragColor = vec4(0.0, 0.0, 0.0, 0.3);
-        } else {
-          vec3 color = depthToColor(depthInMeters);
-          gl_FragColor = vec4(color, 0.7);
-        }
-      }
-    `,
-    transparent: true,
-    side: THREE.DoubleSide
-  });
-
-  depthMesh = new THREE.Mesh(geometry, material);
-  depthMesh.position.set(0, 1.5, -2);
-  depthMesh.visible = showDepthVisualization;
-  scene.add(depthMesh);
-}
-
-// 深度情報を更新
-function updateDepthInfo(frame, referenceSpace) {
-  if (!showDepthVisualization) {
-    if (depthMesh) {
-      depthMesh.visible = false;
-    }
-    return;
-  }
-
-  const viewerPose = frame.getViewerPose(referenceSpace);
-  if (!viewerPose) return;
-
-  for (const view of viewerPose.views) {
-    if (view.camera) {
-      const depthInfo = frame.getDepthInformation(view);
-      if (depthInfo) {
-        if (!depthMesh) {
-          createDepthVisualizationMesh();
-        }
-
-        // 深度データをテクスチャに変換
-        const depthData = new Uint8Array(depthInfo.data);
-        if (!depthDataTexture ||
-            depthDataTexture.image.width !== depthInfo.width ||
-            depthDataTexture.image.height !== depthInfo.height) {
-          depthDataTexture = new THREE.DataTexture(
-            depthData,
-            depthInfo.width,
-            depthInfo.height,
-            THREE.LuminanceAlphaFormat,
-            THREE.UnsignedByteType
-          );
-        } else {
-          depthDataTexture.image.data.set(depthData);
-        }
-        depthDataTexture.needsUpdate = true;
-
-        // シェーダーのuniformを更新
-        depthMesh.material.uniforms.depthTexture.value = depthDataTexture;
-        depthMesh.material.uniforms.depthWidth.value = depthInfo.width;
-        depthMesh.material.uniforms.depthHeight.value = depthInfo.height;
-        depthMesh.material.uniforms.rawValueToMeters.value = depthInfo.rawValueToMeters;
-
-        // 深度メッシュをカメラの前に配置
-        const cameraPosition = new THREE.Vector3();
-        const cameraQuaternion = new THREE.Quaternion();
-        camera.getWorldPosition(cameraPosition);
-        camera.getWorldQuaternion(cameraQuaternion);
-
-        const forward = new THREE.Vector3(0, 0, -1.5);
-        forward.applyQuaternion(cameraQuaternion);
-        depthMesh.position.copy(cameraPosition).add(forward);
-        depthMesh.quaternion.copy(cameraQuaternion);
-
-        depthMesh.visible = true;
-        break;
-      }
-    }
-  }
-}
-
-// VR環境を作成
-function createVREnvironment() {
-  // 背景色を設定
-  vrBackground = new THREE.Color(0x1a1a2e);
-  scene.background = vrBackground;
-
-  // グリッドヘルパーを追加
-  gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
-  gridHelper.position.y = 0;
-  scene.add(gridHelper);
-}
-
-// VR環境を削除
-function removeVREnvironment() {
-  scene.background = null;
-  if (gridHelper) {
-    scene.remove(gridHelper);
-    gridHelper = null;
-  }
-  vrBackground = null;
-}
-
 // アニメーションループ
 function animate(timestamp, frame) {
   // XRセッション中の処理
@@ -274,66 +115,29 @@ function animate(timestamp, frame) {
     const referenceSpace = renderer.xr.getReferenceSpace();
 
     // 深度情報を更新
-    updateDepthInfo(frame, referenceSpace);
+    updateDepthInfo(frame, referenceSpace, scene, camera);
 
     // ミニ四駆を右コントローラーの前に配置
     if (!mini4carPositioned && mini4car && rightController) {
-      const controllerPosition = new THREE.Vector3();
-      const controllerQuaternion = new THREE.Quaternion();
-      rightController.getWorldPosition(controllerPosition);
-      rightController.getWorldQuaternion(controllerQuaternion);
-
-      // コントローラーの前方0.3mにミニ四駆を配置
-      const forward = new THREE.Vector3(0, 0, -0.3);
-      forward.applyQuaternion(controllerQuaternion);
-
-      mini4car.position.set(
-        controllerPosition.x + forward.x,
-        controllerPosition.y + forward.y,
-        controllerPosition.z + forward.z
-      );
-
-      // コントローラーの位置が有効な場合のみ配置完了とする
-      if (controllerPosition.lengthSq() > 0) {
+      if (positionCarAtController(mini4car, rightController)) {
         mini4carPositioned = true;
-        console.log('ミニ四駆を右コントローラーの前に配置しました');
       }
     }
 
     // グラブ中はコントローラーに追従（位置と回転）
-    if (isGrabbing && mini4car && rightController) {
-      const controllerPosition = new THREE.Vector3();
-      const controllerQuaternion = new THREE.Quaternion();
-      rightController.getWorldPosition(controllerPosition);
-      rightController.getWorldQuaternion(controllerQuaternion);
-
-      // 位置を更新
-      const rotatedOffset = grabOffset.clone().applyQuaternion(controllerQuaternion);
-      mini4car.position.copy(controllerPosition).add(rotatedOffset);
-
-      // 回転を更新
-      mini4car.quaternion.copy(controllerQuaternion).multiply(grabQuaternionOffset);
+    if (getGrabbingState() && mini4car && rightController) {
+      updateGrabPosition(mini4car, rightController);
     }
   }
 
   // コントローラーボタンの状態をチェック
-  checkControllerButtons();
+  checkControllerButtons(renderer, () => moveCarToController(mini4car, rightController));
 
   // タイヤの速度を更新（加速・減速）
-  if (isWheelSpinning) {
-    // 加速
-    wheelSpeed = Math.min(wheelSpeed + wheelAcceleration, wheelMaxSpeed);
-  } else {
-    // 減速（慣性）
-    wheelSpeed = Math.max(wheelSpeed - wheelDeceleration, 0);
-  }
+  updateWheelSpeed();
 
   // タイヤを回転させる（X軸で回転）
-  if (wheels.length > 0 && wheelSpeed > 0) {
-    wheels.forEach((wheel) => {
-      wheel.rotation.x += wheelSpeed;
-    });
-  }
+  rotateWheels(wheels);
 
   renderer.render(scene, camera);
 }
@@ -351,280 +155,35 @@ function updateInfo(text) {
   }
 }
 
-// グラブ開始
-function onSelectStart() {
-  if (!mini4car) return;
+// セッション開始時のコールバック
+function onSessionStart() {
+  mini4carPositioned = false;
+}
 
-  const controllerPosition = new THREE.Vector3();
-  const controllerQuaternion = new THREE.Quaternion();
-  rightController.getWorldPosition(controllerPosition);
-  rightController.getWorldQuaternion(controllerQuaternion);
+// セッション終了時のコールバック
+function onSessionEnd() {
+  xrSession = null;
+  rightController = null;
+  leftController = null;
+}
 
-  const carPosition = new THREE.Vector3();
-  mini4car.getWorldPosition(carPosition);
-
-  // コントローラーとミニ四駆の距離をチェック（0.5m以内なら掴む）
-  const distance = controllerPosition.distanceTo(carPosition);
-  if (distance < 0.5) {
-    isGrabbing = true;
-    // 位置オフセットを保存（コントローラーのローカル座標系で）
-    const inverseControllerQuat = controllerQuaternion.clone().invert();
-    grabOffset.copy(carPosition).sub(controllerPosition).applyQuaternion(inverseControllerQuat);
-
-    // 回転オフセットを保存
-    grabQuaternionOffset.copy(inverseControllerQuat).multiply(mini4car.quaternion);
-
-    console.log('ミニ四駆を掴みました');
+// MRセッション開始ハンドラ
+async function handleStartXR() {
+  const result = await startXR(renderer, scene, mini4car, updateInfo, onSessionStart, onSessionEnd);
+  if (result) {
+    xrSession = result.xrSession;
+    rightController = result.rightController;
+    leftController = result.leftController;
   }
 }
 
-// グラブ終了
-function onSelectEnd() {
-  if (isGrabbing) {
-    isGrabbing = false;
-    console.log('ミニ四駆を離しました');
-  }
-}
-
-// Aボタン（buttons[4]）とBボタン（buttons[5]）の状態をチェック
-function checkControllerButtons() {
-  const session = renderer.xr.getSession();
-  if (!session) return;
-
-  for (const source of session.inputSources) {
-    if (source.gamepad && source.handedness === 'right') {
-      // Aボタン - タイヤ回転切り替え
-      const aButton = source.gamepad.buttons[4];
-      if (aButton && aButton.pressed && !aButtonPreviouslyPressed) {
-        isWheelSpinning = !isWheelSpinning;
-        console.log('タイヤ回転:', isWheelSpinning ? 'ON' : 'OFF');
-      }
-      aButtonPreviouslyPressed = aButton ? aButton.pressed : false;
-
-      // Bボタン - ミニ四駆を右コントローラーの前に移動
-      const bButton = source.gamepad.buttons[5];
-      if (bButton && bButton.pressed && !bButtonPreviouslyPressed) {
-        moveCarToController();
-        console.log('ミニ四駆をコントローラーの前に移動');
-      }
-      bButtonPreviouslyPressed = bButton ? bButton.pressed : false;
-    }
-  }
-}
-
-// ミニ四駆を右コントローラーの前に移動
-function moveCarToController() {
-  if (!mini4car || !rightController) return;
-
-  const controllerPosition = new THREE.Vector3();
-  rightController.getWorldPosition(controllerPosition);
-
-  // コントローラーの前方0.1mに配置（常に同じオフセット）
-  mini4car.position.set(
-    controllerPosition.x,
-    controllerPosition.y,
-    controllerPosition.z - 0.1
-  );
-}
-
-// MRセッション開始
-async function startXR() {
-  if (!navigator.xr) {
-    updateInfo('WebXRがサポートされていません');
-    alert('このデバイスはWebXRをサポートしていません');
-    return;
-  }
-
-  try {
-    updateInfo('MRセッションを開始中...');
-
-    // immersive-ar モードをサポートしているか確認
-    const supported = await navigator.xr.isSessionSupported('immersive-ar');
-
-    if (!supported) {
-      updateInfo('immersive-ARがサポートされていません');
-      alert('このデバイスはAR機能をサポートしていません');
-      return;
-    }
-
-    // XRセッション開始（深度センサー、平面検出、ハンドトラッキングを有効化）
-    xrSession = await navigator.xr.requestSession('immersive-ar', {
-      requiredFeatures: [],
-      optionalFeatures: ['local-floor', 'bounded-floor', 'depth-sensing', 'plane-detection', 'hand-tracking'],
-      depthSensing: {
-        usagePreference: ['cpu-optimized', 'gpu-optimized'],
-        dataFormatPreference: ['luminance-alpha', 'float32']
-      }
-    });
-
-    await renderer.xr.setSession(xrSession);
-
-    // コントローラーを取得
-    rightController = renderer.xr.getController(0);
-    leftController = renderer.xr.getController(1);
-    scene.add(rightController);
-    scene.add(leftController);
-
-    // 右コントローラーのグラブイベント（MR用）- グリップボタンで掴む
-    rightController.addEventListener('squeezestart', onSelectStart);
-    rightController.addEventListener('squeezeend', onSelectEnd);
-
-    // ハンドトラッキングを取得
-    hand1 = renderer.xr.getHand(0);
-    hand2 = renderer.xr.getHand(1);
-    scene.add(hand1);
-    scene.add(hand2);
-
-    // ボックス配置フラグをリセット
-    mini4carPositioned = false;
-
-    // ボタンを非表示
-    const button = document.getElementById('start-button');
-    if (button) {
-      button.style.display = 'none';
-    }
-    const vrButton = document.getElementById('vr-button');
-    if (vrButton) {
-      vrButton.style.display = 'none';
-    }
-
-    // セッション開始イベントを発火
-    window.dispatchEvent(new Event('xr-session-start'));
-
-    updateInfo('MRセッション開始');
-
-    // セッション開始後に深度センサーの状態を確認
-    if (xrSession.depthUsage) {
-      console.log('深度センサー有効:', xrSession.depthUsage);
-      console.log('深度データ形式:', xrSession.depthDataFormat);
-      updateInfo('MRセッション開始 (深度センサー有効)');
-    } else {
-      console.log('深度センサー無効');
-      updateInfo('MRセッション開始 (深度センサー無効)');
-    }
-
-    xrSession.addEventListener('end', () => {
-      xrSession = null;
-
-      // 深度関連のリソースをクリーンアップ
-      if (depthMesh) {
-        scene.remove(depthMesh);
-        depthMesh = null;
-      }
-      depthDataTexture = null;
-
-      // セッション終了イベントを発火
-      window.dispatchEvent(new Event('xr-session-end'));
-
-      updateInfo('MRセッション終了');
-      if (button) {
-        button.style.display = 'block';
-      }
-      if (vrButton) {
-        vrButton.style.display = 'block';
-      }
-    });
-
-  } catch (error) {
-    console.error('XRセッション開始エラー:', error);
-    console.error('エラー名:', error.name);
-    console.error('エラーメッセージ:', error.message);
-    console.error('エラー詳細:', JSON.stringify(error, null, 2));
-    updateInfo('エラー: ' + (error.message || error.name || 'Unknown error'));
-    alert('MRセッションを開始できませんでした: ' + (error.message || error.name || 'Unknown error'));
-  }
-}
-
-// VRセッション開始
-async function startVR() {
-  if (!navigator.xr) {
-    updateInfo('WebXRがサポートされていません');
-    alert('このデバイスはWebXRをサポートしていません');
-    return;
-  }
-
-  try {
-    updateInfo('VRセッションを開始中...');
-
-    // immersive-vr モードをサポートしているか確認
-    const supported = await navigator.xr.isSessionSupported('immersive-vr');
-
-    if (!supported) {
-      updateInfo('immersive-VRがサポートされていません');
-      alert('このデバイスはVR機能をサポートしていません');
-      return;
-    }
-
-    // XRセッション開始（VRモード）
-    xrSession = await navigator.xr.requestSession('immersive-vr', {
-      requiredFeatures: [],
-      optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
-    });
-
-    await renderer.xr.setSession(xrSession);
-
-    // VR環境（背景とグリッド）を作成
-    createVREnvironment();
-
-    // コントローラーを取得
-    rightController = renderer.xr.getController(0);
-    leftController = renderer.xr.getController(1);
-    scene.add(rightController);
-    scene.add(leftController);
-
-    // 右コントローラーのグラブイベント（VR用）- グリップボタンで掴む
-    rightController.addEventListener('squeezestart', onSelectStart);
-    rightController.addEventListener('squeezeend', onSelectEnd);
-
-    // ハンドトラッキングを取得
-    hand1 = renderer.xr.getHand(0);
-    hand2 = renderer.xr.getHand(1);
-    scene.add(hand1);
-    scene.add(hand2);
-
-    // ボックス配置フラグをリセット
-    mini4carPositioned = false;
-
-    // ボタンを非表示
-    const button = document.getElementById('start-button');
-    if (button) {
-      button.style.display = 'none';
-    }
-    const vrButton = document.getElementById('vr-button');
-    if (vrButton) {
-      vrButton.style.display = 'none';
-    }
-
-    // セッション開始イベントを発火
-    window.dispatchEvent(new Event('xr-session-start'));
-
-    updateInfo('VRセッション開始');
-
-    xrSession.addEventListener('end', () => {
-      xrSession = null;
-
-      // VR環境を削除
-      removeVREnvironment();
-
-      // セッション終了イベントを発火
-      window.dispatchEvent(new Event('xr-session-end'));
-
-      updateInfo('VRセッション終了');
-      if (button) {
-        button.style.display = 'block';
-      }
-      if (vrButton) {
-        vrButton.style.display = 'block';
-      }
-    });
-
-  } catch (error) {
-    console.error('VRセッション開始エラー:', error);
-    console.error('エラー名:', error.name);
-    console.error('エラーメッセージ:', error.message);
-    console.error('エラー詳細:', JSON.stringify(error, null, 2));
-    updateInfo('エラー: ' + (error.message || error.name || 'Unknown error'));
-    alert('VRセッションを開始できませんでした: ' + (error.message || error.name || 'Unknown error'));
+// VRセッション開始ハンドラ
+async function handleStartVR() {
+  const result = await startVR(renderer, scene, mini4car, updateInfo, onSessionStart, onSessionEnd);
+  if (result) {
+    xrSession = result.xrSession;
+    rightController = result.rightController;
+    leftController = result.leftController;
   }
 }
 
@@ -634,21 +193,21 @@ init();
 // ボタンのイベントリスナー
 const startButton = document.getElementById('start-button');
 if (startButton) {
-  startButton.addEventListener('click', startXR);
+  startButton.addEventListener('click', handleStartXR);
 }
 
 const vrButton = document.getElementById('vr-button');
 if (vrButton) {
-  vrButton.addEventListener('click', startVR);
+  vrButton.addEventListener('click', handleStartVR);
 }
 
 // 深度表示切り替えボタン
 const depthToggleButton = document.getElementById('depth-toggle');
 if (depthToggleButton) {
   depthToggleButton.addEventListener('click', () => {
-    showDepthVisualization = !showDepthVisualization;
-    depthToggleButton.textContent = showDepthVisualization ? '深度表示 ON' : '深度表示 OFF';
-    console.log('深度表示:', showDepthVisualization);
+    const isOn = toggleDepthVisualization();
+    depthToggleButton.textContent = isOn ? '深度表示 ON' : '深度表示 OFF';
+    console.log('深度表示:', isOn);
   });
 
   // MRセッション開始時にボタンを表示
@@ -659,7 +218,7 @@ if (depthToggleButton) {
   // MRセッション終了時にボタンを非表示
   window.addEventListener('xr-session-end', () => {
     depthToggleButton.style.display = 'none';
-    showDepthVisualization = false;
+    resetDepthVisualization();
     depthToggleButton.textContent = '深度表示 OFF';
   });
 }
