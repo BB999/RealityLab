@@ -13,14 +13,18 @@ let grabbableObjects = [];
 let isWheelSpinning = false;
 let aButtonPreviouslyPressed = false;
 let bButtonPreviouslyPressed = false;
-let yButtonPreviouslyPressed = false;
 let xButtonPreviouslyPressed = false;
+let yButtonPreviouslyPressed = false;
 let wheelSpeed = 0; // 現在の回転速度
 
 // リセットコールバック
 let resetCallback = null;
 // スポーンコールバック（Xボタン）
 let spawnCallback = null;
+// cave1スポーンコールバック（Yボタン）
+let spawnCaveCallback = null;
+// グラブ終了コールバック
+let onGrabEndCallback = null;
 const wheelMaxSpeed = 0.8; // 最大回転速度
 const wheelAcceleration = 0.02; // 加速度
 const wheelDeceleration = 0.005; // 減速度（慣性）
@@ -85,9 +89,15 @@ export function onSelectStart(mini4car, rightController) {
 // グラブ終了
 export function onSelectEnd() {
   if (isGrabbing) {
+    const releasedObject = grabbedObject;
     isGrabbing = false;
     grabbedObject = null;
     console.log('オブジェクトを離しました');
+
+    // コールバックを呼び出し（離したオブジェクトを渡す）
+    if (onGrabEndCallback && releasedObject) {
+      onGrabEndCallback(releasedObject);
+    }
   }
 }
 
@@ -133,20 +143,21 @@ export function checkControllerButtons(renderer, moveCarCallback) {
       }
       aButtonPreviouslyPressed = aButton ? aButton.pressed : false;
 
-      // Bボタン - ミニ四駆を右コントローラーの前に移動
+      // Bボタン - リセット（ミニ四駆をコントローラーの前に戻す）
       const bButton = source.gamepad.buttons[5];
       if (bButton && bButton.pressed && !bButtonPreviouslyPressed) {
-        if (moveCarCallback) {
-          moveCarCallback();
+        console.log('Bボタン押下検出, resetCallback:', resetCallback ? '設定済み' : 'null');
+        if (resetCallback) {
+          resetCallback();
+          console.log('Bボタン: リセット実行');
         }
-        console.log('ミニ四駆をコントローラーの前に移動');
       }
       bButtonPreviouslyPressed = bButton ? bButton.pressed : false;
     }
 
     // 左コントローラーのボタン
     if (source.gamepad && source.handedness === 'left') {
-      // Xボタン - オブジェクトをスポーン
+      // Xボタン - オブジェクトをスポーン（laen_strait）
       const xButton = source.gamepad.buttons[4]; // Xボタン
       if (xButton && xButton.pressed && !xButtonPreviouslyPressed) {
         console.log('Xボタン押下検出');
@@ -157,13 +168,13 @@ export function checkControllerButtons(renderer, moveCarCallback) {
       }
       xButtonPreviouslyPressed = xButton ? xButton.pressed : false;
 
-      // Yボタン - リセット
+      // Yボタン - cave1をスポーン
       const yButton = source.gamepad.buttons[5]; // Yボタン
       if (yButton && yButton.pressed && !yButtonPreviouslyPressed) {
-        console.log('Yボタン押下検出, resetCallback:', resetCallback ? '設定済み' : 'null');
-        if (resetCallback) {
-          resetCallback();
-          console.log('Yボタン: リセット実行');
+        console.log('Yボタン押下検出');
+        if (spawnCaveCallback) {
+          spawnCaveCallback();
+          console.log('Yボタン: cave1スポーン実行');
         }
       }
       yButtonPreviouslyPressed = yButton ? yButton.pressed : false;
@@ -171,14 +182,24 @@ export function checkControllerButtons(renderer, moveCarCallback) {
   }
 }
 
-// スポーンコールバックを設定
+// スポーンコールバックを設定（Xボタン）
 export function setSpawnCallback(callback) {
   spawnCallback = callback;
+}
+
+// cave1スポーンコールバックを設定（Yボタン）
+export function setSpawnCaveCallback(callback) {
+  spawnCaveCallback = callback;
 }
 
 // リセットコールバックを設定
 export function setResetCallback(callback) {
   resetCallback = callback;
+}
+
+// グラブ終了コールバックを設定
+export function setOnGrabEndCallback(callback) {
+  onGrabEndCallback = callback;
 }
 
 // ミニ四駆を右コントローラーの前に移動

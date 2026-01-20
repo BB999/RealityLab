@@ -320,6 +320,346 @@ export function resetCarPosition(position, quaternion) {
   carBody.quaternion.copy(quaternion);
 }
 
+// カーブメッシュを四角形（Quad）ごとにBoxコライダーを作成
+function createCurveBoxColliders(child, partType, wallMaterial, bodies, meshData) {
+  child.updateWorldMatrix(true, false);
+
+  const geometry = child.geometry;
+  const positionAttribute = geometry.getAttribute('position');
+  const index = geometry.getIndex();
+
+  // スケール、位置、回転を取得
+  const scale = new THREE.Vector3();
+  const position = new THREE.Vector3();
+  const quaternion = new THREE.Quaternion();
+  child.matrixWorld.decompose(position, quaternion, scale);
+
+  const curveBoxes = [];
+
+  // インデックスがある場合は三角形を取得、ない場合は頂点を直接使用
+  if (index) {
+    // インデックス付きジオメトリの場合
+    // 2つの三角形で1つの四角形を構成していると仮定
+    const triangleCount = index.count / 3;
+    const processedQuads = new Set();
+
+    for (let triIdx = 0; triIdx < triangleCount; triIdx += 2) {
+      // 2つの三角形で1つのQuadを構成
+      if (triIdx + 1 >= triangleCount) break;
+
+      const quadKey = Math.floor(triIdx / 2);
+      if (processedQuads.has(quadKey)) continue;
+      processedQuads.add(quadKey);
+
+      // 最初の三角形の3頂点
+      const i0 = index.getX(triIdx * 3);
+      const i1 = index.getX(triIdx * 3 + 1);
+      const i2 = index.getX(triIdx * 3 + 2);
+
+      // 2番目の三角形の3頂点
+      const i3 = index.getX((triIdx + 1) * 3);
+      const i4 = index.getX((triIdx + 1) * 3 + 1);
+      const i5 = index.getX((triIdx + 1) * 3 + 2);
+
+      // 6つの頂点インデックスからユニークな4頂点を取得
+      const indices = [i0, i1, i2, i3, i4, i5];
+      const uniqueIndices = [...new Set(indices)];
+
+      // 最初の三角形の3頂点をワールド座標で取得
+      const v0 = new THREE.Vector3(
+        positionAttribute.getX(i0),
+        positionAttribute.getY(i0),
+        positionAttribute.getZ(i0)
+      ).applyMatrix4(child.matrixWorld);
+      const v1 = new THREE.Vector3(
+        positionAttribute.getX(i1),
+        positionAttribute.getY(i1),
+        positionAttribute.getZ(i1)
+      ).applyMatrix4(child.matrixWorld);
+      const v2 = new THREE.Vector3(
+        positionAttribute.getX(i2),
+        positionAttribute.getY(i2),
+        positionAttribute.getZ(i2)
+      ).applyMatrix4(child.matrixWorld);
+
+      // 4頂点をワールド座標で取得
+      const quadVertices = uniqueIndices.map(idx => {
+        return new THREE.Vector3(
+          positionAttribute.getX(idx),
+          positionAttribute.getY(idx),
+          positionAttribute.getZ(idx)
+        ).applyMatrix4(child.matrixWorld);
+      });
+
+      // 面の法線を計算（三角形から）
+      const edge1 = new THREE.Vector3().subVectors(v1, v0);
+      const edge2 = new THREE.Vector3().subVectors(v2, v0);
+      const normal = new THREE.Vector3().crossVectors(edge1, edge2).normalize();
+
+      // 面のローカル座標系を構築
+      // tangent: 辺の方向（横方向）
+      const tangent = edge1.clone().normalize();
+      // bitangent: 法線と接線の外積（縦方向）
+      const bitangent = new THREE.Vector3().crossVectors(normal, tangent).normalize();
+
+      // 回転行列を作成
+      const rotationMatrix = new THREE.Matrix4();
+      rotationMatrix.makeBasis(tangent, bitangent, normal);
+      const boxQuaternion = new THREE.Quaternion().setFromRotationMatrix(rotationMatrix);
+
+      // 中心を計算
+      const center = new THREE.Vector3();
+      for (const v of quadVertices) {
+        center.add(v);
+      }
+      center.divideScalar(quadVertices.length);
+
+      // 頂点をローカル座標系に変換してサイズを計算
+      const inverseRotation = boxQuaternion.clone().invert();
+      let minLocal = new THREE.Vector3(Infinity, Infinity, Infinity);
+      let maxLocal = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+
+      for (const v of quadVertices) {
+        const localV = v.clone().sub(center).applyQuaternion(inverseRotation);
+        minLocal.min(localV);
+        maxLocal.max(localV);
+      }
+
+      let sizeX = maxLocal.x - minLocal.x;
+      let sizeY = maxLocal.y - minLocal.y;
+      let sizeZ = maxLocal.z - minLocal.z;
+
+      // コライダーサイズを80%に縮小
+      const shrinkFactor = 1.0;
+      sizeX *= shrinkFactor;
+      sizeY *= shrinkFactor;
+      sizeZ *= shrinkFactor;
+
+      // 最小サイズを保証
+      const minSize = 0.005;
+      if (sizeX < minSize) sizeX = minSize;
+      if (sizeY < minSize) sizeY = minSize;
+      if (sizeZ < minSize) sizeZ = minSize;
+
+      // 親オブジェクト基準のローカルオフセットを計算
+      const localOffset = center.clone().sub(position);
+      const inverseParentQuat = quaternion.clone().invert();
+      localOffset.applyQuaternion(inverseParentQuat);
+
+      // Boxシェイプを作成
+      const halfExtents = new CANNON.Vec3(sizeX / 2, sizeY / 2, sizeZ / 2);
+      const boxShape = new CANNON.Box(halfExtents);
+
+      const body = new CANNON.Body({
+        mass: 0,
+        material: wallMaterial,
+        type: CANNON.Body.STATIC
+      });
+      body.addShape(boxShape);
+      body.position.set(center.x, center.y, center.z);
+      body.quaternion.set(boxQuaternion.x, boxQuaternion.y, boxQuaternion.z, boxQuaternion.w);
+
+      world.addBody(body);
+      bodies.push(body);
+
+      // デバッグメッシュを作成
+      let debugMesh = null;
+      if (debugGroup) {
+        let debugColor = 0x00ffff;
+        if (partType === 'wall_left') debugColor = 0x00ff00;
+        else if (partType === 'wall_right') debugColor = 0xff00ff;
+
+        const debugGeometry = new THREE.BoxGeometry(sizeX, sizeY, sizeZ);
+        const debugMaterial = new THREE.MeshBasicMaterial({
+          color: debugColor,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.5
+        });
+        debugMesh = new THREE.Mesh(debugGeometry, debugMaterial);
+        debugMesh.position.copy(center);
+        debugMesh.quaternion.copy(boxQuaternion);
+        debugGroup.add(debugMesh);
+        debugMeshes.push({ mesh: debugMesh, body: body, isFloor: false, isSpawned: true, sourceMesh: child, partType: partType, isCurveBox: true });
+      }
+
+      // ローカル回転を計算（親の回転を打ち消した後のBox回転）
+      const localQuat = inverseParentQuat.clone().multiply(boxQuaternion);
+
+      // Boxの情報を保存
+      curveBoxes.push({
+        body: body,
+        localOffset: localOffset.clone(),
+        localQuaternion: localQuat,
+        size: new THREE.Vector3(sizeX, sizeY, sizeZ),
+        debugMesh: debugMesh
+      });
+    }
+  } else {
+    // インデックスなしジオメトリの場合（3頂点ずつの三角形）
+    const vertexCount = positionAttribute.count;
+    const triangleCount = vertexCount / 3;
+
+    for (let triIdx = 0; triIdx < triangleCount; triIdx += 2) {
+      // 2つの三角形で1つのQuadを構成
+      if (triIdx + 1 >= triangleCount) {
+        // 最後の三角形が奇数個の場合、単独で処理
+        const baseIdx = triIdx * 3;
+        const quadVertices = [];
+        for (let j = 0; j < 3; j++) {
+          quadVertices.push(new THREE.Vector3(
+            positionAttribute.getX(baseIdx + j),
+            positionAttribute.getY(baseIdx + j),
+            positionAttribute.getZ(baseIdx + j)
+          ).applyMatrix4(child.matrixWorld));
+        }
+
+        createBoxFromVertices(quadVertices, position, quaternion, wallMaterial, partType, bodies, curveBoxes);
+        continue;
+      }
+
+      // 6頂点（2三角形）をワールド座標で取得
+      const baseIdx1 = triIdx * 3;
+      const baseIdx2 = (triIdx + 1) * 3;
+      const quadVertices = [];
+
+      for (let j = 0; j < 3; j++) {
+        quadVertices.push(new THREE.Vector3(
+          positionAttribute.getX(baseIdx1 + j),
+          positionAttribute.getY(baseIdx1 + j),
+          positionAttribute.getZ(baseIdx1 + j)
+        ).applyMatrix4(child.matrixWorld));
+      }
+      for (let j = 0; j < 3; j++) {
+        quadVertices.push(new THREE.Vector3(
+          positionAttribute.getX(baseIdx2 + j),
+          positionAttribute.getY(baseIdx2 + j),
+          positionAttribute.getZ(baseIdx2 + j)
+        ).applyMatrix4(child.matrixWorld));
+      }
+
+      createBoxFromVertices(quadVertices, position, quaternion, wallMaterial, partType, bodies, curveBoxes);
+    }
+  }
+
+  console.log(`カーブ壁 (${partType}): ${curveBoxes.length}個のQuadコライダーを作成`);
+  meshData.push({ child, partType, useCurveBoxes: true, curveBoxes: curveBoxes });
+}
+
+// 頂点群からBoxコライダーを作成するヘルパー関数
+function createBoxFromVertices(vertices, parentPosition, parentQuaternion, wallMaterial, partType, bodies, curveBoxes) {
+  if (vertices.length < 3) return;
+
+  // 最初の3頂点から面の向きを計算
+  const v0 = vertices[0];
+  const v1 = vertices[1];
+  const v2 = vertices[2];
+
+  // 面の法線を計算（三角形から）
+  const edge1 = new THREE.Vector3().subVectors(v1, v0);
+  const edge2 = new THREE.Vector3().subVectors(v2, v0);
+  const normal = new THREE.Vector3().crossVectors(edge1, edge2).normalize();
+
+  // 面のローカル座標系を構築
+  // tangent: 辺の方向（横方向）
+  const tangent = edge1.clone().normalize();
+  // bitangent: 法線と接線の外積（縦方向）
+  const bitangent = new THREE.Vector3().crossVectors(normal, tangent).normalize();
+
+  // 回転行列を作成
+  const rotationMatrix = new THREE.Matrix4();
+  rotationMatrix.makeBasis(tangent, bitangent, normal);
+  const boxQuaternion = new THREE.Quaternion().setFromRotationMatrix(rotationMatrix);
+
+  // 中心を計算
+  const center = new THREE.Vector3();
+  for (const v of vertices) {
+    center.add(v);
+  }
+  center.divideScalar(vertices.length);
+
+  // 頂点をローカル座標系に変換してサイズを計算
+  const inverseRotation = boxQuaternion.clone().invert();
+  let minLocal = new THREE.Vector3(Infinity, Infinity, Infinity);
+  let maxLocal = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+
+  for (const v of vertices) {
+    const localV = v.clone().sub(center).applyQuaternion(inverseRotation);
+    minLocal.min(localV);
+    maxLocal.max(localV);
+  }
+
+  let sizeX = maxLocal.x - minLocal.x;
+  let sizeY = maxLocal.y - minLocal.y;
+  let sizeZ = maxLocal.z - minLocal.z;
+
+  // コライダーサイズを80%に縮小
+  const shrinkFactor = 1.0;
+  sizeX *= shrinkFactor;
+  sizeY *= shrinkFactor;
+  sizeZ *= shrinkFactor;
+
+  // 最小サイズを保証
+  const minSize = 0.005;
+  if (sizeX < minSize) sizeX = minSize;
+  if (sizeY < minSize) sizeY = minSize;
+  if (sizeZ < minSize) sizeZ = minSize;
+
+  // 親オブジェクト基準のローカルオフセットを計算
+  const localOffset = center.clone().sub(parentPosition);
+  const inverseParentQuat = parentQuaternion.clone().invert();
+  localOffset.applyQuaternion(inverseParentQuat);
+
+  // Boxシェイプを作成
+  const halfExtents = new CANNON.Vec3(sizeX / 2, sizeY / 2, sizeZ / 2);
+  const boxShape = new CANNON.Box(halfExtents);
+
+  const body = new CANNON.Body({
+    mass: 0,
+    material: wallMaterial,
+    type: CANNON.Body.STATIC
+  });
+  body.addShape(boxShape);
+  body.position.set(center.x, center.y, center.z);
+  body.quaternion.set(boxQuaternion.x, boxQuaternion.y, boxQuaternion.z, boxQuaternion.w);
+
+  world.addBody(body);
+  bodies.push(body);
+
+  // デバッグメッシュを作成
+  let debugMesh = null;
+  if (debugGroup) {
+    let debugColor = 0x00ffff;
+    if (partType === 'wall_left') debugColor = 0x00ff00;
+    else if (partType === 'wall_right') debugColor = 0xff00ff;
+
+    const debugGeometry = new THREE.BoxGeometry(sizeX, sizeY, sizeZ);
+    const debugMaterial = new THREE.MeshBasicMaterial({
+      color: debugColor,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.5
+    });
+    debugMesh = new THREE.Mesh(debugGeometry, debugMaterial);
+    debugMesh.position.copy(center);
+    debugMesh.quaternion.copy(boxQuaternion);
+    debugGroup.add(debugMesh);
+    debugMeshes.push({ mesh: debugMesh, body: body, isFloor: false, isSpawned: true, partType: partType, isCurveBox: true });
+  }
+
+  // ローカル回転を計算（親の回転を打ち消した後のBox回転）
+  const localQuat = inverseParentQuat.clone().multiply(boxQuaternion);
+
+  // Boxの情報を保存
+  curveBoxes.push({
+    body: body,
+    localOffset: localOffset.clone(),
+    localQuaternion: localQuat,
+    size: new THREE.Vector3(sizeX, sizeY, sizeZ),
+    debugMesh: debugMesh
+  });
+}
+
 // メッシュから実際の頂点範囲を計算してBoxコライダーを作成（レールのパーツ用）
 function createBoxCollidersFromMesh(child, partType) {
   child.updateWorldMatrix(true, false);
@@ -441,69 +781,92 @@ export function createSpawnedObjectColliders(spawnedObject) {
 
       // パーツタイプを判定
       let partType = null;
+      let useTrimesh = false; // カーブ用にTrimeshを使うか
+
       if (allNames.includes('floor')) {
         partType = 'floor';
-      } else if (allNames.includes('laen_left') || allNames.includes('left')) {
+        // caveのfloorはカーブなのでTrimesh
+        if (allNames.includes('cave')) {
+          useTrimesh = true;
+        }
+      } else if (allNames.includes('laen_left')) {
         partType = 'wall_left';
-      } else if (allNames.includes('laen_right') || allNames.includes('right')) {
+      } else if (allNames.includes('laen_right')) {
         partType = 'wall_right';
+      } else if (allNames.includes('cave_left')) {
+        partType = 'wall_left';
+        useTrimesh = true;
+      } else if (allNames.includes('cave_right')) {
+        partType = 'wall_right';
+        useTrimesh = true;
       } else if (allNames.includes('laen')) {
         // laenだけの場合はX座標で判定
         const tempCenter = new THREE.Vector3();
         child.getWorldPosition(tempCenter);
         partType = tempCenter.x < 0 ? 'wall_left' : 'wall_right';
+      } else if (allNames.includes('cave')) {
+        // caveだけの場合はX座標で判定（Trimesh使用）
+        const tempCenter = new THREE.Vector3();
+        child.getWorldPosition(tempCenter);
+        partType = tempCenter.x < 0 ? 'wall_left' : 'wall_right';
+        useTrimesh = true;
       }
 
       if (partType) {
-        const boxData = createBoxCollidersFromMesh(child, partType);
+        let body;
+        let debugMesh;
 
-        console.log(`当たり判定作成 (${partType}): ${child.name}, サイズ: ${boxData.size.x.toFixed(3)}, ${boxData.size.y.toFixed(3)}, ${boxData.size.z.toFixed(3)}`);
+        if (useTrimesh) {
+          // カーブ用に複数のBoxコライダーを作成
+          console.log(`当たり判定作成 (${partType}, CurveBoxes): ${child.name}`);
+          createCurveBoxColliders(child, partType, wallMaterial, bodies, meshData);
+        } else {
+          // Boxで当たり判定を作成（laen用）
+          const boxData = createBoxCollidersFromMesh(child, partType);
 
-        // Boxシェイプを作成
-        const halfExtents = new CANNON.Vec3(
-          boxData.size.x / 2,
-          boxData.size.y / 2,
-          boxData.size.z / 2
-        );
-        const boxShape = new CANNON.Box(halfExtents);
+          console.log(`当たり判定作成 (${partType}, Box): ${child.name}, サイズ: ${boxData.size.x.toFixed(3)}, ${boxData.size.y.toFixed(3)}, ${boxData.size.z.toFixed(3)}`);
 
-        // 静的物理ボディを作成
-        const body = new CANNON.Body({
-          mass: 0, // 静的オブジェクト
-          material: wallMaterial,
-          type: CANNON.Body.STATIC
-        });
-        body.addShape(boxShape);
+          const halfExtents = new CANNON.Vec3(
+            boxData.size.x / 2,
+            boxData.size.y / 2,
+            boxData.size.z / 2
+          );
+          const boxShape = new CANNON.Box(halfExtents);
 
-        // 位置と回転を設定
-        body.position.set(boxData.center.x, boxData.center.y, boxData.center.z);
-        body.quaternion.set(boxData.rotation.x, boxData.rotation.y, boxData.rotation.z, boxData.rotation.w);
-
-        world.addBody(body);
-        bodies.push(body);
-
-        // デバッグメッシュを作成（Boxで表示）
-        if (debugGroup) {
-          const debugGeometry = new THREE.BoxGeometry(boxData.size.x, boxData.size.y, boxData.size.z);
-          // 床はシアン、左壁は緑、右壁はマゼンタ
-          let debugColor = 0x00ffff;
-          if (partType === 'wall_left') debugColor = 0x00ff00;
-          else if (partType === 'wall_right') debugColor = 0xff00ff;
-
-          const debugMaterial = new THREE.MeshBasicMaterial({
-            color: debugColor,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.7
+          body = new CANNON.Body({
+            mass: 0,
+            material: wallMaterial,
+            type: CANNON.Body.STATIC
           });
-          const debugMesh = new THREE.Mesh(debugGeometry, debugMaterial);
-          debugMesh.position.copy(boxData.center);
-          debugMesh.quaternion.copy(boxData.rotation);
-          debugGroup.add(debugMesh);
-          debugMeshes.push({ mesh: debugMesh, body: body, isFloor: false, isSpawned: true, sourceMesh: child, partType: partType });
-        }
+          body.addShape(boxShape);
+          body.position.set(boxData.center.x, boxData.center.y, boxData.center.z);
+          body.quaternion.set(boxData.rotation.x, boxData.rotation.y, boxData.rotation.z, boxData.rotation.w);
 
-        meshData.push({ child, body, boxData, partType });
+          world.addBody(body);
+          bodies.push(body);
+
+          // デバッグメッシュを作成（Boxで表示）
+          if (debugGroup) {
+            const debugGeometry = new THREE.BoxGeometry(boxData.size.x, boxData.size.y, boxData.size.z);
+            let debugColor = 0x00ffff;
+            if (partType === 'wall_left') debugColor = 0x00ff00;
+            else if (partType === 'wall_right') debugColor = 0xff00ff;
+
+            const debugMaterial = new THREE.MeshBasicMaterial({
+              color: debugColor,
+              wireframe: true,
+              transparent: true,
+              opacity: 0.7
+            });
+            debugMesh = new THREE.Mesh(debugGeometry, debugMaterial);
+            debugMesh.position.copy(boxData.center);
+            debugMesh.quaternion.copy(boxData.rotation);
+            debugGroup.add(debugMesh);
+            debugMeshes.push({ mesh: debugMesh, body: body, isFloor: false, isSpawned: true, sourceMesh: child, partType: partType, boxData: boxData });
+          }
+
+          meshData.push({ child, body, boxData, partType });
+        }
       }
     }
   });
@@ -521,25 +884,58 @@ export function updateSpawnedObjectColliders(spawnedObject) {
   const spawnedData = spawnedBodies.find(item => item.object === spawnedObject);
   if (!spawnedData) return;
 
+  // スポーンオブジェクト全体のマトリックスを更新
+  spawnedObject.updateWorldMatrix(true, true);
+
   for (const data of spawnedData.meshData) {
+    if (!data.child) continue;
+
     // メッシュのワールド座標を再計算
     data.child.updateWorldMatrix(true, false);
 
-    // Boxの位置と回転を再計算（partTypeを渡す）
-    const boxData = createBoxCollidersFromMesh(data.child, data.partType);
+    if (data.useCurveBoxes && data.curveBoxes) {
+      // カーブ用Boxの場合は各Boxを親の移動に合わせて更新
+      const scale = new THREE.Vector3();
+      const position = new THREE.Vector3();
+      const quaternion = new THREE.Quaternion();
+      data.child.matrixWorld.decompose(position, quaternion, scale);
 
-    // 物理ボディの位置と回転を更新
-    data.body.position.set(boxData.center.x, boxData.center.y, boxData.center.z);
-    data.body.quaternion.set(boxData.rotation.x, boxData.rotation.y, boxData.rotation.z, boxData.rotation.w);
+      for (const box of data.curveBoxes) {
+        if (!box.body) continue;
 
-    // AABBを更新
-    data.body.aabbNeedsUpdate = true;
+        // ローカルオフセットを現在の回転で変換してワールド座標を計算
+        const worldOffset = box.localOffset.clone().applyQuaternion(quaternion);
+        const newPos = position.clone().add(worldOffset);
 
-    // デバッグメッシュも更新
-    const debugItem = debugMeshes.find(item => item.body === data.body);
-    if (debugItem) {
-      debugItem.mesh.position.copy(boxData.center);
-      debugItem.mesh.quaternion.copy(boxData.rotation);
+        // ワールド回転を計算（親の回転 * ローカル回転）
+        const worldQuat = box.localQuaternion ?
+          quaternion.clone().multiply(box.localQuaternion) : quaternion;
+
+        box.body.position.set(newPos.x, newPos.y, newPos.z);
+        box.body.quaternion.set(worldQuat.x, worldQuat.y, worldQuat.z, worldQuat.w);
+        box.body.aabbNeedsUpdate = true;
+
+        // デバッグメッシュも更新（直接参照）
+        if (box.debugMesh) {
+          box.debugMesh.position.copy(newPos);
+          box.debugMesh.quaternion.copy(worldQuat);
+        }
+      }
+    } else if (!data.useCurveBoxes && data.body) {
+      // Boxの位置と回転を再計算（partTypeを渡す）
+      const boxData = createBoxCollidersFromMesh(data.child, data.partType);
+
+      // 物理ボディの位置と回転を更新
+      data.body.position.set(boxData.center.x, boxData.center.y, boxData.center.z);
+      data.body.quaternion.set(boxData.rotation.x, boxData.rotation.y, boxData.rotation.z, boxData.rotation.w);
+      data.body.aabbNeedsUpdate = true;
+
+      // デバッグメッシュも更新
+      const debugItem = debugMeshes.find(item => item.body === data.body);
+      if (debugItem) {
+        debugItem.mesh.position.copy(boxData.center);
+        debugItem.mesh.quaternion.copy(boxData.rotation);
+      }
     }
   }
 }

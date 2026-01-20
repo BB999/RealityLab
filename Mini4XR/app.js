@@ -13,6 +13,8 @@ import {
   getWheelSpeed,
   setResetCallback,
   setSpawnCallback,
+  setSpawnCaveCallback,
+  setOnGrabEndCallback,
   addGrabbableObject
 } from './controllers.js';
 import { startXR, startVR } from './xrSession.js';
@@ -50,7 +52,8 @@ let wasGrabbing = false;
 
 // スポーンされたオブジェクト
 let spawnedObjects = [];
-let spawnModelLoaded = null; // 事前読み込みしたモデル
+let spawnModelLoaded = null; // 事前読み込みしたモデル（laen_strait）
+let caveModelLoaded = null; // 事前読み込みしたモデル（cave1）
 
 // シーンの初期化
 function init() {
@@ -99,6 +102,7 @@ function init() {
 
   // スポーン用モデルを事前読み込み
   loadSpawnModel();
+  loadCaveModel();
 
   // リサイズ対応
   window.addEventListener('resize', onWindowResize);
@@ -160,20 +164,38 @@ function loadMini4Car() {
   );
 }
 
-// スポーン用モデルを事前読み込み
+// スポーン用モデルを事前読み込み（laen_strait）
 function loadSpawnModel() {
   const loader = new GLTFLoader();
   loader.load(
     '/laen_strait.glb',
     (gltf) => {
       spawnModelLoaded = gltf.scene;
-      console.log('スポーン用モデルを読み込みました');
+      console.log('スポーン用モデル（laen_strait）を読み込みました');
     },
     (progress) => {
       console.log('スポーンモデル読み込み中...', (progress.loaded / progress.total * 100) + '%');
     },
     (error) => {
       console.error('スポーンモデル読み込みエラー:', error);
+    }
+  );
+}
+
+// cave1モデルを事前読み込み
+function loadCaveModel() {
+  const loader = new GLTFLoader();
+  loader.load(
+    '/cave1.glb',
+    (gltf) => {
+      caveModelLoaded = gltf.scene;
+      console.log('cave1モデルを読み込みました');
+    },
+    (progress) => {
+      console.log('cave1モデル読み込み中...', (progress.loaded / progress.total * 100) + '%');
+    },
+    (error) => {
+      console.error('cave1モデル読み込みエラー:', error);
     }
   );
 }
@@ -214,6 +236,44 @@ function spawnObjectAtLeftController() {
   createSpawnedObjectColliders(spawnedObject);
 
   console.log('オブジェクトをスポーンしました (合計:', spawnedObjects.length, '個)');
+}
+
+// 左コントローラーの前にcave1をスポーン（Yボタン用）
+function spawnCaveAtLeftController() {
+  if (!caveModelLoaded || !leftController) {
+    console.log('cave1スポーンできません: モデルまたはコントローラーが未準備');
+    return;
+  }
+
+  const controllerPosition = new THREE.Vector3();
+  const controllerQuaternion = new THREE.Quaternion();
+  leftController.getWorldPosition(controllerPosition);
+  leftController.getWorldQuaternion(controllerQuaternion);
+
+  // コントローラーの前方0.3mに配置
+  const forward = new THREE.Vector3(0, 0, -0.3);
+  forward.applyQuaternion(controllerQuaternion);
+
+  // モデルをクローン
+  const spawnedObject = caveModelLoaded.clone();
+  spawnedObject.position.set(
+    controllerPosition.x + forward.x,
+    controllerPosition.y + forward.y,
+    controllerPosition.z + forward.z
+  );
+  spawnedObject.quaternion.copy(controllerQuaternion);
+  spawnedObject.scale.set(0.18, 0.18, 0.18); // laen_straitと同じスケール
+
+  scene.add(spawnedObject);
+  spawnedObjects.push(spawnedObject);
+
+  // グラブ可能オブジェクトに登録
+  addGrabbableObject(spawnedObject);
+
+  // 当たり判定を追加（Xボタンと同じ処理）
+  createSpawnedObjectColliders(spawnedObject);
+
+  console.log('cave1をスポーンしました (合計:', spawnedObjects.length, '個)');
 }
 
 // アニメーションループ
@@ -321,12 +381,25 @@ function updateInfo(text) {
 function onSessionStart() {
   mini4carPositioned = false;
 
-  // Xボタンでスポーンするコールバックを設定
+  // Xボタンでスポーンするコールバックを設定（laen_strait）
   setSpawnCallback(() => {
     spawnObjectAtLeftController();
   });
 
-  // Yボタンでリセットするコールバックを設定
+  // Yボタンでcave1をスポーンするコールバックを設定
+  setSpawnCaveCallback(() => {
+    spawnCaveAtLeftController();
+  });
+
+  // グラブ終了時に当たり判定を更新
+  setOnGrabEndCallback((releasedObject) => {
+    if (spawnedObjects.includes(releasedObject)) {
+      updateSpawnedObjectColliders(releasedObject);
+      console.log('当たり判定を更新しました');
+    }
+  });
+
+  // Bボタンでリセットするコールバックを設定
   setResetCallback(() => {
     if (mini4car && rightController) {
       const controllerPosition = new THREE.Vector3();
