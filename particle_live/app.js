@@ -114,7 +114,6 @@ let currentSegmentIndex = -1;
 let xrSession = null;
 let particleGroup = null;
 let mrInitialPosition = null;  // MR起動時の位置を保存
-let useOcclusion = false;  // オクルージョンのオンオフ
 
 // 現在のスタイル状態
 let currentStyle = {
@@ -774,19 +773,10 @@ async function startXR() {
       return;
     }
 
-    // オクルージョン設定を取得
-    const occlusionToggle = document.getElementById('occlusion-toggle');
-    useOcclusion = occlusionToggle ? occlusionToggle.checked : false;
-
     const sessionOptions = {
       requiredFeatures: [],
       optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
     };
-
-    // オクルージョンが有効な場合のみ追加
-    if (useOcclusion) {
-      sessionOptions.optionalFeatures.push('mesh-detection', 'plane-detection');
-    }
 
     xrSession = await navigator.xr.requestSession('immersive-ar', sessionOptions);
 
@@ -800,10 +790,6 @@ async function startXR() {
     const playBtn = document.getElementById('play-button');
     if (playBtn) {
       playBtn.style.display = 'none';
-    }
-    const switchContainer = document.querySelector('.switch-container');
-    if (switchContainer) {
-      switchContainer.style.display = 'none';
     }
     const titleOverlay = document.querySelector('.title-overlay');
     if (titleOverlay) {
@@ -843,10 +829,6 @@ async function startXR() {
       const playBtn = document.getElementById('play-button');
       if (playBtn) {
         playBtn.style.display = 'block';
-      }
-      const switchContainer = document.querySelector('.switch-container');
-      if (switchContainer) {
-        switchContainer.style.display = 'flex';
       }
       const titleOverlay = document.querySelector('.title-overlay');
       if (titleOverlay) {
