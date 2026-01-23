@@ -134,7 +134,7 @@ function init() {
   // オーディオ要素を作成
   musicPlayer = document.createElement('audio');
   musicPlayer.id = 'music-player';
-  musicPlayer.src = '/shining_star.mp3';
+  musicPlayer.src = './shining_star.mp3';
   musicPlayer.volume = 0.8;  // 音量を80%に設定
   document.body.appendChild(musicPlayer);
 
