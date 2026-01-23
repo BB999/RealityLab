@@ -135,6 +135,7 @@ function init() {
   musicPlayer = document.createElement('audio');
   musicPlayer.id = 'music-player';
   musicPlayer.src = '/shining_star.mp3';
+  musicPlayer.volume = 0.8;  // 音量を80%に設定
   document.body.appendChild(musicPlayer);
 
   scene = new THREE.Scene();
@@ -795,16 +796,35 @@ async function startXR() {
 
     await renderer.xr.setSession(xrSession);
 
-    // ボタンを非表示
+    // UIを非表示
     const button = document.getElementById('start-button');
     if (button) {
       button.style.display = 'none';
+    }
+    const playBtn = document.getElementById('play-button');
+    if (playBtn) {
+      playBtn.style.display = 'none';
+    }
+    const switchContainer = document.querySelector('.switch-container');
+    if (switchContainer) {
+      switchContainer.style.display = 'none';
+    }
+    const titleOverlay = document.querySelector('.title-overlay');
+    if (titleOverlay) {
+      titleOverlay.style.display = 'none';
     }
 
     // 音楽を再生
     musicPlayer.play().catch(err => {
       console.log('音楽の自動再生に失敗:', err);
     });
+
+    // 曲が終わったらセッション終了
+    musicPlayer.onended = () => {
+      if (xrSession) {
+        xrSession.end();
+      }
+    };
 
     // 歌詞表示を表示
     const textDisplay = document.getElementById('current-text');
@@ -818,10 +838,23 @@ async function startXR() {
       xrSession = null;
       mrInitialPosition = null;  // リセット
       musicPlayer.pause();
+      musicPlayer.currentTime = 0;  // 最初に戻す
 
       updateInfo('MRセッション終了');
       if (button) {
         button.style.display = 'block';
+      }
+      const playBtn = document.getElementById('play-button');
+      if (playBtn) {
+        playBtn.style.display = 'block';
+      }
+      const switchContainer = document.querySelector('.switch-container');
+      if (switchContainer) {
+        switchContainer.style.display = 'flex';
+      }
+      const titleOverlay = document.querySelector('.title-overlay');
+      if (titleOverlay) {
+        titleOverlay.style.display = 'block';
       }
     });
 
