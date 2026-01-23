@@ -1,11 +1,10 @@
 import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { HalfFloatType } from 'three';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // --- 設定定数 ---
-const PARTICLE_COUNT = 8000;
-const SHAPE_COUNT = 600;
+const PARTICLE_COUNT = 5300;  // 8000の2/3
+const SHAPE_COUNT = 400;      // 600の2/3
 
 // --- 歌詞データ ---
 const lyricsJson = {
@@ -143,7 +142,11 @@ function init() {
   camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
   camera.position.set(0, 0, 80);
 
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    alpha: true,
+    outputBufferType: HalfFloatType  // setEffectsに必要
+  });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.toneMapping = THREE.ReinhardToneMapping;
@@ -156,15 +159,18 @@ function init() {
   particleGroup = new THREE.Group();
   scene.add(particleGroup);
 
-  const renderScene = new RenderPass(scene, camera);
-  const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-  bloomPass.threshold = 0;
-  bloomPass.strength = 2.0;
-  bloomPass.radius = 0.8;
+  // r182のsetEffectsを使用（WebXR対応）
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    1.5,  // strength
+    0.4,  // radius
+    0.85  // threshold
+  );
+  bloomPass.threshold = 0.5;
+  bloomPass.strength = 0.8;
+  bloomPass.radius = 0;
 
-  composer = new EffectComposer(renderer);
-  composer.addPass(renderScene);
-  composer.addPass(bloomPass);
+  renderer.setEffects([bloomPass]);
 
   createMainParticles();
   createShapeParticles();
@@ -457,18 +463,18 @@ function animate(timestamp, frame) {
     particleGroup.lookAt(mrInitialPosition.lookAt);
     particleGroup.scale.set(0.015, 0.015, 0.015);
 
-    // MR時はパーティクルをもっと明るく光らせる
-    material.size = 0.06;
-    material.opacity = 1.0;
+    // MR時はパーティクル設定
+    material.size = 0.05;
+    material.opacity = 0.7;
     material.blending = THREE.AdditiveBlending;
     if (starMesh) {
-      starMesh.material.size = 0.06;
-      starMesh.material.opacity = 1.0;
+      starMesh.material.size = 0.05;
+      starMesh.material.opacity = 0.6;
       starMesh.material.blending = THREE.AdditiveBlending;
     }
     if (heartMesh) {
-      heartMesh.material.size = 0.08;
-      heartMesh.material.opacity = 1.0;
+      heartMesh.material.size = 0.06;
+      heartMesh.material.opacity = 0.6;
       heartMesh.material.blending = THREE.AdditiveBlending;
     }
   } else {
@@ -697,11 +703,10 @@ function animate(timestamp, frame) {
     }
 
     camera.lookAt(0, 0, 0);
-    composer.render();
-  } else {
-    // XRモード時はBloomなしで軽量レンダリング
-    renderer.render(scene, camera);
   }
+
+  // setEffectsを使っているので、renderer.renderでBloomが適用される
+  renderer.render(scene, camera);
 }
 
 function updateDecorParticles(mesh, type, time) {
@@ -734,10 +739,12 @@ function updateDecorParticles(mesh, type, time) {
 }
 
 function onWindowResize() {
+  // XRセッション中はリサイズしない
+  if (xrSession) return;
+
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  composer.setSize(window.innerWidth, window.innerHeight);
 }
 
 function updateInfo(text) {
