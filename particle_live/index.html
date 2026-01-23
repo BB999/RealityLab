@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Particle Live - MR</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 100%;
+      height: 100vh;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: #000;
+      color: white;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+    }
+
+    #start-button {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 20px 40px;
+      font-size: 24px;
+      background: linear-gradient(135deg, #44aaff, #8844ff);
+      color: white;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      font-weight: bold;
+      box-shadow: 0 0 30px rgba(68, 170, 255, 0.5);
+      transition: all 0.3s;
+      z-index: 1000;
+      letter-spacing: 2px;
+    }
+
+    #start-button:hover {
+      transform: translate(-50%, -50%) scale(1.05);
+      filter: brightness(1.2);
+    }
+
+    #start-button:active {
+      transform: translate(-50%, -50%) scale(0.95);
+    }
+
+    #play-button {
+      position: absolute;
+      top: calc(50% + 80px);
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 15px 30px;
+      font-size: 18px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      border-radius: 50px;
+      cursor: pointer;
+      font-weight: bold;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s;
+      z-index: 1000;
+      letter-spacing: 2px;
+    }
+
+    #play-button:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: translate(-50%, -50%) scale(1.05);
+    }
+
+    .switch-container {
+      position: absolute;
+      top: calc(50% + 150px);
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 1000;
+    }
+
+    .switch-label {
+      color: #aaa;
+      font-size: 14px;
+    }
+
+    .switch {
+      position: relative;
+      width: 50px;
+      height: 26px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #333;
+      transition: 0.3s;
+      border-radius: 26px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background: linear-gradient(135deg, #44aaff, #8844ff);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(24px);
+    }
+
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px 15px;
+      border-radius: 10px;
+      font-size: 14px;
+      z-index: 100;
+      backdrop-filter: blur(5px);
+    }
+
+    #current-text {
+      position: absolute;
+      top: 10%;
+      width: 100%;
+      text-align: center;
+      font-size: 14px;
+      color: #fff;
+      letter-spacing: 4px;
+      text-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.5s;
+      mix-blend-mode: screen;
+      white-space: pre-line;
+      font-weight: bold;
+      z-index: 50;
+    }
+
+    .title-overlay {
+      position: absolute;
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    .title-overlay h1 {
+      font-size: 32px;
+      letter-spacing: 8px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      text-shadow: 0 0 30px rgba(68, 170, 255, 0.8);
+    }
+
+    .title-overlay p {
+      font-size: 14px;
+      color: #aaa;
+      letter-spacing: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div class="title-overlay">
+    <h1>Particle Live</h1>
+    <p>Shining Star</p>
+  </div>
+
+  <button id="start-button">MRで体験</button>
+  <button id="play-button">デスクトップで再生</button>
+
+  <div class="switch-container">
+    <span class="switch-label">オクルージョン</span>
+    <label class="switch">
+      <input type="checkbox" id="occlusion-toggle">
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <div id="current-text"></div>
+  <div id="info">「MRで体験」または「デスクトップで再生」をタップ</div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
