@@ -785,11 +785,7 @@ async function startXR() {
 
     // オクルージョンが有効な場合のみ追加
     if (useOcclusion) {
-      sessionOptions.optionalFeatures.push('mesh-detection', 'plane-detection', 'depth-sensing');
-      sessionOptions.depthSensing = {
-        usagePreference: ['gpu-optimized', 'cpu-optimized'],
-        dataFormatPreference: ['luminance-alpha', 'float32']
-      };
+      sessionOptions.optionalFeatures.push('mesh-detection', 'plane-detection');
     }
 
     xrSession = await navigator.xr.requestSession('immersive-ar', sessionOptions);
