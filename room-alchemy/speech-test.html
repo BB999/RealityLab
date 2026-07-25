@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>音声入力テスト</title>
+  <style>
+    body {
+      margin: 0; padding: 24px;
+      background: #14161a; color: #e8eaed;
+      font-family: system-ui, sans-serif;
+      font-size: 20px; line-height: 1.6;
+    }
+    h1 { font-size: 26px; margin: 0 0 16px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    button {
+      font-size: 22px; padding: 16px 28px; border: 0; border-radius: 10px;
+      background: #3b82f6; color: #fff; cursor: pointer;
+    }
+    button:active { background: #2563eb; }
+    button.stop { background: #ef4444; }
+    .box {
+      background: #1e2126; border: 1px solid #2f343b; border-radius: 10px;
+      padding: 16px; margin-bottom: 16px;
+    }
+    .label { font-size: 15px; color: #9aa3ad; margin-bottom: 6px; }
+    #result { font-size: 30px; min-height: 45px; word-break: break-word; }
+    #interim { font-size: 22px; color: #9aa3ad; min-height: 30px; }
+    #log { font-family: ui-monospace, monospace; font-size: 15px; white-space: pre-wrap; max-height: 40vh; overflow-y: auto; }
+    .ok { color: #4ade80; } .ng { color: #f87171; } .warn { color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <h1>音声入力テスト</h1>
+
+  <div class="box">
+    <div class="label">API の対応状況</div>
+    <div id="support"></div>
+  </div>
+
+  <div class="box">
+    <div class="label">方式B: 録音してサーバーで文字起こし（Whisper）— こちらが本命</div>
+    <div class="row" style="margin:0">
+      <button id="recStart">⏺ 録音開始</button>
+      <button id="recStop" class="stop">■ 停止して文字起こし</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <button id="start">🎤 認識を開始（方式A・非対応）</button>
+    <button id="stop" class="stop">■ 停止</button>
+    <button id="mic">マイク権限だけ確認</button>
+  </div>
+
+  <div class="box">
+    <div class="label">確定した文字（これがプロンプトになる）</div>
+    <div id="result">—</div>
+    <div class="label" style="margin-top:12px">認識途中</div>
+    <div id="interim">—</div>
+  </div>
+
+  <div class="box">
+    <div class="label">ログ</div>
+    <div id="log"></div>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+const log = (msg, cls = '') => {
+  const t = new Date().toLocaleTimeString('ja-JP');
+  $('log').innerHTML += `<span class="${cls}">[${t}] ${msg}</span>\n`;
+  $('log').scrollTop = $('log').scrollHeight;
+};
+
+// --- 対応状況の判定 ---
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const checks = [
+  ['SpeechRecognition', !!window.SpeechRecognition],
+  ['webkitSpeechRecognition', !!window.webkitSpeechRecognition],
+  ['mediaDevices.getUserMedia', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)],
+  ['セキュアコンテキスト(HTTPS)', window.isSecureContext],
+  ['navigator.xr (WebXR)', !!navigator.xr],
+];
+$('support').innerHTML = checks
+  .map(([k, v]) => `<span class="${v ? 'ok' : 'ng'}">${v ? '✓' : '✗'} ${k}</span>`)
+  .join('<br>');
+
+log(`UA: ${navigator.userAgent}`);
+if (!SR) log('SpeechRecognition が存在しない → このブラウザでは音声認識は使えない', 'ng');
+else log('SpeechRecognition は存在する', 'ok');
+
+// --- マイク権限のみ確認 ---
+$('mic').onclick = async () => {
+  log('getUserMedia を要求...');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    log('マイク権限 OK。トラック: ' + stream.getAudioTracks().map(t => t.label || '(名前なし)').join(', '), 'ok');
+    stream.getTracks().forEach(t => t.stop());
+  } catch (e) {
+    log(`マイク取得失敗: ${e.name} — ${e.message}`, 'ng');
+  }
+};
+
+// --- 音声認識 ---
+let rec = null;
+$('start').onclick = () => {
+  if (!SR) { log('SpeechRecognition が無いので開始できない', 'ng'); return; }
+  try {
+    rec = new SR();
+    rec.lang = 'ja-JP';
+    rec.continuous = true;
+    rec.interimResults = true;
+
+    rec.onstart  = () => log('onstart: 認識を開始した', 'ok');
+    rec.onaudiostart  = () => log('onaudiostart: 音声の取り込み開始', 'ok');
+    rec.onspeechstart = () => log('onspeechstart: 発話を検出', 'ok');
+    rec.onspeechend   = () => log('onspeechend: 発話が途切れた', 'warn');
+    rec.onaudioend    = () => log('onaudioend: 音声の取り込み終了', 'warn');
+    rec.onend    = () => log('onend: 認識セッション終了', 'warn');
+    rec.onnomatch = () => log('onnomatch: 一致する結果なし', 'warn');
+
+    rec.onerror = (e) => {
+      log(`onerror: ${e.error}${e.message ? ' — ' + e.message : ''}`, 'ng');
+      const hint = {
+        'not-allowed': 'マイク権限が拒否されている。ブラウザの設定で許可が必要',
+        'service-not-allowed': '音声認識サービス自体が使えない（Quest で無効化されている可能性）',
+        'network': 'ネットワークエラー。認識はサーバー側で処理されるため通信が必要',
+        'no-speech': '音声が検出されなかった',
+        'audio-capture': 'マイクが見つからない',
+        'aborted': '中断された'
+      }[e.error];
+      if (hint) log('  → ' + hint, 'warn');
+    };
+
+    rec.onresult = (event) => {
+      let final = '', interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const txt = event.results[i][0].transcript;
+        if (event.results[i].isFinal) final += txt; else interim += txt;
+      }
+      if (final) {
+        $('result').textContent = final;
+        log(`確定: "${final}" (信頼度 ${event.results[event.resultIndex][0].confidence?.toFixed(2) ?? '—'})`, 'ok');
+      }
+      $('interim').textContent = interim || '—';
+    };
+
+    rec.start();
+    log('start() を呼んだ');
+  } catch (e) {
+    log(`開始に失敗: ${e.name} — ${e.message}`, 'ng');
+  }
+};
+
+$('stop').onclick = () => { if (rec) { rec.stop(); log('stop() を呼んだ'); } };
+
+// --- 方式B: MediaRecorder で録音 → サーバーで Whisper 文字起こし ---
+let mediaRec = null, chunks = [], micStream = null;
+
+$('recStart').onclick = async () => {
+  try {
+    log('マイクを取得中...');
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    log('マイク取得OK: ' + (micStream.getAudioTracks()[0]?.label || '(名前なし)'), 'ok');
+
+    // このブラウザが吐ける形式を確認
+    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+    const mimeType = candidates.find(t => MediaRecorder.isTypeSupported(t));
+    log('使用する形式: ' + (mimeType || 'ブラウザ既定'));
+
+    chunks = [];
+    mediaRec = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined);
+    mediaRec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+    mediaRec.onstop = async () => {
+      micStream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(chunks, { type: mediaRec.mimeType });
+      log(`録音完了: ${(blob.size / 1024).toFixed(1)} KB (${blob.type})`, 'ok');
+
+      if (blob.size === 0) { log('録音データが空。マイクが拾えていない', 'ng'); return; }
+
+      $('interim').textContent = '文字起こし中...';
+      log('サーバーに送信中...');
+      const t0 = Date.now();
+      try {
+        const res = await fetch('/api/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': blob.type || 'audio/webm' },
+          body: blob
+        });
+        const ms = Date.now() - t0;
+        if (!res.ok) {
+          const err = await res.text();
+          log(`サーバーエラー ${res.status}: ${err.slice(0, 300)}`, 'ng');
+          $('interim').textContent = '—';
+          return;
+        }
+        const data = await res.json();
+        $('result').textContent = data.text || '(空)';
+        $('interim').textContent = '—';
+        log(`文字起こし成功 (${ms}ms): "${data.text}"`, 'ok');
+      } catch (e) {
+        log(`送信失敗: ${e.message}`, 'ng');
+        $('interim').textContent = '—';
+      }
+    };
+
+    mediaRec.start();
+    log('録音開始。喋ったら「停止して文字起こし」を押す', 'ok');
+    $('interim').textContent = '録音中...';
+  } catch (e) {
+    log(`録音を開始できない: ${e.name} — ${e.message}`, 'ng');
+    if (e.name === 'NotAllowedError') log('  → マイク権限が拒否された。ブラウザの設定で許可が必要', 'warn');
+    if (e.name === 'NotFoundError') log('  → マイクが見つからない', 'warn');
+  }
+};
+
+$('recStop').onclick = () => {
+  if (mediaRec && mediaRec.state !== 'inactive') { mediaRec.stop(); log('録音を停止'); }
+  else log('録音していない', 'warn');
+};
+</script>
+</body>
+</html>

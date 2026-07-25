@@ -42,6 +42,7 @@ export function createMangaBook(group, params = {}) {
   let frontCover = null;
   let backCover = null;
   let spine = null;
+  let pageBlock = null;
 
   // テクスチャキャッシュ
   const textureLoader = new THREE.TextureLoader();
@@ -158,6 +159,30 @@ export function createMangaBook(group, params = {}) {
     }
   }
 
+  // 閉じているときの中身（ページの束＝小口）
+  // これが無いと表紙と裏表紙の間が空洞になり、本の中が透けて見えてしまう
+  function createPageBlock() {
+    // 表紙の奥面から裏表紙の手前面までを隙間なく埋める厚み
+    const blockThickness = spineWidth - coverThickness;
+
+    const blockGeometry = new THREE.BoxGeometry(
+      width * 0.97,   // 小口が表紙よりわずかに引っ込むようにする
+      height * 0.97,
+      blockThickness
+    );
+    const blockMaterial = new THREE.MeshStandardMaterial({
+      color: 0xf3efe4, // 紙の色
+      roughness: 0.95,
+      metalness: 0
+    });
+
+    pageBlock = new THREE.Mesh(blockGeometry, blockMaterial);
+    // 表紙と裏表紙のちょうど中間。背表紙側に寄せて綴じ側の隙間もなくす
+    pageBlock.position.set(0, 0, 0);
+    group.add(pageBlock);
+    meshes.push(pageBlock);
+  }
+
   // ページを作成
   function createPages() {
     const pageCount = Math.max(pages.length, 4); // 最低4ページ
@@ -183,6 +208,15 @@ export function createMangaBook(group, params = {}) {
       // ページテクスチャを読み込む
       if (pages[i]) {
         textureLoader.load(pages[i], (texture) => {
+          // currentPageIndex は2ずつ動くため、偶数インデックスは常に左ページになる。
+          // 左ページは updateVisiblePages() で mesh.rotation.y = Math.PI と裏返して
+          // 表示するので、そのままだと絵が鏡像になる。UV を反転して打ち消す。
+          if (i % 2 === 0) {
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.repeat.x = -1;
+            texture.offset.x = 1;
+          }
+
           pageMesh.material = new THREE.MeshStandardMaterial({
             map: texture,
             roughness: 0.9,
@@ -202,6 +236,9 @@ export function createMangaBook(group, params = {}) {
     isOpen = !isOpen;
     targetOpenAngle = isOpen ? -Math.PI * 0.8 : 0; // 開いた状態で約144度
     isAnimating = true;
+
+    // 開いている間は中身のページを見せるので小口は隠す
+    if (pageBlock) pageBlock.visible = !isOpen;
 
     // 開く時はページを表示（アニメーション中に一緒に開く）
     if (isOpen) {
@@ -361,6 +398,7 @@ export function createMangaBook(group, params = {}) {
   createSpine();
   createFrontCover();
   createBackCover();
+  createPageBlock();
   createPages();
 
   // インスタンスを返す

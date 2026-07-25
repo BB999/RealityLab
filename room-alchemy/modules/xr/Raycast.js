@@ -1,5 +1,13 @@
 import * as THREE from 'three';
 
+// THREE.Sprite に対する交差判定には camera が必要。
+// 生成コードが Sprite を使うと、未設定のまま raycast して例外になるため保持しておく。
+let sceneCamera = null;
+
+export function setRaycastCamera(camera) {
+  sceneCamera = camera;
+}
+
 // レーザーでモジュールにヒットしているかチェック
 export function raycastModules(inputSource, frame, referenceSpace, moduleManager) {
   if (!inputSource || !inputSource.targetRaySpace || !frame || !referenceSpace) return null;
@@ -21,6 +29,7 @@ export function raycastModules(inputSource, frame, referenceSpace, moduleManager
   ));
 
   const raycaster = new THREE.Raycaster(rayOrigin, rayDirection, 0, 10);
+  raycaster.camera = sceneCamera;
 
   // 全モジュールをチェック
   for (const module of moduleManager.modules.values()) {
@@ -58,6 +67,7 @@ export function raycastTextPanel(inputSource, frame, referenceSpace, textPanel) 
   ));
 
   const raycaster = new THREE.Raycaster(rayOrigin, rayDirection, 0, 10);
+  raycaster.camera = sceneCamera;
   // Groupの場合も子オブジェクトを検索するためにtrue
   const intersects = raycaster.intersectObject(textPanel, true);
   if (intersects.length > 0) {
@@ -91,6 +101,7 @@ export function raycastImagePanel(inputSource, frame, referenceSpace, imagePanel
   ));
 
   const raycaster = new THREE.Raycaster(rayOrigin, rayDirection, 0, 10);
+  raycaster.camera = sceneCamera;
   const intersects = raycaster.intersectObject(imagePanel);
   if (intersects.length > 0) {
     return {

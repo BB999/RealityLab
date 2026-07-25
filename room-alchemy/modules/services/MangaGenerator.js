@@ -171,31 +171,44 @@ Output ONLY the English prompt for image generation, nothing else.`;
       backCover: null
     };
 
-    try {
-      // 表紙を生成
-      if (onProgress) onProgress(currentStep, totalSteps, '表紙を生成中...');
-      const coverPrompt = await this.createMangaPrompt(userInput, 0, 4, true, false);
-      console.log('表紙プロンプト:', coverPrompt);
-      result.cover = await this.generateSingleImage(coverPrompt, '2:3');
-      currentStep++;
+    // 各ページのプロンプトはテーマとページ番号だけから作られ、
+    // 前のページの内容を参照しないため、すべて並列に生成できる
+    const specs = [
+      { slot: 'cover',     pageNumber: 0, isCover: true,  isBackCover: false, label: '表紙' },
+      { slot: 'page',      pageNumber: 1, isCover: false, isBackCover: false, label: 'ページ1', index: 0 },
+      { slot: 'page',      pageNumber: 2, isCover: false, isBackCover: false, label: 'ページ2', index: 1 },
+      { slot: 'page',      pageNumber: 3, isCover: false, isBackCover: false, label: 'ページ3', index: 2 },
+      { slot: 'page',      pageNumber: 4, isCover: false, isBackCover: false, label: 'ページ4', index: 3 },
+      { slot: 'backCover', pageNumber: 0, isCover: false, isBackCover: true,  label: '裏表紙' }
+    ];
 
-      // 4ページを生成
-      for (let i = 1; i <= 4; i++) {
-        if (onProgress) onProgress(currentStep, totalSteps, `ページ ${i}/4 を生成中...`);
-        const pagePrompt = await this.createMangaPrompt(userInput, i, 4, false, false);
-        console.log(`ページ${i}プロンプト:`, pagePrompt);
-        const pageUrl = await this.generateSingleImage(pagePrompt, '2:3');
-        result.pages.push(pageUrl);
+    result.pages = new Array(4).fill(null);
+
+    try {
+      if (onProgress) onProgress(0, totalSteps, `${totalSteps}枚を生成中...`);
+      const startedAt = Date.now();
+
+      const settled = await Promise.all(specs.map(async (spec) => {
+        const prompt = await this.createMangaPrompt(
+          userInput, spec.pageNumber, 4, spec.isCover, spec.isBackCover
+        );
+        console.log(`${spec.label}プロンプト:`, prompt);
+
+        const url = await this.generateSingleImage(prompt, '2:3');
+
         currentStep++;
+        if (onProgress) onProgress(currentStep, totalSteps, `${spec.label}が完成`);
+        return { spec, url };
+      }));
+
+      // Promise.all は入力順を保つが、slot を見て明示的に組み立てる
+      for (const { spec, url } of settled) {
+        if (spec.slot === 'cover') result.cover = url;
+        else if (spec.slot === 'backCover') result.backCover = url;
+        else result.pages[spec.index] = url;
       }
 
-      // 裏表紙を生成
-      if (onProgress) onProgress(currentStep, totalSteps, '裏表紙を生成中...');
-      const backCoverPrompt = await this.createMangaPrompt(userInput, 0, 4, false, true);
-      console.log('裏表紙プロンプト:', backCoverPrompt);
-      result.backCover = await this.generateSingleImage(backCoverPrompt, '2:3');
-      currentStep++;
-
+      console.log(`漫画生成完了: ${((Date.now() - startedAt) / 1000).toFixed(1)}秒`);
       if (onProgress) onProgress(totalSteps, totalSteps, '完了！');
 
       this.isGenerating = false;

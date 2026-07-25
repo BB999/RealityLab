@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeObject3D } from './disposeUtils.js';
 
 /**
  * モジュールマネージャー
@@ -80,17 +81,8 @@ export class ModuleManager {
     // シーンから削除
     this.scene.remove(module.group);
 
-    // グループ内のオブジェクトを破棄
-    module.group.traverse((child) => {
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) {
-        if (Array.isArray(child.material)) {
-          child.material.forEach(m => m.dispose());
-        } else {
-          child.material.dispose();
-        }
-      }
-    });
+    // グループ内のオブジェクトを破棄（テクスチャ含む）
+    disposeObject3D(module.group);
 
     this.modules.delete(id);
     console.log(`Despawned module: ${id}`);

@@ -20,6 +20,42 @@ fal.config({
 
 app.use(express.json());
 
+// 音声文字起こしAPI（Whisper）
+// Oculus BrowserにWeb Speech APIが無いため、録音した音声をfal.ai経由で文字起こしする
+app.post('/api/transcribe', express.raw({ type: ['audio/*', 'video/*'], limit: '25mb' }), async (req, res) => {
+  try {
+    const contentType = req.headers['content-type'] || 'audio/webm';
+    console.log(`Transcribe request: ${req.body.length} bytes, type=${contentType}`);
+
+    if (!req.body || req.body.length === 0) {
+      return res.status(400).json({ error: '音声データが空です' });
+    }
+
+    // fal.storageにアップロードしてURLを得る（whisperはaudio_urlを要求するため）
+    const blob = new Blob([req.body], { type: contentType });
+    const audioUrl = await fal.storage.upload(blob);
+    console.log('Uploaded audio:', audioUrl);
+
+    const result = await fal.subscribe('fal-ai/whisper', {
+      input: {
+        audio_url: audioUrl,
+        task: 'transcribe',
+        language: 'ja'
+      },
+      logs: true,
+      onQueueUpdate: (update) => {
+        console.log('Transcribe queue update:', update.status);
+      }
+    });
+
+    console.log('Transcribe result:', JSON.stringify(result.data));
+    res.json({ text: result.data.text ?? '' });
+  } catch (error) {
+    console.error('Transcribe error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 画像生成API（Nano Banana Pro）
 app.post('/api/generate-image', async (req, res) => {
   try {

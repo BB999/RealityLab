@@ -21,15 +21,17 @@ import { GenerateButton } from './modules/ui/GenerateButton.js';
 import { DeleteButton } from './modules/ui/DeleteButton.js';
 import { ConnectionLine } from './modules/ui/ConnectionLine.js';
 import { PinButton } from './modules/ui/PinButton.js';
+import { VoiceButton } from './modules/ui/VoiceButton.js';
 
 // サービス
 import { ImageGenerator } from './modules/services/ImageGenerator.js';
 import { Hyper3DService } from './modules/services/Hyper3DService.js';
 import { MangaGenerator } from './modules/services/MangaGenerator.js';
+import { VoiceInput } from './modules/services/VoiceInput.js';
 
 // XR関連
 import { DepthVisualization } from './modules/xr/DepthVisualization.js';
-import { raycastModules, raycastTextPanel, raycastImagePanel, checkImagePanelCollision } from './modules/xr/Raycast.js';
+import { raycastModules, raycastTextPanel, raycastImagePanel, checkImagePanelCollision, setRaycastCamera } from './modules/xr/Raycast.js';
 import { InteractionState } from './modules/xr/InteractionState.js';
 
 // 基本変数
@@ -50,11 +52,13 @@ let generateButton = null;
 let deleteButton = null;
 let connectionLine = null;
 let pinButton = null;
+let voiceButton = null;
 
 // 画像生成サービス
 let imageGenerator = null;
 let hyper3DService = null;
 let mangaGenerator = null;
+let voiceInput = null;
 
 // トリガー状態のトラッキング
 let wasTriggerPressedState = { left: false, right: false };
@@ -74,6 +78,12 @@ const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
 
 // 前回のタイムスタンプ
 let lastTimestamp = 0;
+
+// システムキーボードを使うか
+// Oculus Browser 149.0.0.24.3 は VR セッション中に showOverlayKeyboard で
+// IllegalStateException (Theme.AppCompat) を投げてブラウザごとクラッシュするため無効化。
+// ブラウザ側が修正されたら true に戻せる。
+const USE_SYSTEM_KEYBOARD = false;
 
 // シーンの初期化
 function init() {
@@ -134,16 +144,25 @@ function init() {
   pinButton.create();
   pinButton.setOnPress((isPinned) => handlePinToggle(isPinned));
 
+  // 音声入力ボタンを初期化
+  voiceButton = new VoiceButton(scene);
+  voiceButton.create();
+  voiceButton.setOnPress(() => handleVoiceToggle());
+
   // サービスを初期化
   imageGenerator = new ImageGenerator(FAL_API_KEY, ANTHROPIC_API_KEY);
   hyper3DService = new Hyper3DService();
   mangaGenerator = new MangaGenerator(ANTHROPIC_API_KEY, imageGenerator);
+  voiceInput = new VoiceInput();
 
   // 深度可視化を初期化
   depthVisualization = new DepthVisualization(scene);
 
   // インタラクション状態を初期化
   interactionState = new InteractionState();
+
+  // Sprite への交差判定に必要（生成コードが Sprite を使うことがある）
+  setRaycastCamera(camera);
 
   // キーボードイベントを設定
   setupKeyboardEvents();
@@ -162,6 +181,8 @@ function startTextInput() {
   generateButton.updatePosition(textPanel.getPanel());
   pinButton.show();
   pinButton.updatePosition(textPanel.getPanel());
+  voiceButton.show();
+  voiceButton.updatePosition(textPanel.getPanel());
 }
 
 // テキスト入力を終了
@@ -169,6 +190,50 @@ function stopTextInput() {
   textPanel.stop();
   generateButton.hide();
   pinButton.hide();
+  voiceButton.hide();
+  if (voiceInput.isRecording()) {
+    voiceInput.cancel();
+    voiceButton.setRecording(false);
+  }
+}
+
+// 音声入力のトグル（録音開始 / 停止して文字起こし）
+async function handleVoiceToggle() {
+  if (voiceInput.isRecording()) {
+    // 停止して文字起こし
+    voiceButton.setRecording(false);
+    voiceButton.setBusy(true);
+    updateInfo('文字起こし中... 📝');
+    try {
+      const text = await voiceInput.stopAndTranscribe();
+      if (text) {
+        // 既存の入力に追記する（続けて喋れるように）
+        const current = textPanel.getPromptText();
+        textPanel.setPromptText(current ? `${current} ${text}` : text);
+        updateInfo(`認識: ${text}`);
+      } else {
+        updateInfo('聞き取れませんでした');
+      }
+    } catch (error) {
+      console.error('音声入力エラー:', error);
+      updateInfo('文字起こしエラー: ' + error.message);
+    } finally {
+      voiceButton.setBusy(false);
+    }
+  } else {
+    // 録音開始
+    try {
+      await voiceInput.start();
+      voiceButton.setRecording(true);
+      updateInfo('録音中... もう一度押すと確定 🎤');
+    } catch (error) {
+      console.error('録音開始エラー:', error);
+      const hint = error.name === 'NotAllowedError'
+        ? 'マイクの使用が許可されていません'
+        : error.message;
+      updateInfo('録音できません: ' + hint);
+    }
+  }
 }
 
 // ピン留めトグル処理
@@ -1089,6 +1154,7 @@ function animate(timestamp, frame) {
     if (textPanel.isVisible()) {
       generateButton.updatePosition(textPanel.getPanel());
       pinButton.updatePosition(textPanel.getPanel());
+      voiceButton.updatePosition(textPanel.getPanel());
     }
 
     // レーザーの表示状態を更新
@@ -1127,6 +1193,7 @@ function animate(timestamp, frame) {
   // ボタンのアニメーションを更新
   generateButton.update(deltaTime);
   pinButton.update(deltaTime);
+  voiceButton.update(deltaTime);
 
   // テキストパネルのアニメーションを更新
   textPanel.update(deltaTime);
@@ -1351,6 +1418,7 @@ async function startXR() {
       }
 
       const raycaster = new THREE.Raycaster();
+      raycaster.camera = camera;
       const tempMatrix = new THREE.Matrix4();
       tempMatrix.identity().extractRotation(controller.matrixWorld);
       raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
@@ -1374,6 +1442,15 @@ async function startXR() {
         }
       }
 
+      // 音声入力ボタンをタップ
+      if (voiceButton.isVisible()) {
+        const voiceIntersects = raycaster.intersectObject(voiceButton.getButton(), true);
+        if (voiceIntersects.length > 0) {
+          voiceButton.press();
+          return;
+        }
+      }
+
       // 削除ボタンをタップ
       if (deleteButton.isVisible()) {
         const deleteIntersects = raycaster.intersectObject(deleteButton.getButton(), true);
@@ -1387,12 +1464,17 @@ async function startXR() {
       if (textPanel.isVisible() && hiddenInput) {
         const intersects = raycaster.intersectObject(textPanel.getPanel(), true);
         if (intersects.length > 0) {
-          const now = Date.now();
-          // キーボードを閉じてからクールダウン中は再オープンしない
-          if (now - lastKeyboardCloseTime > KEYBOARD_COOLDOWN) {
-            hiddenInput.value = textPanel.getPromptText();
-            hiddenInput.focus();
-            hiddenInput.click();
+          if (!USE_SYSTEM_KEYBOARD) {
+            // システムキーボードは使えないので音声入力へ誘導する
+            updateInfo('🎤 Talk ボタンで音声入力できます');
+          } else {
+            const now = Date.now();
+            // キーボードを閉じてからクールダウン中は再オープンしない
+            if (now - lastKeyboardCloseTime > KEYBOARD_COOLDOWN) {
+              hiddenInput.value = textPanel.getPromptText();
+              hiddenInput.focus();
+              hiddenInput.click();
+            }
           }
         }
       }
