@@ -1,3 +1,34 @@
+import { extractText } from './claudeResponse.js';
+
+/**
+ * 判定結果のJSONスキーマ（Structured Outputs用）
+ * kind を enum で縛ることで、想定外の値が返ることを構造的に防ぐ
+ */
+const MODULE_SCHEMA = {
+  type: 'object',
+  properties: {
+    kind: {
+      type: 'string',
+      enum: ['threejs', 'imagePanel', 'hyper3d', 'manga'],
+      description: 'Which module to create'
+    },
+    label: {
+      type: 'string',
+      description: "Brief description in the user's own language"
+    },
+    imagePrompt: {
+      type: 'string',
+      description: 'Detailed English image-generation prompt for imagePanel and hyper3d. Empty string otherwise.'
+    },
+    mangaPrompt: {
+      type: 'string',
+      description: 'Theme/story in English for manga. Empty string otherwise.'
+    }
+  },
+  required: ['kind', 'label', 'imagePrompt', 'mangaPrompt'],
+  additionalProperties: false
+};
+
 /**
  * プロンプトアナライザー
  * Claude APIを使ってプロンプトからモジュール種類とパラメータを判定
@@ -27,25 +58,25 @@ Available types:
    Examples: manga, comic, 漫画, コミック, マンガ, comic book, graphic novel
    Use this when the user wants to create a manga or comic book.
 
-Respond ONLY with valid JSON in this exact format:
-{
-  "kind": "threejs|imagePanel|hyper3d|manga",
-  "label": "brief description in user's language",
-  "params": {},
-  "imagePrompt": "only if kind is imagePanel or hyper3d, detailed English prompt for image generation",
-  "threejsPrompt": "only if kind is threejs, detailed description of what 3D effect to create",
-  "mangaPrompt": "only if kind is manga, the theme/story for the manga in English"
-}
+Choosing between "threejs" and "hyper3d" is the decision that matters most:
+- Is motion, light, or particles the point? -> threejs
+  (fire, smoke, fireworks, rain, explosions, glowing orbs, waveforms, orbiting shapes)
+- Is the surface, material, or exact silhouette of a real object the point? -> hyper3d
+  (a specific chair, a dog, a sports car, a hamburger, a potted plant)
+- Basic geometric primitives (cube, sphere, torus, spiral, helix) -> threejs, even when the user says "3D"
+- The cost is asymmetric: threejs generates in seconds, while hyper3d runs image generation THEN 3D
+  reconstruction and takes several minutes. Picking hyper3d for something threejs could express well
+  wastes minutes of the user's time while they wait inside VR. When genuinely torn, choose threejs.
 
 Rules:
-- If the request is for simple 3D effects, particles, geometric shapes, animations -> threejs
-- If the request is for 2D images, artwork, illustrations, photos -> imagePanel
-- If the request is for realistic 3D models of physical objects (furniture, animals, products, etc.) -> hyper3d
-- If the request is for manga, comic, 漫画, コミック, or any comic book creation -> manga
-- For hyper3d, create a detailed English prompt for generating a reference image of the object
-- For threejs, describe in detail what 3D effect should be created
-- For imagePanel, create a detailed English prompt for high-quality image generation
-- For manga, extract the theme/story the user wants and translate to English`;
+- 2D images, artwork, illustrations, photos -> imagePanel
+- manga, comic, 漫画, コミック, or any comic book request -> manga
+- For hyper3d, write a detailed English prompt for generating a reference image of the object
+- For imagePanel, write a detailed English prompt for high-quality image generation
+- For manga, extract the theme/story the user wants and translate it to English
+- For threejs, no extra prompt is needed — the user's raw input is passed to the code generator
+- Leave imagePrompt and mangaPrompt as empty strings when they do not apply
+- "label" is a brief description in the user's own language`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -57,8 +88,14 @@ Rules:
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-3-5-haiku-20241022',
-        max_tokens: 500,
+        model: 'claude-opus-5',
+        max_tokens: 4000,
+        output_config: {
+          format: {
+            type: 'json_schema',
+            schema: MODULE_SCHEMA
+          }
+        },
         messages: [{
           role: 'user',
           content: `Analyze this prompt and determine the appropriate 3D module:\n\n"${prompt}"`
@@ -75,24 +112,18 @@ Rules:
     }
 
     const data = await response.json();
-    const content = data.content[0].text.trim();
+    const raw = extractText(data);
 
-    // JSONをパース
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error('No JSON found in response:', content);
+    // Structured Outputs によりスキーマ通りのJSONが返る。
+    // refusal 等の異常系に備えてパース失敗時はフォールバックさせる
+    try {
+      const result = JSON.parse(raw);
+      console.log('Prompt analysis result:', result);
+      return result;
+    } catch (e) {
+      console.error('JSON parse failed. Raw response:', raw);
       return createFallback(prompt);
     }
-
-    // 制御文字を除去してからパース
-    let jsonStr = jsonMatch[0];
-    jsonStr = jsonStr.replace(/[\x00-\x1F\x7F]/g, ' ');  // 制御文字をスペースに置換
-    jsonStr = jsonStr.replace(/\n/g, ' ');  // 改行もスペースに
-
-    const result = JSON.parse(jsonStr);
-    console.log('Prompt analysis result:', result);
-
-    return result;
 
   } catch (error) {
     console.error('Prompt analysis error:', error);
@@ -109,11 +140,8 @@ function createFallback(prompt) {
   return {
     kind: 'imagePanel',
     label: prompt,
-    params: {
-      width: 0.3,
-      height: 0.3
-    },
-    imagePrompt: prompt
+    imagePrompt: prompt,
+    mangaPrompt: ''
   };
 }
 
@@ -144,14 +172,11 @@ RULES:
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20250929',
-        max_tokens: 4000,
+        model: 'claude-opus-5',
+        max_tokens: 16000,
         messages: [{
           role: 'user',
-          content: `【対象プロンプト】
-${description}
-
-上記の対象物をThree.jsで生成してください。リアルな寸法・構造・比率で製品レベルの3Dモデルを作成し、JavaScriptコードのみを出力してください。`
+          content: description
         }],
         system: systemPrompt
       })
@@ -163,7 +188,7 @@ ${description}
     }
 
     const data = await response.json();
-    let code = data.content[0].text.trim();
+    let code = extractText(data);
 
     // マークダウンのコードブロックを除去
     code = code.replace(/```javascript\n?/g, '').replace(/```\n?/g, '');
@@ -205,23 +230,6 @@ animationCallbacks.push((time, deltaTime) => {
 }
 
 /**
- * シンプルなキーワードベースの判定（Claude APIが使えない場合のフォールバック）
- * @param {string} prompt - ユーザー入力
- * @returns {Object} モジュール定義
- */
-export function analyzePromptLocal(prompt) {
-  return {
-    kind: 'imagePanel',
-    label: prompt,
-    params: {
-      width: 0.3,
-      height: 0.3
-    },
-    imagePrompt: prompt
-  };
-}
-
-/**
  * 既存のThree.jsコードを参照して再生成
  * @param {string} newPrompt - 新しいプロンプト（変更点の指示）
  * @param {string} existingCode - 既存のThree.jsコード
@@ -250,20 +258,17 @@ RULES:
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20250929',
-        max_tokens: 4000,
+        model: 'claude-opus-5',
+        max_tokens: 16000,
         messages: [{
           role: 'user',
-          content: `【対象プロンプト】
-元のオブジェクト: ${originalPrompt}
+          content: `元のオブジェクト: ${originalPrompt}
 変更指示: ${newPrompt}
 
 既存のThree.jsコード:
 \`\`\`javascript
 ${existingCode}
-\`\`\`
-
-上記の変更指示に基づいて既存のコードを修正してください。リアルな寸法・構造・比率を維持しながら、JavaScriptコードのみを出力してください。`
+\`\`\``
         }],
         system: systemPrompt
       })
@@ -275,7 +280,7 @@ ${existingCode}
     }
 
     const data = await response.json();
-    let code = data.content[0].text.trim();
+    let code = extractText(data);
 
     // マークダウンのコードブロックを除去
     code = code.replace(/```javascript\n?/g, '').replace(/```\n?/g, '');

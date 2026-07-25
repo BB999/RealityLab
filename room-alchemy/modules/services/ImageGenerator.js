@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { extractText } from '../claudeResponse.js';
 
 export class ImageGenerator {
   constructor(falApiKey, anthropicApiKey) {
@@ -19,8 +20,8 @@ export class ImageGenerator {
           'anthropic-dangerous-direct-browser-access': 'true'
         },
         body: JSON.stringify({
-          model: 'claude-3-5-haiku-20241022',
-          max_tokens: 300,
+          model: 'claude-opus-5',
+          max_tokens: 4000,
           messages: [{
             role: 'user',
             content: `You are an expert at creating prompts for image generation AI. Convert the following user input into a detailed, high-quality English prompt for Nano Banana Pro (a text-to-image AI). Keep it concise but descriptive, focusing on visual details, style, lighting, and composition. Output ONLY the prompt, nothing else.
@@ -37,7 +38,7 @@ User input: ${userPrompt}`
       }
 
       const data = await response.json();
-      const enhancedPrompt = data.content[0].text.trim();
+      const enhancedPrompt = extractText(data);
       console.log('Enhanced prompt:', enhancedPrompt);
       return enhancedPrompt;
 
@@ -159,8 +160,8 @@ User input: ${userPrompt}`
           'anthropic-dangerous-direct-browser-access': 'true'
         },
         body: JSON.stringify({
-          model: 'claude-3-5-haiku-20241022',
-          max_tokens: 400,
+          model: 'claude-opus-5',
+          max_tokens: 4000,
           messages: [{
             role: 'user',
             content: `You are an expert at creating prompts for image generation AI.
@@ -181,7 +182,7 @@ Create a new, detailed English prompt that incorporates the user's modification 
       }
 
       const data = await response.json();
-      const newPrompt = data.content[0].text.trim();
+      const newPrompt = extractText(data);
       console.log('Regenerate prompt:', newPrompt);
       return newPrompt;
 

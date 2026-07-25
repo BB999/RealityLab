@@ -1,3 +1,5 @@
+import { extractText } from '../claudeResponse.js';
+
 /**
  * MangaGenerator サービス
  * ImageGeneratorを使用して漫画ページを生成
@@ -74,8 +76,8 @@ Output ONLY the English prompt for image generation, nothing else.`;
           'anthropic-dangerous-direct-browser-access': 'true'
         },
         body: JSON.stringify({
-          model: 'claude-3-5-haiku-20241022',
-          max_tokens: 500,
+          model: 'claude-opus-5',
+          max_tokens: 4000,
           messages: [{
             role: 'user',
             content: systemPrompt
@@ -89,7 +91,7 @@ Output ONLY the English prompt for image generation, nothing else.`;
       }
 
       const data = await response.json();
-      return data.content[0].text.trim();
+      return extractText(data);
 
     } catch (error) {
       console.error('プロンプト生成エラー:', error);

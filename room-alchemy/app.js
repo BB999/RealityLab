@@ -253,8 +253,8 @@ async function handleNewGeneration(promptText) {
         const moduleId = moduleManager.spawn('imagePanel', currentSpawnPosition, {
           imageUrl: imageUrl,
           imagePrompt: imagePrompt,
-          width: moduleDef.params.width || 0.25,
-          height: moduleDef.params.height || 0.25
+          width: 0.25,
+          height: 0.25
         });
         // カメラに向ける（水平方向のみ）
         lookAtCameraHorizontal(moduleId);
@@ -269,8 +269,7 @@ async function handleNewGeneration(promptText) {
       loadingId = loadingIndicator.show(textPanel.getPanel(), 'Generate App', 'green');
       generateButton.setLoading(false); // ボタンのローディング状態を解除
       updateInfo('3Dオブジェクト生成中... 🎨');
-      const threejsPrompt = moduleDef.threejsPrompt || promptText;
-      const code = await generateThreejsCode(threejsPrompt, ANTHROPIC_API_KEY);
+      const code = await generateThreejsCode(promptText, ANTHROPIC_API_KEY);
 
       // 生成完了後にテキストパネルの現在位置を取得
       const currentSpawnPosition = new THREE.Vector3();
@@ -283,7 +282,7 @@ async function handleNewGeneration(promptText) {
 
       moduleManager.spawn('threejs', currentSpawnPosition, {
         code: code,
-        prompt: threejsPrompt
+        prompt: promptText
       });
       loadingIndicator.hide(loadingId);
       generateButton.show();
