@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import { disposeObject3D } from './disposeUtils.js';
 
+// findModuleAtPosition はグリップを握っている間ずっと呼ばれるので、
+// フレームごとの確保を避けるために使い回す
+const _box = new THREE.Box3();
+const _grabBox = new THREE.Box3();
+const _center = new THREE.Vector3();
+const _size = new THREE.Vector3();
+const _half = new THREE.Vector3();
+
 /**
  * モジュールマネージャー
  * 3Dモジュールのライフサイクルを管理
@@ -104,41 +112,52 @@ export class ModuleManager {
    * 位置でモジュールを検索（当たり判定）
    * バウンディングボックスを使用して子オブジェクト含めて判定
    * @param {THREE.Vector3} position - 検索位置
-   * @param {number} radius - 検索半径（バウンディングボックスの拡張に使用）
+   * @param {number} minHalfSize - つかみ判定の最小半径。
+   *   小さいモジュールを掴みやすくするための下限で、実寸がこれより大きければ実寸を使う
    * @returns {Object|null} 見つかったモジュール
    */
-  findModuleAtPosition(position, radius = 0.15) {
-    const MAX_GRAB_SIZE = 0.5; // つかみ判定の最大サイズ（メートル）
+  findModuleAtPosition(position, minHalfSize = 0.15) {
+    // 上限。これが無いと巨大なモジュールが周囲すべてを飲み込む
+    const MAX_HALF_SIZE = 0.5;
+    // 手が少しはみ出していても掴めるようにする遊び
+    const SLACK = 0.04;
+
+    let found = null;
+    let foundDistance = Infinity;
 
     for (const module of this.modules.values()) {
-      // バウンディングボックスを計算
-      const box = new THREE.Box3().setFromObject(module.group);
+      _box.setFromObject(module.group);
+      // 描画物を持たないモジュールは中心が NaN になるので除外する
+      if (_box.isEmpty()) continue;
 
-      // バウンディングボックスのサイズを制限
-      const center = box.getCenter(new THREE.Vector3());
-      const size = box.getSize(new THREE.Vector3());
+      _box.getCenter(_center);
+      _box.getSize(_size);
 
-      // 各軸のサイズを最大値に制限
-      const clampedHalfSize = new THREE.Vector3(
-        Math.min(size.x / 2, MAX_GRAB_SIZE),
-        Math.min(size.y / 2, MAX_GRAB_SIZE),
-        Math.min(size.z / 2, MAX_GRAB_SIZE)
+      // 判定用の半径は「実寸を下限と上限で挟んだもの」。
+      // 一律に下駄を履かせると、大きいモジュールほど余分な範囲が増えて
+      // 隣のモジュールを覆い隠してしまう
+      _half.set(
+        Math.min(Math.max(_size.x / 2, minHalfSize), MAX_HALF_SIZE) + SLACK,
+        Math.min(Math.max(_size.y / 2, minHalfSize), MAX_HALF_SIZE) + SLACK,
+        Math.min(Math.max(_size.z / 2, minHalfSize), MAX_HALF_SIZE) + SLACK
       );
 
-      // 制限されたバウンディングボックスを作成
-      const clampedBox = new THREE.Box3(
-        center.clone().sub(clampedHalfSize),
-        center.clone().add(clampedHalfSize)
-      );
+      _grabBox.min.copy(_center).sub(_half);
+      _grabBox.max.copy(_center).add(_half);
 
-      // バウンディングボックスを少し拡張
-      clampedBox.expandByScalar(radius);
+      if (!_grabBox.containsPoint(position)) continue;
 
-      if (clampedBox.containsPoint(position)) {
-        return module;
+      // 判定領域が重なったときは手に近いほうを掴む。
+      // 最初に見つかったものを返すと、Map の登録順で決まってしまい、
+      // 先にスポーンした大きいモジュールが手前の小さいモジュールを奪う
+      const distance = _center.distanceToSquared(position);
+      if (distance < foundDistance) {
+        foundDistance = distance;
+        found = module;
       }
     }
-    return null;
+
+    return found;
   }
 
   /**

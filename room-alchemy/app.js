@@ -1220,6 +1220,8 @@ function animate(timestamp, frame) {
   generateButton.update(deltaTime);
   pinButton.update(deltaTime);
   voiceButton.update(deltaTime);
+  clearButton.update(deltaTime);
+  deleteButton.update(deltaTime);
 
   // テキストパネルのアニメーションを更新
   textPanel.update(deltaTime);
@@ -1307,6 +1309,9 @@ function updateButtonHover(frame, referenceSpace) {
   let isHoveringButton = false;
   let isHoveringTextPanel = false;
   let isHoveringPinButton = false;
+  let isHoveringVoiceButton = false;
+  let isHoveringClearButton = false;
+  let isHoveringDeleteButton = false;
 
   for (const inputSource of inputSources) {
     if (inputSource.targetRayMode !== 'tracked-pointer') continue;
@@ -1330,6 +1335,30 @@ function updateButtonHover(frame, referenceSpace) {
       }
     }
 
+    // 音声入力ボタンのホバーチェック
+    if (voiceButton.isVisible()) {
+      const voiceHit = raycastTextPanel(inputSource, frame, referenceSpace, voiceButton.getButton());
+      if (voiceHit) {
+        isHoveringVoiceButton = true;
+      }
+    }
+
+    // クリアボタンのホバーチェック
+    if (clearButton.isVisible()) {
+      const clearHit = raycastTextPanel(inputSource, frame, referenceSpace, clearButton.getButton());
+      if (clearHit) {
+        isHoveringClearButton = true;
+      }
+    }
+
+    // 削除ボタンのホバーチェック
+    if (deleteButton.isVisible()) {
+      const deleteHit = raycastTextPanel(inputSource, frame, referenceSpace, deleteButton.getButton());
+      if (deleteHit) {
+        isHoveringDeleteButton = true;
+      }
+    }
+
     // テキストパネルのホバーチェック
     if (textPanel.isVisible()) {
       const panelHit = raycastTextPanel(inputSource, frame, referenceSpace, textPanel.getPanel());
@@ -1341,6 +1370,9 @@ function updateButtonHover(frame, referenceSpace) {
 
   generateButton.setHovered(isHoveringButton);
   pinButton.setHovered(isHoveringPinButton);
+  voiceButton.setHovered(isHoveringVoiceButton);
+  clearButton.setHovered(isHoveringClearButton);
+  deleteButton.setHovered(isHoveringDeleteButton);
   textPanel.setHovered(isHoveringTextPanel);
 }
 

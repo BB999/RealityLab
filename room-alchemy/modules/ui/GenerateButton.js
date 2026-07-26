@@ -1,242 +1,118 @@
 import * as THREE from 'three';
+import { GlassSurface, TINT, drawLabel, measureLabel, icons } from './liquidGlass.js';
+
+const W = 0.14;
+const H = 0.055;
 
 export class GenerateButton {
   constructor(scene) {
     this.scene = scene;
     this.button = null;
-    this.canvas = null;
-    this.context = null;
-    this.texture = null;
+    this.buttonGroup = null;
+    this.surface = null;
     this.isPressed = false;
     this.isHovered = false;
     this.isLoading = false;
-    this.loadingDots = 0;
     this.pressTime = 0;
     this.onPress = null;
     this.buttonText = 'Generate';
     this.isRegenerateMode = false;
     this.animationTime = 0;
-    this.targetScale = 1;
-    this.currentScale = 1;
+    this.lastContentFrame = -1;
   }
 
   create() {
-    const group = new THREE.Group();
+    this.buttonGroup = new THREE.Group();
 
-    // キャンバスを作成（高解像度）
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = 256;
-    this.canvas.height = 96;
-    this.context = this.canvas.getContext('2d');
-
-    // テクスチャを作成
-    this.texture = new THREE.CanvasTexture(this.canvas);
-    this.texture.minFilter = THREE.LinearFilter;
-    this.texture.magFilter = THREE.LinearFilter;
-
-    // ボタンのジオメトリとマテリアル
-    const buttonGeometry = new THREE.PlaneGeometry(0.14, 0.055);
-    const buttonMaterial = new THREE.MeshBasicMaterial({
-      map: this.texture,
-      transparent: true,
-      side: THREE.DoubleSide
+    this.surface = new GlassSurface({
+      width: W,
+      height: H,
+      tint: TINT.green,
+      accent: TINT.green,
+      opacity: 0.38,
+      canvasWidth: 512,
+      canvasHeight: 200,
+      shadow: 0,
+      hoverScale: 1.07,
+      pressScale: 0.9
     });
 
-    this.button = new THREE.Mesh(buttonGeometry, buttonMaterial);
-    this.button.visible = false;
-    group.add(this.button);
+    this.buttonGroup.add(this.surface.object3D);
+    this.buttonGroup.visible = false;
+    this.scene.add(this.buttonGroup);
 
-    this.buttonGroup = group;
-    this.scene.add(group);
+    this.button = this.surface.hitMesh;
 
-    // 初期描画
+    // Web フォントが後から届いたときにラベルを描き直す
+    this.surface.onRedraw = () => this.updateCanvas();
+
     this.updateCanvas();
 
     return this.button;
   }
 
   updateCanvas() {
-    if (!this.context) return;
+    if (!this.surface) return;
 
-    const ctx = this.context;
-    const width = this.canvas.width;
-    const height = this.canvas.height;
+    const ctx = this.surface.beginContent();
+    const width = this.surface.canvas.width;
+    const height = this.surface.canvas.height;
+    const cy = height / 2;
 
-    // 背景をクリア
-    ctx.clearRect(0, 0, width, height);
+    // The glass carries the colour; the content layer stays achromatic so the
+    // label keeps full contrast whatever tint sits behind it.
+    const fg = '#ffffff';
+    const fontSize = 46;
+    const iconSize = 26;
+    const gap = 18;
 
-    // グラデーション背景（Generateは緑、Regenerateはオレンジ）
-    let gradient;
-    if (this.isRegenerateMode) {
-      // Regenerate: オレンジ系
-      if (this.isPressed) {
-        gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, '#b35900');
-        gradient.addColorStop(1, '#cc6600');
-      } else if (this.isHovered) {
-        gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, '#ffaa33');
-        gradient.addColorStop(1, '#ff8800');
-      } else {
-        gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, '#FF9800');
-        gradient.addColorStop(1, '#F57C00');
-      }
-    } else {
-      // Generate: 緑系
-      if (this.isPressed) {
-        gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, '#1a5c1a');
-        gradient.addColorStop(1, '#2d8a2d');
-      } else if (this.isHovered) {
-        gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, '#5dd55d');
-        gradient.addColorStop(1, '#3cb43c');
-      } else {
-        gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, '#4CAF50');
-        gradient.addColorStop(1, '#388E3C');
-      }
-    }
-
-    // 角丸の背景
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.roundRect(4, 4, width - 8, height - 8, 16);
-    ctx.fill();
-
-    // 内側のハイライト（上部）
-    if (!this.isPressed) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-      ctx.beginPath();
-      ctx.roundRect(8, 8, width - 16, (height - 16) / 2, [12, 12, 0, 0]);
-      ctx.fill();
-    }
-
-    // 枠線（グロー効果付き）
-    let borderColor, glowColor;
-    if (this.isRegenerateMode) {
-      borderColor = this.isHovered ? '#ffcc00' : '#E65100';
-      glowColor = '#ffcc00';
-    } else {
-      borderColor = this.isHovered ? '#00ffff' : '#2E7D32';
-      glowColor = '#00ffff';
-    }
-    ctx.strokeStyle = borderColor;
-    ctx.lineWidth = this.isHovered ? 4 : 3;
-    ctx.beginPath();
-    ctx.roundRect(4, 4, width - 8, height - 8, 16);
-    ctx.stroke();
-
-    // 外側のグロー（ホバー時）
-    if (this.isHovered && !this.isPressed) {
-      ctx.shadowColor = glowColor;
-      ctx.shadowBlur = 20;
-      ctx.strokeStyle = this.isRegenerateMode ? 'rgba(255, 204, 0, 0.5)' : 'rgba(0, 255, 255, 0.5)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(2, 2, width - 4, height - 4, 18);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-    }
-
-    // アイコンとテキスト
-    ctx.fillStyle = '#ffffff';
-    const iconX = 35;
-    const iconY = height / 2;
+    const label = this.isLoading ? 'Generating' : this.buttonText;
+    const textWidth = measureLabel(ctx, label, fontSize, 600);
+    const total = iconSize * 2 + gap + textWidth;
+    const startX = (width - total) / 2;
+    const iconX = startX + iconSize;
+    const textX = iconX + iconSize + gap;
 
     if (this.isLoading) {
-      // ローディング状態: スピナーアイコン
-      ctx.save();
-      ctx.translate(iconX, iconY);
-      ctx.rotate(this.animationTime * 6); // 回転アニメーション
-      ctx.beginPath();
-      ctx.arc(0, 0, 12, 0, Math.PI * 1.5, false);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-      ctx.restore();
-
-      // ローディングテキスト
-      const dots = '.'.repeat((this.loadingDots % 4));
-      ctx.font = 'bold 26px "SF Pro", "Segoe UI", system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-      ctx.fillText(`Loading${dots}`, width / 2 + 12, height / 2 + 2);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(`Loading${dots}`, width / 2 + 10, height / 2);
+      icons.spinner(ctx, iconX, cy, iconSize, fg, this.animationTime);
     } else if (this.isRegenerateMode) {
-      // 回転矢印アイコン
-      ctx.save();
-      ctx.translate(iconX, iconY);
-      ctx.beginPath();
-      ctx.arc(0, 0, 12, -Math.PI * 0.8, Math.PI * 0.5, false);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-      // 矢印の先端
-      ctx.beginPath();
-      ctx.moveTo(10, 8);
-      ctx.lineTo(14, 2);
-      ctx.lineTo(6, 4);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-
-      // テキスト（影付き）
-      ctx.font = 'bold 28px "SF Pro", "Segoe UI", system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-      ctx.fillText(this.buttonText, width / 2 + 12, height / 2 + 2);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(this.buttonText, width / 2 + 10, height / 2);
+      icons.refresh(ctx, iconX, cy, iconSize, fg);
     } else {
-      // 稲妻アイコン
-      ctx.beginPath();
-      ctx.moveTo(iconX + 2, iconY - 14);
-      ctx.lineTo(iconX - 6, iconY + 2);
-      ctx.lineTo(iconX, iconY + 2);
-      ctx.lineTo(iconX - 2, iconY + 14);
-      ctx.lineTo(iconX + 8, iconY - 2);
-      ctx.lineTo(iconX + 2, iconY - 2);
-      ctx.closePath();
-      ctx.fill();
-
-      // テキスト（影付き）
-      ctx.font = 'bold 32px "SF Pro", "Segoe UI", system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-      ctx.fillText(this.buttonText, width / 2 + 12, height / 2 + 2);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(this.buttonText, width / 2 + 10, height / 2);
+      icons.bolt(ctx, iconX, cy, iconSize, fg);
     }
 
-    // テクスチャを更新
-    if (this.texture) {
-      this.texture.needsUpdate = true;
-    }
+    drawLabel(ctx, label, textX, cy + 1, {
+      size: fontSize,
+      weight: 600,
+      color: fg,
+      align: 'left'
+    });
+
+    this.surface.markContentDirty();
   }
 
   // ホバー状態を設定
   setHovered(hovered) {
     if (this.isHovered !== hovered && !this.isLoading) {
       this.isHovered = hovered;
-      this.targetScale = hovered ? 1.1 : 1;
-      this.updateCanvas();
+      this.surface.setHovered(hovered);
     }
   }
 
   // ローディング状態を設定
   setLoading(loading) {
     this.isLoading = loading;
-    this.loadingDots = 0;
     if (loading) {
-      this.targetScale = 1;
+      this.isHovered = false;
+      this.surface.setHovered(false);
+      this.surface.setTint(TINT.slate);
+      this.surface.setAccent(this.isRegenerateMode ? TINT.orange : TINT.green);
+      this.surface.setSheen(0.8);
+      this.surface.setFocus(0.5);
+    } else {
+      this._applyTint();
+      this.surface.setSheen(0);
+      this.surface.setFocus(0);
     }
     this.updateCanvas();
   }
@@ -251,12 +127,13 @@ export class GenerateButton {
 
     this.isPressed = true;
     this.pressTime = Date.now();
-    this.targetScale = 0.85;
+    this.surface.setPressed(true);
     this.updateCanvas();
 
     // 300ms後にローディング状態に移行
     setTimeout(() => {
       this.isPressed = false;
+      this.surface.setPressed(false);
       this.setLoading(true);
       // コールバック実行
       if (this.onPress) {
@@ -268,23 +145,13 @@ export class GenerateButton {
   // 毎フレーム更新
   update(deltaTime) {
     this.animationTime += deltaTime;
+    this.surface.update(deltaTime);
 
-    // スムーズなスケールアニメーション
-    this.currentScale += (this.targetScale - this.currentScale) * 0.2;
-    if (this.buttonGroup) {
-      this.buttonGroup.scale.setScalar(this.currentScale);
-    }
-
-    // ローディング中のアニメーション
+    // スピナーはキャンバスに描いているので、20fps程度で描き直す
     if (this.isLoading) {
-      // ドットアニメーション（0.4秒ごと）
-      const newDotCount = Math.floor(this.animationTime * 2.5);
-      if (newDotCount !== this.loadingDots) {
-        this.loadingDots = newDotCount;
-        this.updateCanvas();
-      }
-      // スピナー回転のためにキャンバスを継続的に更新（60fpsでは重いので10fps程度で）
-      if (Math.floor(this.animationTime * 10) !== Math.floor((this.animationTime - deltaTime) * 10)) {
+      const frame = Math.floor(this.animationTime * 20);
+      if (frame !== this.lastContentFrame) {
+        this.lastContentFrame = frame;
         this.updateCanvas();
       }
     }
@@ -320,7 +187,7 @@ export class GenerateButton {
   }
 
   isVisible() {
-    return this.button && this.button.visible;
+    return this.buttonGroup && this.buttonGroup.visible;
   }
 
   getButton() {
@@ -331,10 +198,17 @@ export class GenerateButton {
     this.onPress = callback;
   }
 
+  _applyTint() {
+    const tint = this.isRegenerateMode ? TINT.orange : TINT.green;
+    this.surface.setTint(tint);
+    this.surface.setAccent(tint);
+  }
+
   // 再生成モードに切り替え
   setRegenerateMode(enabled) {
     this.isRegenerateMode = enabled;
     this.buttonText = enabled ? 'Regenerate' : 'Generate';
+    if (!this.isLoading) this._applyTint();
     this.updateCanvas();
   }
 
@@ -344,15 +218,7 @@ export class GenerateButton {
   }
 
   dispose() {
-    if (this.buttonGroup) {
-      this.scene.remove(this.buttonGroup);
-    }
-    if (this.button) {
-      this.button.geometry.dispose();
-      this.button.material.dispose();
-    }
-    if (this.texture) {
-      this.texture.dispose();
-    }
+    if (this.surface) this.surface.dispose();
+    if (this.buttonGroup) this.scene.remove(this.buttonGroup);
   }
 }

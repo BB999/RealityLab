@@ -1,22 +1,25 @@
 import * as THREE from 'three';
+import { GlassSurface, TINT, GLASS_FONT, icons } from './liquidGlass.js';
+
+const W = 0.4;
+const H = 0.05;
+const INSET = 34;          // 左右の内側余白（キャンバスpx）
+const CARET_FPS = 12;      // キャレットのフェードを描き直す頻度
 
 export class TextPanel {
   constructor(scene) {
     this.scene = scene;
     this.panel = null;
     this.panelGroup = null;
-    this.canvas = null;
-    this.context = null;
-    this.texture = null;
+    this.surface = null;
     this.promptText = '';
-    this.cursorVisible = true;
-    this.cursorBlinkInterval = null;
+    this.caretPhase = 0;
+    this.caretAlpha = 1;
+    this.lastCaretFrame = -1;
     this.isActive = false;
     this.initialized = false;
     this.isHovered = false;
     this.animationTime = 0;
-    this.targetScale = 1;
-    this.currentScale = 1;
     // ピン留め（カメラ追従）状態
     this.isPinned = false;
   }
@@ -24,28 +27,27 @@ export class TextPanel {
   create() {
     const group = new THREE.Group();
 
-    // キャンバスを作成（テキスト描画用）
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = 512;
-    this.canvas.height = 64;
-    this.context = this.canvas.getContext('2d');
-
-    // テクスチャを作成
-    this.texture = new THREE.CanvasTexture(this.canvas);
-    this.texture.minFilter = THREE.LinearFilter;
-    this.texture.magFilter = THREE.LinearFilter;
-
-    // パネルのジオメトリとマテリアル
-    const panelGeometry = new THREE.PlaneGeometry(0.4, 0.05);
-    const panelMaterial = new THREE.MeshBasicMaterial({
-      map: this.texture,
-      transparent: true,
-      side: THREE.DoubleSide
+    this.surface = new GlassSurface({
+      width: W,
+      height: H,
+      tint: TINT.graphite,
+      accent: TINT.blue,
+      // 入力欄は文字が乗るので、ボタンより濃いガラスにして可読性を確保する
+      opacity: 0.46,
+      canvasWidth: 1024,
+      canvasHeight: 128,
+      shadow: 0,
+      hoverScale: 1.03,
+      pressScale: 1,
+      stiffness: 200,
+      damping: 24
     });
 
-    this.panel = new THREE.Mesh(panelGeometry, panelMaterial);
-    group.add(this.panel);
+    group.add(this.surface.object3D);
 
+    this.panel = this.surface.hitMesh;
+    // Web フォントが後から届いたときにラベルを描き直す
+    this.surface.onRedraw = () => this.updateCanvas();
     this.panelGroup = group;
     this.panelGroup.position.set(0, 1.2, -0.5);
     this.panelGroup.visible = false;
@@ -54,70 +56,71 @@ export class TextPanel {
     // 初期描画
     this.updateCanvas();
 
-    // カーソル点滅
-    this.cursorBlinkInterval = setInterval(() => {
-      if (this.isActive) {
-        this.cursorVisible = !this.cursorVisible;
-        this.updateCanvas();
-      }
-    }, 500);
-
     return this.panel;
   }
 
   updateCanvas() {
-    if (!this.context) return;
+    if (!this.surface) return;
 
-    const ctx = this.context;
-    const width = this.canvas.width;
-    const height = this.canvas.height;
+    const ctx = this.surface.beginContent();
+    const width = this.surface.canvas.width;
+    const height = this.surface.canvas.height;
+    const cy = height / 2;
+    const fontSize = 48;
 
-    // 背景をクリア
-    ctx.clearRect(0, 0, width, height);
-
-    // 背景を描画（不透明の濃いグレー - MRで見やすく）
-    ctx.fillStyle = 'rgba(30, 30, 40, 0.95)';
-    ctx.beginPath();
-    ctx.roundRect(0, 0, width, height, 8);
-    ctx.fill();
-
-    // 枠線を描画（明るい色で目立つように）
-    ctx.strokeStyle = this.isActive ? '#4CAF50' : '#AAAAAA';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(1, 1, width - 2, height - 2, 7);
-    ctx.stroke();
-
-    // プレースホルダーまたはテキストを描画
-    ctx.font = 'bold 24px system-ui, sans-serif';
+    ctx.font = `500 ${fontSize}px ${GLASS_FONT}`;
     ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '-0.5px';
 
     if (this.promptText.length === 0 && !this.isActive) {
-      ctx.fillStyle = '#888888';
-      ctx.fillText('✨ プロンプトを入力...', 10, height / 2);
-    } else {
-      ctx.fillStyle = '#ffffff';
-      const displayText = this.promptText + (this.cursorVisible && this.isActive ? '|' : '');
-
-      // テキストが長すぎる場合は省略
-      const maxWidth = width - 20;
-      let text = displayText;
-      while (ctx.measureText(text).width > maxWidth && text.length > 0) {
-        text = text.substring(1);
-      }
-      ctx.fillText(text, 10, height / 2);
+      // プレースホルダー: sparkles + 説明文（Apple のプレースホルダーと同じ第二階層の白）
+      icons.sparkle(ctx, INSET + 20, cy, 20, 'rgba(255, 255, 255, 0.55)');
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.fillText('プロンプトを入力', INSET + 56, cy + 1);
+      this.surface.markContentDirty();
+      return;
     }
 
-    // テクスチャを更新
-    if (this.texture) {
-      this.texture.needsUpdate = true;
+    // 末尾が見えるように、あふれた分は先頭から削る
+    const maxWidth = width - INSET * 2 - 20;
+    let text = this.promptText;
+    while (text.length > 0 && ctx.measureText(text).width > maxWidth) {
+      text = text.substring(1);
     }
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 2;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, INSET, cy + 1);
+    ctx.restore();
+
+    if (this.isActive) {
+      // 角丸のキャレット。点滅はオン/オフではなくフェードさせる
+      const caretX = INSET + ctx.measureText(text).width + 6;
+      const caretH = fontSize * 0.86;
+      ctx.save();
+      ctx.globalAlpha = this.caretAlpha;
+      ctx.fillStyle = '#0a84ff';
+      ctx.shadowColor = 'rgba(10, 132, 255, 0.9)';
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.roundRect(caretX, cy - caretH / 2, 5, caretH, 2.5);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    this.surface.markContentDirty();
   }
 
   start() {
     this.isActive = true;
     this.promptText = '';
-    this.cursorVisible = true;
+    this.caretPhase = 0;
+    this.caretAlpha = 1;
+    this.surface.setFocus(1);
     this.updateCanvas();
 
     if (this.panelGroup) {
@@ -128,7 +131,7 @@ export class TextPanel {
 
   stop() {
     this.isActive = false;
-    this.cursorVisible = false;
+    this.surface.setFocus(0);
     this.updateCanvas();
   }
 
@@ -136,19 +139,26 @@ export class TextPanel {
   setHovered(hovered) {
     if (this.isHovered !== hovered) {
       this.isHovered = hovered;
-      this.targetScale = hovered ? 1.05 : 1;
-      this.updateCanvas();
+      this.surface.setHovered(hovered);
     }
   }
 
   // 毎フレーム更新
   update(deltaTime) {
     this.animationTime += deltaTime;
+    this.surface.update(deltaTime);
 
-    // スムーズなスケールアニメーション
-    this.currentScale += (this.targetScale - this.currentScale) * 0.2;
-    if (this.panelGroup) {
-      this.panelGroup.scale.setScalar(this.currentScale);
+    if (!this.isActive) return;
+
+    // 1.1秒周期。半分以上は点灯させたままにして、消えるところだけ滑らかに落とす
+    this.caretPhase = (this.caretPhase + deltaTime / 1.1) % 1;
+    const p = this.caretPhase;
+    this.caretAlpha = p < 0.5 ? 1 : 0.5 + 0.5 * Math.cos((p - 0.5) * Math.PI * 4);
+
+    const frame = Math.floor(this.animationTime * CARET_FPS);
+    if (frame !== this.lastCaretFrame) {
+      this.lastCaretFrame = frame;
+      this.updateCanvas();
     }
   }
 
@@ -301,18 +311,9 @@ export class TextPanel {
   }
 
   dispose() {
-    if (this.cursorBlinkInterval) {
-      clearInterval(this.cursorBlinkInterval);
-    }
+    if (this.surface) this.surface.dispose();
     if (this.panelGroup) {
       this.scene.remove(this.panelGroup);
-    }
-    if (this.panel) {
-      this.panel.geometry.dispose();
-      this.panel.material.dispose();
-    }
-    if (this.texture) {
-      this.texture.dispose();
     }
   }
 }

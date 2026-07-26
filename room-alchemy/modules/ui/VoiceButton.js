@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { GlassSurface, TINT, drawLabel, measureLabel, icons } from './liquidGlass.js';
+
+const W = 0.08;
+const H = 0.04;
 
 /**
  * 音声入力ボタン
@@ -13,39 +17,44 @@ export class VoiceButton {
    */
   constructor(scene, options = {}) {
     this.scene = scene;
-    this.label = options.label ?? '🎤 Talk';
+    this.label = options.label ?? 'Talk';
     this.offset = options.offset ?? new THREE.Vector3(0.13, -0.05, 0);
     this.button = null;
-    this.canvas = null;
-    this.context = null;
-    this.texture = null;
+    this.buttonGroup = null;
+    this.surface = null;
     this.isPressed = false;
+    this.isHovered = false;
     this.isRecording = false;
     this.isBusy = false;      // 文字起こし待ち
-    this.pulse = 0;           // 録音中の点滅用
+    this.pulse = 0;           // 録音中の波形アニメーション用
+    this.lastContentFrame = -1;
     this.onPress = null;
   }
 
   create() {
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = 128;
-    this.canvas.height = 64;
-    this.context = this.canvas.getContext('2d');
+    this.buttonGroup = new THREE.Group();
 
-    this.texture = new THREE.CanvasTexture(this.canvas);
-    this.texture.minFilter = THREE.LinearFilter;
-    this.texture.magFilter = THREE.LinearFilter;
-
-    const buttonGeometry = new THREE.PlaneGeometry(0.08, 0.04);
-    const buttonMaterial = new THREE.MeshBasicMaterial({
-      map: this.texture,
-      transparent: true,
-      side: THREE.DoubleSide
+    this.surface = new GlassSurface({
+      width: W,
+      height: H,
+      tint: TINT.blue,
+      accent: TINT.blue,
+      opacity: 0.38,
+      canvasWidth: 320,
+      canvasHeight: 160,
+      shadow: 0,
+      hoverScale: 1.08,
+      pressScale: 0.9
     });
 
-    this.button = new THREE.Mesh(buttonGeometry, buttonMaterial);
-    this.button.visible = false;
-    this.scene.add(this.button);
+    this.buttonGroup.add(this.surface.object3D);
+    this.buttonGroup.visible = false;
+    this.scene.add(this.buttonGroup);
+
+    this.button = this.surface.hitMesh;
+
+    // Web フォントが後から届いたときにラベルを描き直す
+    this.surface.onRedraw = () => this.updateCanvas();
 
     this.updateCanvas();
 
@@ -53,71 +62,71 @@ export class VoiceButton {
   }
 
   updateCanvas() {
-    if (!this.context) return;
+    if (!this.surface) return;
 
-    const ctx = this.context;
-    const width = this.canvas.width;
-    const height = this.canvas.height;
+    const ctx = this.surface.beginContent();
+    const width = this.surface.canvas.width;
+    const cy = this.surface.canvas.height / 2;
 
-    ctx.clearRect(0, 0, width, height);
+    const fontSize = 40;
+    const iconSize = 15;
+    const gap = 12;
 
-    // 状態で色を変える: 録音中=赤 / 処理中=灰 / 通常=青
-    let bgColor, borderColor, label;
+    // 状態: 録音中=波形 / 処理中=スピナー / 通常=マイク
+    let label = this.label;
+    if (this.isBusy) label = 'Wait';
+    else if (this.isRecording) label = 'REC';
+
+    const textWidth = measureLabel(ctx, label, fontSize, 600);
+    const total = iconSize * 2 + gap + textWidth;
+    const startX = (width - total) / 2;
+    const iconX = startX + iconSize;
+    const textX = iconX + iconSize + gap;
+
     if (this.isBusy) {
-      bgColor = '#7f8c8d';
-      borderColor = '#5d6d6e';
-      label = '...';
+      icons.spinner(ctx, iconX, cy, iconSize, '#ffffff', this.pulse);
     } else if (this.isRecording) {
-      // 録音中は明滅させて「録れている」ことを示す
-      const t = (Math.sin(this.pulse * 6) + 1) / 2;
-      const r = Math.round(200 + 55 * t);
-      bgColor = `rgb(${r}, 60, 60)`;
-      borderColor = '#8b1a1a';
-      label = '● REC';
+      icons.waveform(ctx, iconX, cy, iconSize, '#ffffff', this.pulse);
     } else {
-      bgColor = this.isPressed ? '#2471a3' : '#3498db';
-      borderColor = '#1b4f72';
-      label = this.label;
+      icons.mic(ctx, iconX, cy, iconSize, '#ffffff');
     }
 
-    ctx.fillStyle = bgColor;
-    ctx.beginPath();
-    ctx.roundRect(0, 0, width, height, 8);
-    ctx.fill();
+    drawLabel(ctx, label, textX, cy + 1, {
+      size: fontSize,
+      weight: 600,
+      color: '#ffffff',
+      align: 'left'
+    });
 
-    ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(1, 1, width - 2, height - 2, 7);
-    ctx.stroke();
-
-    ctx.font = 'bold 20px system-ui, sans-serif';
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, width / 2, height / 2);
-
-    if (this.texture) {
-      this.texture.needsUpdate = true;
-    }
+    this.surface.markContentDirty();
   }
 
   /**
-   * 録音中の明滅を進める（毎フレーム呼ぶ）
+   * 録音中の波形・処理中のスピナーを進める（毎フレーム呼ぶ）
    */
   update(deltaTime) {
-    if (!this.isRecording) return;
+    this.surface.update(deltaTime);
+
+    if (!this.isRecording && !this.isBusy) return;
     this.pulse += deltaTime;
-    this.updateCanvas();
+
+    // 描き直しは20fps程度で足りる
+    const frame = Math.floor(this.pulse * 20);
+    if (frame !== this.lastContentFrame) {
+      this.lastContentFrame = frame;
+      this.updateCanvas();
+    }
+  }
+
+  setHovered(hovered) {
+    if (this.isHovered === hovered) return;
+    this.isHovered = hovered;
+    this.surface.setHovered(hovered);
   }
 
   press() {
     this.isPressed = true;
-    this.updateCanvas();
-
-    if (this.button) {
-      this.button.scale.set(0.9, 0.9, 1);
-    }
+    this.surface.setPressed(true);
 
     // 接続に時間がかかるので、押下アニメーションの完了を待たずに走らせる
     if (this.onPress) {
@@ -126,51 +135,64 @@ export class VoiceButton {
 
     setTimeout(() => {
       this.isPressed = false;
-      this.updateCanvas();
-      if (this.button) {
-        this.button.scale.set(1, 1, 1);
-      }
-    }, 200);
+      this.surface.setPressed(false);
+    }, 160);
   }
 
   setRecording(recording) {
     this.isRecording = recording;
     this.pulse = 0;
+    this.lastContentFrame = -1;
+    // 録音中は赤ガラス + 明滅するシーンで「録れている」ことを示す
+    this.surface.setTint(recording ? TINT.red : TINT.blue);
+    this.surface.setAccent(recording ? TINT.red : TINT.blue);
+    this.surface.setSheen(recording ? 0.9 : 0);
+    this.surface.setFocus(recording ? 0.7 : 0);
     this.updateCanvas();
   }
 
   setBusy(busy) {
     this.isBusy = busy;
+    this.lastContentFrame = -1;
+    if (busy) {
+      this.surface.setTint(TINT.slate);
+      this.surface.setAccent(TINT.gray);
+      this.surface.setSheen(0.6);
+    } else if (!this.isRecording) {
+      this.surface.setTint(TINT.blue);
+      this.surface.setAccent(TINT.blue);
+      this.surface.setSheen(0);
+    }
     this.updateCanvas();
   }
 
   /**
-   * テキストパネルの右下に配置
+   * テキストパネルの相対位置に配置
    */
   updatePosition(textPanel) {
-    if (!this.button || !textPanel) return;
+    if (!this.buttonGroup || !textPanel) return;
 
     const offset = this.offset.clone();
     offset.applyQuaternion(textPanel.quaternion);
 
-    this.button.position.copy(textPanel.position).add(offset);
-    this.button.quaternion.copy(textPanel.quaternion);
+    this.buttonGroup.position.copy(textPanel.position).add(offset);
+    this.buttonGroup.quaternion.copy(textPanel.quaternion);
   }
 
   show() {
-    if (this.button) {
-      this.button.visible = true;
+    if (this.buttonGroup) {
+      this.buttonGroup.visible = true;
     }
   }
 
   hide() {
-    if (this.button) {
-      this.button.visible = false;
+    if (this.buttonGroup) {
+      this.buttonGroup.visible = false;
     }
   }
 
   isVisible() {
-    return this.button && this.button.visible;
+    return this.buttonGroup && this.buttonGroup.visible;
   }
 
   getButton() {
@@ -182,13 +204,7 @@ export class VoiceButton {
   }
 
   dispose() {
-    if (this.button) {
-      this.scene.remove(this.button);
-      this.button.geometry.dispose();
-      this.button.material.dispose();
-    }
-    if (this.texture) {
-      this.texture.dispose();
-    }
+    if (this.surface) this.surface.dispose();
+    if (this.buttonGroup) this.scene.remove(this.buttonGroup);
   }
 }

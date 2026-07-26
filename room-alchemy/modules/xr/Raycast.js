@@ -31,18 +31,26 @@ export function raycastModules(inputSource, frame, referenceSpace, moduleManager
   const raycaster = new THREE.Raycaster(rayOrigin, rayDirection, 0, 10);
   raycaster.camera = sceneCamera;
 
-  // 全モジュールをチェック
+  // 全モジュールをチェックし、一番手前のものを返す。
+  // 最初にヒットしたもので打ち切ると Map の登録順で決まってしまい、
+  // 奥にある大きなモジュールが手前の小さなモジュールを奪ってしまう
+  let nearest = null;
+
   for (const module of moduleManager.modules.values()) {
     const intersects = raycaster.intersectObject(module.group, true);
-    if (intersects.length > 0) {
-      return {
+    if (intersects.length === 0) continue;
+
+    const hit = intersects[0];
+    if (!nearest || hit.distance < nearest.distance) {
+      nearest = {
         module: module,
-        distance: intersects[0].distance,
-        point: intersects[0].point
+        distance: hit.distance,
+        point: hit.point
       };
     }
   }
-  return null;
+
+  return nearest;
 }
 
 // レーザーでテキストパネルにヒットしているかチェック

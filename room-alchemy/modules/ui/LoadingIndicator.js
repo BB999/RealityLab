@@ -1,7 +1,34 @@
 import * as THREE from 'three';
+import { GlassSurface, TINT, drawLabel, measureLabel, icons } from './liquidGlass.js';
+
+const CANVAS_HEIGHT = 96;
+const MESH_HEIGHT = 0.042;
+const FONT_SIZE = 34;
+const ICON_SIZE = 15;
+// ピルの幅はラベルを実測して決めるので、フォントが差し替わったときのために余白を多めに取る
+const PAD = 32;
+const GAP = 16;
+const REDRAW_FPS = 20;
+// テキストパネルから1枚目までの距離。Talk / Clear の行を避けるのに必要な分
+const STACK_TOP = 0.1;
+// 2枚目以降の間隔。ピルの高さ + わずかな隙間にして、すぐ下に積む
+const STACK_GAP = MESH_HEIGHT + 0.008;
+
+const THEME = {
+  cyan: TINT.blue,
+  orange: TINT.orange,
+  green: TINT.green
+};
+
+const THEME_CSS = {
+  cyan: '#0a84ff',
+  orange: '#ff9f0a',
+  green: '#30d158'
+};
 
 /**
- * 複数同時対応のかっこいいローディングインジケーター
+ * 複数同時対応のローディングインジケーター
+ * テキストパネルの下に、Liquid Glass のピル型で積み重なる
  */
 export class LoadingIndicator {
   constructor(scene) {
@@ -18,7 +45,7 @@ export class LoadingIndicator {
    * 新しいローディングインジケーターを表示
    * @param {THREE.Object3D} textPanel - テキストパネル
    * @param {string} label - 表示するラベル（オプション）
-   * @param {string} colorTheme - 色テーマ 'cyan' または 'orange'（オプション）
+   * @param {string} colorTheme - 色テーマ 'cyan' / 'orange' / 'green'（オプション）
    * @returns {number} インジケーターID
    */
   show(textPanel, label = 'Generating', colorTheme = 'cyan') {
@@ -26,11 +53,11 @@ export class LoadingIndicator {
     const indicator = this._createIndicator(label, colorTheme);
 
     // 既存のインジケーター数に応じて位置をずらす
-    const offset = this.indicators.size * 0.12;
+    const offset = this.indicators.size * STACK_GAP;
 
     if (textPanel) {
       indicator.group.position.copy(textPanel.position);
-      indicator.group.position.y -= 0.1 + offset;
+      indicator.group.position.y -= STACK_TOP + offset;
       indicator.group.quaternion.copy(textPanel.quaternion);
     }
 
@@ -47,154 +74,72 @@ export class LoadingIndicator {
   _createIndicator(label, colorTheme = 'cyan') {
     const group = new THREE.Group();
 
-    // 色テーマの設定
-    let colors;
-    if (colorTheme === 'orange') {
-      colors = {
-        border: '#ffcc00',
-        text: '#ffcc00',
-        spinner: 0xffcc00
-      };
-    } else if (colorTheme === 'green') {
-      colors = {
-        border: '#4CAF50',
-        text: '#4CAF50',
-        spinner: 0x4CAF50
-      };
-    } else {
-      // デフォルト: cyan
-      colors = {
-        border: '#00ffff',
-        text: '#00ffff',
-        spinner: 0x00ffff
-      };
-    }
+    const accent = THEME[colorTheme] ?? TINT.blue;
+    const accentCss = THEME_CSS[colorTheme] ?? THEME_CSS.cyan;
 
-    // テキストの幅を計算
-    const measureCanvas = document.createElement('canvas');
-    const measureCtx = measureCanvas.getContext('2d');
-    measureCtx.font = 'bold 18px "SF Pro", "Segoe UI", system-ui, sans-serif';
-    const textWidth = measureCtx.measureText(label + '...').width;
+    // ラベルの幅に合わせてピルの長さを決める
+    const measureCtx = document.createElement('canvas').getContext('2d');
+    const textWidth = measureLabel(measureCtx, `${label}...`, FONT_SIZE, 600);
+    const canvasWidth = Math.ceil(PAD * 2 + ICON_SIZE * 2 + GAP + textWidth);
+    const meshWidth = MESH_HEIGHT * (canvasWidth / CANVAS_HEIGHT);
 
-    // キャンバスサイズをテキストに合わせる（スピナー分 + パディング）
-    const spinnerSpace = 40;  // スピナー用スペース
-    const padding = 30;       // 左右パディング
-    const canvasWidth = Math.max(150, spinnerSpace + textWidth + padding);
-    const canvasHeight = 48;
-
-    // 3D空間でのサイズ（キャンバスサイズに比例）
-    const meshWidth = canvasWidth / 1000;  // 0.15 ~ 0.3くらい
-    const meshHeight = canvasHeight / 1000;
-
-    // 背景パネル（半透明の暗い背景）
-    const bgCanvas = document.createElement('canvas');
-    bgCanvas.width = canvasWidth;
-    bgCanvas.height = canvasHeight;
-    const bgCtx = bgCanvas.getContext('2d');
-
-    // 背景を描画
-    bgCtx.fillStyle = 'rgba(20, 20, 30, 0.9)';
-    bgCtx.beginPath();
-    bgCtx.roundRect(0, 0, canvasWidth, canvasHeight, 12);
-    bgCtx.fill();
-
-    // 枠線
-    bgCtx.strokeStyle = colors.border;
-    bgCtx.lineWidth = 2;
-    bgCtx.beginPath();
-    bgCtx.roundRect(2, 2, canvasWidth - 4, canvasHeight - 4, 10);
-    bgCtx.stroke();
-
-    const bgTexture = new THREE.CanvasTexture(bgCanvas);
-    const bgMaterial = new THREE.MeshBasicMaterial({
-      map: bgTexture,
-      transparent: true,
-      side: THREE.DoubleSide
-    });
-    const bgGeometry = new THREE.PlaneGeometry(meshWidth, meshHeight);
-    const bgMesh = new THREE.Mesh(bgGeometry, bgMaterial);
-    group.add(bgMesh);
-
-    // テキストキャンバス
-    const textCanvas = document.createElement('canvas');
-    textCanvas.width = canvasWidth;
-    textCanvas.height = canvasHeight;
-    const textCtx = textCanvas.getContext('2d');
-
-    const textTexture = new THREE.CanvasTexture(textCanvas);
-    // depthTest は切らない。切ると他のオブジェクトを貫通して常に手前に出てしまう。
-    // 背景との前後関係は下の position.z のオフセットだけで足りる
-    const textMaterial = new THREE.MeshBasicMaterial({
-      map: textTexture,
-      transparent: true,
-      side: THREE.DoubleSide
-    });
-    const textGeometry = new THREE.PlaneGeometry(meshWidth, meshHeight);
-    const textMesh = new THREE.Mesh(textGeometry, textMaterial);
-    textMesh.position.z = 0.001;
-    group.add(textMesh);
-
-    // スピナーの位置（左端からのオフセット）
-    const spinnerX = -meshWidth / 2 + 0.02;
-
-    // スピナーリング
-    const ringGeometry = new THREE.RingGeometry(0.012, 0.016, 32, 1, 0, Math.PI * 1.5);
-    const ringMaterial = new THREE.MeshBasicMaterial({
-      color: colors.spinner,
-      transparent: true,
-      opacity: 0.9,
-      side: THREE.DoubleSide
-    });
-    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-    ring.position.set(spinnerX, 0, 0.002);
-    group.add(ring);
-
-    // 内側の光るドット
-    const dotGeometry = new THREE.CircleGeometry(0.006, 16);
-    const dotMaterial = new THREE.MeshBasicMaterial({
-      color: colors.spinner,
-      transparent: true,
-      opacity: 0.6
-    });
-    const dot = new THREE.Mesh(dotGeometry, dotMaterial);
-    dot.position.set(spinnerX, 0, 0.002);
-    group.add(dot);
-
-    return {
-      group,
-      ring,
-      dot,
-      textCanvas,
-      textCtx,
-      textTexture,
+    const surface = new GlassSurface({
+      width: meshWidth,
+      height: MESH_HEIGHT,
+      tint: TINT.graphite,
+      accent,
+      opacity: 0.42,
       canvasWidth,
+      canvasHeight: CANVAS_HEIGHT,
+      shadow: 0,
+      hoverScale: 1,
+      pressScale: 1,
+      stiffness: 260,
+      damping: 24
+    });
+
+    // 湧き出るように出現させる
+    surface.scaleSpring.snap(0.82);
+    surface.scaleSpring.to(1);
+    surface.setSheen(0.75);
+    surface.setFocus(0.45);
+
+    const indicator = {
+      group,
+      surface,
       label,
-      textColor: colors.text,
+      accentCss,
       animationTime: 0,
-      dotCount: 0
+      dotCount: 0,
+      lastFrame: -1
     };
+    // Web フォントが後から届いたときにラベルを描き直す
+    surface.onRedraw = () => this._updateContent(indicator);
+    group.add(surface.object3D);
+
+    return indicator;
   }
 
   /**
-   * テキストを更新
+   * スピナーとラベルを描き直す
    */
-  _updateText(indicator) {
-    const ctx = indicator.textCtx;
-    const canvas = indicator.textCanvas;
+  _updateContent(indicator) {
+    const surface = indicator.surface;
+    const ctx = surface.beginContent();
+    const cy = surface.canvas.height / 2;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const dots = '.'.repeat(indicator.dotCount % 4);
 
-    // ドットアニメーション（...）
-    const dots = '.'.repeat((indicator.dotCount % 4));
+    icons.spinner(ctx, PAD + ICON_SIZE, cy, ICON_SIZE, indicator.accentCss, indicator.animationTime);
 
-    // テキスト描画（スピナーの右側に配置）
-    ctx.font = 'bold 18px "SF Pro", "Segoe UI", system-ui, sans-serif';
-    ctx.fillStyle = indicator.textColor || '#00ffff';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`${indicator.label}${dots}`, 45, canvas.height / 2);
+    drawLabel(ctx, `${indicator.label}${dots}`, PAD + ICON_SIZE * 2 + GAP, cy + 1, {
+      size: FONT_SIZE,
+      weight: 600,
+      color: '#ffffff',
+      align: 'left'
+    });
 
-    indicator.textTexture.needsUpdate = true;
+    surface.markContentDirty();
   }
 
   /**
@@ -207,7 +152,6 @@ export class LoadingIndicator {
       if (indicator) {
         this._disposeIndicator(indicator);
         this.indicators.delete(id);
-        this._repositionIndicators();
       }
     } else {
       // 全て非表示（後方互換性）
@@ -219,7 +163,7 @@ export class LoadingIndicator {
    * 全てのインジケーターを非表示
    */
   hideAll() {
-    for (const [id, indicator] of this.indicators) {
+    for (const indicator of this.indicators.values()) {
       this._disposeIndicator(indicator);
     }
     this.indicators.clear();
@@ -230,25 +174,7 @@ export class LoadingIndicator {
    */
   _disposeIndicator(indicator) {
     this.scene.remove(indicator.group);
-    indicator.group.traverse((child) => {
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) {
-        if (child.material.map) child.material.map.dispose();
-        child.material.dispose();
-      }
-    });
-  }
-
-  /**
-   * インジケーターの位置を再配置
-   */
-  _repositionIndicators() {
-    let index = 0;
-    for (const [id, indicator] of this.indicators) {
-      // Y位置を調整
-      const baseY = indicator.group.position.y + (index * 0.12);
-      index++;
-    }
+    indicator.surface.dispose();
   }
 
   /**
@@ -256,28 +182,23 @@ export class LoadingIndicator {
    */
   update(deltaTime, textPanel) {
     let index = 0;
-    for (const [id, indicator] of this.indicators) {
+    for (const indicator of this.indicators.values()) {
       indicator.animationTime += deltaTime;
+      indicator.surface.update(deltaTime);
 
-      // スピナーリングを回転
-      indicator.ring.rotation.z -= deltaTime * 4;
-
-      // 内側ドットの明滅
-      const dotPulse = Math.sin(indicator.animationTime * 6) * 0.3 + 0.7;
-      indicator.dot.material.opacity = dotPulse;
-
-      // テキストのドットアニメーション（0.4秒ごと）
-      const newDotCount = Math.floor(indicator.animationTime * 2.5);
-      if (newDotCount !== indicator.dotCount) {
-        indicator.dotCount = newDotCount;
-        this._updateText(indicator);
+      // スピナーとドットはキャンバス描画なので、20fps程度で描き直す
+      const frame = Math.floor(indicator.animationTime * REDRAW_FPS);
+      if (frame !== indicator.lastFrame) {
+        indicator.lastFrame = frame;
+        indicator.dotCount = Math.floor(indicator.animationTime * 2.5);
+        this._updateContent(indicator);
       }
 
       // テキストパネルに追従
       if (textPanel) {
-        const offset = index * 0.12;
+        const offset = index * STACK_GAP;
         indicator.group.position.copy(textPanel.position);
-        indicator.group.position.y -= 0.1 + offset;
+        indicator.group.position.y -= STACK_TOP + offset;
         indicator.group.quaternion.copy(textPanel.quaternion);
       }
 

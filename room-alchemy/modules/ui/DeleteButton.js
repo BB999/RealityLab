@@ -1,103 +1,100 @@
 import * as THREE from 'three';
+import { GlassSurface, TINT, drawLabel, measureLabel, icons } from './liquidGlass.js';
+
+const W = 0.08;
+const H = 0.04;
 
 export class DeleteButton {
   constructor(scene) {
     this.scene = scene;
     this.button = null;
-    this.canvas = null;
-    this.context = null;
-    this.texture = null;
+    this.buttonGroup = null;
+    this.surface = null;
     this.isPressed = false;
+    this.isHovered = false;
     this.pressTime = 0;
     this.onPress = null;
   }
 
   create() {
-    // キャンバスを作成
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = 128;
-    this.canvas.height = 64;
-    this.context = this.canvas.getContext('2d');
+    this.buttonGroup = new THREE.Group();
 
-    // テクスチャを作成
-    this.texture = new THREE.CanvasTexture(this.canvas);
-    this.texture.minFilter = THREE.LinearFilter;
-    this.texture.magFilter = THREE.LinearFilter;
-
-    // ボタンのジオメトリとマテリアル
-    const buttonGeometry = new THREE.PlaneGeometry(0.08, 0.04);
-    const buttonMaterial = new THREE.MeshBasicMaterial({
-      map: this.texture,
-      transparent: true,
-      side: THREE.DoubleSide
+    // 破壊的な操作なので Apple の destructive と同じ赤ガラス
+    this.surface = new GlassSurface({
+      width: W,
+      height: H,
+      tint: TINT.red,
+      accent: TINT.red,
+      opacity: 0.38,
+      canvasWidth: 320,
+      canvasHeight: 160,
+      shadow: 0,
+      hoverScale: 1.08,
+      pressScale: 0.9
     });
 
-    this.button = new THREE.Mesh(buttonGeometry, buttonMaterial);
-    this.button.visible = false;
-    this.scene.add(this.button);
+    this.buttonGroup.add(this.surface.object3D);
+    this.buttonGroup.visible = false;
+    this.scene.add(this.buttonGroup);
 
-    // 初期描画
+    this.button = this.surface.hitMesh;
+
+    // Web フォントが後から届いたときにラベルを描き直す
+    this.surface.onRedraw = () => this.updateCanvas();
+
     this.updateCanvas();
 
     return this.button;
   }
 
   updateCanvas() {
-    if (!this.context) return;
+    if (!this.surface) return;
 
-    const ctx = this.context;
-    const width = this.canvas.width;
-    const height = this.canvas.height;
+    const ctx = this.surface.beginContent();
+    const width = this.surface.canvas.width;
+    const cy = this.surface.canvas.height / 2;
 
-    // 背景をクリア
-    ctx.clearRect(0, 0, width, height);
+    const fontSize = 38;
+    const iconSize = 15;
+    const gap = 13;
 
-    // ボタンの色（押されているかどうかで変化）
-    const bgColor = this.isPressed ? '#c0392b' : '#e74c3c';
+    const label = 'Delete';
+    const textWidth = measureLabel(ctx, label, fontSize, 600);
+    const total = iconSize * 2 + gap + textWidth;
+    const startX = (width - total) / 2;
+    const iconX = startX + iconSize;
 
-    // 背景を描画
-    ctx.fillStyle = bgColor;
-    ctx.beginPath();
-    ctx.roundRect(0, 0, width, height, 8);
-    ctx.fill();
+    icons.trash(ctx, iconX, cy, iconSize, '#ffffff');
 
-    // 枠線
-    ctx.strokeStyle = '#922b21';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(1, 1, width - 2, height - 2, 7);
-    ctx.stroke();
+    drawLabel(ctx, label, iconX + iconSize + gap, cy + 1, {
+      size: fontSize,
+      weight: 600,
+      color: '#ffffff',
+      align: 'left'
+    });
 
-    // テキスト
-    ctx.font = 'bold 20px system-ui, sans-serif';
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Delete', width / 2, height / 2);
+    this.surface.markContentDirty();
+  }
 
-    // テクスチャを更新
-    if (this.texture) {
-      this.texture.needsUpdate = true;
-    }
+  setHovered(hovered) {
+    if (this.isHovered === hovered) return;
+    this.isHovered = hovered;
+    this.surface.setHovered(hovered);
+  }
+
+  update(deltaTime) {
+    this.surface.update(deltaTime);
   }
 
   press() {
     this.isPressed = true;
     this.pressTime = Date.now();
-    this.updateCanvas();
-
-    // ボタンを少し縮小
-    if (this.button) {
-      this.button.scale.set(0.9, 0.9, 1);
-    }
+    this.surface.setPressed(true);
 
     // 200ms後に元に戻す
     setTimeout(() => {
       this.isPressed = false;
-      this.updateCanvas();
-      if (this.button) {
-        this.button.scale.set(1, 1, 1);
-      }
+      this.surface.setPressed(false);
       // コールバック実行
       if (this.onPress) {
         this.onPress();
@@ -106,30 +103,30 @@ export class DeleteButton {
   }
 
   updatePosition(generateButton) {
-    if (!this.button || !generateButton) return;
+    if (!this.buttonGroup || !generateButton) return;
 
     // Generateボタンの下に配置
     const offset = new THREE.Vector3(0, -0.06, 0);
     offset.applyQuaternion(generateButton.quaternion);
 
-    this.button.position.copy(generateButton.position).add(offset);
-    this.button.quaternion.copy(generateButton.quaternion);
+    this.buttonGroup.position.copy(generateButton.position).add(offset);
+    this.buttonGroup.quaternion.copy(generateButton.quaternion);
   }
 
   show() {
-    if (this.button) {
-      this.button.visible = true;
+    if (this.buttonGroup) {
+      this.buttonGroup.visible = true;
     }
   }
 
   hide() {
-    if (this.button) {
-      this.button.visible = false;
+    if (this.buttonGroup) {
+      this.buttonGroup.visible = false;
     }
   }
 
   isVisible() {
-    return this.button && this.button.visible;
+    return this.buttonGroup && this.buttonGroup.visible;
   }
 
   getButton() {
@@ -141,13 +138,7 @@ export class DeleteButton {
   }
 
   dispose() {
-    if (this.button) {
-      this.scene.remove(this.button);
-      this.button.geometry.dispose();
-      this.button.material.dispose();
-    }
-    if (this.texture) {
-      this.texture.dispose();
-    }
+    if (this.surface) this.surface.dispose();
+    if (this.buttonGroup) this.scene.remove(this.buttonGroup);
   }
 }
