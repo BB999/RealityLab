@@ -14,16 +14,52 @@ const app = express();
 const PORT = process.env.PORT || 5173;
 const FAL_API_KEY = process.env.VITE_FAL_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+// VITE_ プレフィックスはビルド時にクライアントへ埋め込まれてしまうため、
+// 新しい名前を優先する。移行中は従来の名前も読めるようにしておく
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;
 
 // fal.ai client設定
 fal.config({
   credentials: FAL_API_KEY
 });
 
-app.use(express.json());
+// Three.js のコード再生成では既存コードを丸ごと送るため、既定の100kbでは足りない
+app.use(express.json({ limit: '10mb' }));
 
 // Elapsed seconds since a Date.now() mark, for latency logging
 const since = (startedAt) => ((Date.now() - startedAt) / 1000).toFixed(1);
+
+// Claude API のプロキシ
+// クライアントから直接叩くと VITE_ 経由でAPIキーがバンドルに埋め込まれ、
+// dist を公開した時点で鍵が露出する。サーバーだけが鍵を持つようにする
+app.post('/api/claude', async (req, res) => {
+  try {
+    if (!ANTHROPIC_API_KEY) {
+      return res.status(500).json({ error: 'ANTHROPIC_API_KEY が設定されていません' });
+    }
+
+    const startedAt = Date.now();
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify(req.body)
+    });
+
+    // 呼び出し側がモデルごとの所要時間を追えるようにする
+    console.log(`[time] claude(${req.body?.model ?? 'unknown'}): ${since(startedAt)}秒`);
+
+    // 成否の判定は呼び出し側が行うので、ステータスと本文をそのまま返す
+    const body = await response.text();
+    res.status(response.status).type('application/json').send(body);
+  } catch (error) {
+    console.error('Claude proxy error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Realtime API 用の使い捨てトークンを発行する
 // OPENAI_API_KEY をクライアントに渡さないための踏み台。有効期限は短い

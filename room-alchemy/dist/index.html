@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Room Alchemy</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 100%;
+      height: 100vh;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0a0a0a;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+    }
+
+    #landing-scene {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 500;
+    }
+
+    #start-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      pointer-events: none;
+    }
+
+    #title {
+      font-size: 48px;
+      font-weight: 300;
+      color: #00ffff;
+      text-transform: uppercase;
+      letter-spacing: 12px;
+      margin-bottom: 20px;
+      text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+      animation: titleGlow 2s ease-in-out infinite alternate;
+    }
+
+    @keyframes titleGlow {
+      from {
+        text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+      }
+      to {
+        text-shadow: 0 0 40px rgba(0, 255, 255, 0.8), 0 0 60px rgba(0, 255, 255, 0.4);
+      }
+    }
+
+    #subtitle {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.5);
+      letter-spacing: 4px;
+      margin-bottom: 60px;
+    }
+
+    #start-button {
+      padding: 16px 48px;
+      font-size: 16px;
+      background: transparent;
+      color: #00ffff;
+      border: 1px solid #00ffff;
+      cursor: pointer;
+      font-weight: 400;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      transition: all 0.3s;
+      pointer-events: auto;
+    }
+
+    #start-button:hover {
+      background: rgba(0, 255, 255, 0.1);
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+      transform: scale(1.02);
+    }
+
+    #start-button:active {
+      transform: scale(0.98);
+    }
+
+    #depth-toggle {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      padding: 10px 20px;
+      font-size: 16px;
+      background: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      transition: all 0.3s;
+      z-index: 100;
+      display: none;
+    }
+
+    #depth-toggle:hover {
+      background: #1976D2;
+      transform: scale(1.05);
+    }
+
+  </style>
+  <script type="module" crossorigin src="/assets/index-CxsbqdN0.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- ランディングシーン -->
+  <canvas id="landing-scene"></canvas>
+
+  <!-- スタートオーバーレイ -->
+  <div id="start-overlay">
+    <h1 id="title">Room Alchemy</h1>
+    <p id="subtitle">Transform Your Reality</p>
+    <button id="start-button">Enter Experience</button>
+  </div>
+
+  <button id="depth-toggle">深度表示 OFF</button>
+
+  <!-- 隠し入力欄（キーボード呼び出し用） -->
+  <input type="text" id="hidden-input" style="position:fixed; top:-100px; left:0; opacity:0;" autocomplete="off">
+
+  <!-- ランディングシーンスクリプト -->
+
+</body>
+</html>

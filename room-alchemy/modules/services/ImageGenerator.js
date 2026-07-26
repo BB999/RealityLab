@@ -2,8 +2,7 @@ import * as THREE from 'three';
 import { extractText } from '../claudeResponse.js';
 
 export class ImageGenerator {
-  constructor(anthropicApiKey) {
-    this.anthropicApiKey = anthropicApiKey;
+  constructor() {
     this.isGenerating = false;
   }
 
@@ -110,14 +109,9 @@ export class ImageGenerator {
   // 元のプロンプトと変更指示を組み合わせて再生成用プロンプトを作成
   async createRegeneratePrompt(originalPrompt, modificationRequest) {
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('/api/claude', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.anthropicApiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-opus-5',
           max_tokens: 4000,

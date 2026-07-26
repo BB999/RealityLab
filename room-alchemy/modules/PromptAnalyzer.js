@@ -40,10 +40,9 @@ const MODULE_SCHEMA = {
 /**
  * プロンプトを解析してモジュール定義を生成
  * @param {string} prompt - ユーザー入力
- * @param {string} apiKey - Anthropic APIキー
  * @returns {Promise<Object>} モジュール定義
  */
-export async function analyzePrompt(prompt, apiKey) {
+export async function analyzePrompt(prompt) {
   const systemPrompt = `You are an AI that analyzes user prompts and determines what to create in a WebXR environment.
 
 Available types:
@@ -83,14 +82,9 @@ Rules:
 
   try {
     const startedAt = Date.now();
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('/api/claude', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         // 分類のみのタスクなので Haiku 4.5。生成ボタンを押してから
         // 実際の生成が始まるまでの待ち時間を短くするのが狙い
@@ -155,10 +149,9 @@ function createFallback(prompt) {
 /**
  * Three.jsコードを生成
  * @param {string} description - 3Dオブジェクトの説明
- * @param {string} apiKey - Anthropic APIキー
  * @returns {Promise<string>} Three.jsコード
  */
-export async function generateThreejsCode(description, apiKey) {
+export async function generateThreejsCode(description) {
   const systemPrompt = `You are a Three.js code generator for WebXR. Output ONLY executable JavaScript code.
 
 RULES:
@@ -171,14 +164,9 @@ RULES:
 
   try {
     const startedAt = Date.now();
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('/api/claude', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-opus-5',
         max_tokens: 16000,
@@ -243,10 +231,9 @@ animationCallbacks.push((time, deltaTime) => {
  * @param {string} newPrompt - 新しいプロンプト（変更点の指示）
  * @param {string} existingCode - 既存のThree.jsコード
  * @param {string} originalPrompt - 元のプロンプト
- * @param {string} apiKey - Anthropic APIキー
  * @returns {Promise<string>} 新しいThree.jsコード
  */
-export async function regenerateThreejsCode(newPrompt, existingCode, originalPrompt, apiKey) {
+export async function regenerateThreejsCode(newPrompt, existingCode, originalPrompt) {
   const systemPrompt = `You are a Three.js code generator for WebXR. Modify existing code based on user instructions. Output ONLY executable JavaScript code.
 
 RULES:
@@ -259,14 +246,9 @@ RULES:
 
   try {
     const startedAt = Date.now();
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('/api/claude', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-opus-5',
         max_tokens: 16000,

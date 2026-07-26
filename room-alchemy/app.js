@@ -74,9 +74,8 @@ let generatedImagePanel = null;
 // インタラクション状態
 let interactionState = null;
 
-// APIキー（環境変数から読み込み）
-// fal のキーはサーバー(server.js)側だけが持つ。クライアントには渡さない
-const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
+// APIキーはすべてサーバー(server.js)側だけが持つ。
+// import.meta.env 経由で受け取るとビルド時にバンドルへ埋め込まれ、dist を公開すると露出する
 
 // 前回のタイムスタンプ
 let lastTimestamp = 0;
@@ -162,9 +161,9 @@ function init() {
   clearButton.setOnPress(() => handleClearText());
 
   // サービスを初期化
-  imageGenerator = new ImageGenerator(ANTHROPIC_API_KEY);
+  imageGenerator = new ImageGenerator();
   hyper3DService = new Hyper3DService();
-  mangaGenerator = new MangaGenerator(ANTHROPIC_API_KEY, imageGenerator);
+  mangaGenerator = new MangaGenerator(imageGenerator);
   voiceInput = new RealtimeVoiceInput();
 
   // 深度可視化を初期化
@@ -308,7 +307,7 @@ async function handleNewGeneration(promptText) {
     }
 
     // Claude APIでプロンプトを解析
-    const moduleDef = await analyzePrompt(promptText, ANTHROPIC_API_KEY);
+    const moduleDef = await analyzePrompt(promptText);
     console.log('モジュール定義:', moduleDef);
 
     // スポーン位置を決定（常にテキストボックスの上に固定）
@@ -360,7 +359,7 @@ async function handleNewGeneration(promptText) {
       loadingId = loadingIndicator.show(textPanel.getPanel(), 'Generate App', 'green');
       generateButton.setLoading(false); // ボタンのローディング状態を解除
       updateInfo('3Dオブジェクト生成中... 🎨');
-      const code = await generateThreejsCode(promptText, ANTHROPIC_API_KEY);
+      const code = await generateThreejsCode(promptText);
 
       // 生成完了後にテキストパネルの現在位置を取得
       const currentSpawnPosition = new THREE.Vector3();
@@ -528,7 +527,7 @@ async function handleRegenerate(promptText) {
       generateButton.setLoading(false); // ボタンのローディング状態を解除
       deleteButton.show();
       // Three.jsモジュールの再生成
-      const newCode = await regenerateThreejsCode(promptText, code, prompt, ANTHROPIC_API_KEY);
+      const newCode = await regenerateThreejsCode(promptText, code, prompt);
 
       // 同じ位置・サイズで置き換え
       const newId = moduleManager.replaceModule(moduleId, 'threejs', {

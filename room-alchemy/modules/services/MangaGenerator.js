@@ -5,8 +5,7 @@ import { extractText } from '../claudeResponse.js';
  * ImageGeneratorを使用して漫画ページを生成
  */
 export class MangaGenerator {
-  constructor(anthropicApiKey, imageGenerator) {
-    this.anthropicApiKey = anthropicApiKey;
+  constructor(imageGenerator) {
     this.imageGenerator = imageGenerator;
     this.isGenerating = false;
 
@@ -67,14 +66,9 @@ ${pageNumber === 6 ? '- Provides resolution or cliffhanger ending' : ''}
 Output ONLY the English prompt for image generation, nothing else.`;
       }
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('/api/claude', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.anthropicApiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-opus-5',
           max_tokens: 4000,
