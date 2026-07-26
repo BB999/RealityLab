@@ -2,50 +2,9 @@ import * as THREE from 'three';
 import { extractText } from '../claudeResponse.js';
 
 export class ImageGenerator {
-  constructor(falApiKey, anthropicApiKey) {
-    this.falApiKey = falApiKey;
+  constructor(anthropicApiKey) {
     this.anthropicApiKey = anthropicApiKey;
     this.isGenerating = false;
-  }
-
-  // Claude APIでプロンプトを強化
-  async enhancePrompt(userPrompt) {
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.anthropicApiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify({
-          model: 'claude-opus-5',
-          max_tokens: 4000,
-          messages: [{
-            role: 'user',
-            content: `You are an expert at creating prompts for image generation AI. Convert the following user input into a detailed, high-quality English prompt for Nano Banana Pro (a text-to-image AI). Keep it concise but descriptive, focusing on visual details, style, lighting, and composition. Output ONLY the prompt, nothing else.
-
-User input: ${userPrompt}`
-          }]
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Claude API Error:', errorText);
-        return userPrompt; // エラー時は元のプロンプトを使用
-      }
-
-      const data = await response.json();
-      const enhancedPrompt = extractText(data);
-      console.log('Enhanced prompt:', enhancedPrompt);
-      return enhancedPrompt;
-
-    } catch (error) {
-      console.error('プロンプト強化エラー:', error);
-      return userPrompt; // エラー時は元のプロンプトを使用
-    }
   }
 
   // サーバー経由でfal.ai APIで画像を生成（URLを返す）

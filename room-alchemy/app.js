@@ -22,12 +22,13 @@ import { DeleteButton } from './modules/ui/DeleteButton.js';
 import { ConnectionLine } from './modules/ui/ConnectionLine.js';
 import { PinButton } from './modules/ui/PinButton.js';
 import { VoiceButton } from './modules/ui/VoiceButton.js';
+import { ClearButton } from './modules/ui/ClearButton.js';
 
 // サービス
 import { ImageGenerator } from './modules/services/ImageGenerator.js';
 import { Hyper3DService } from './modules/services/Hyper3DService.js';
 import { MangaGenerator } from './modules/services/MangaGenerator.js';
-import { VoiceInput } from './modules/services/VoiceInput.js';
+import { RealtimeVoiceInput } from './modules/services/RealtimeVoiceInput.js';
 
 // XR関連
 import { DepthVisualization } from './modules/xr/DepthVisualization.js';
@@ -53,6 +54,7 @@ let deleteButton = null;
 let connectionLine = null;
 let pinButton = null;
 let voiceButton = null;
+let clearButton = null;
 
 // 画像生成サービス
 let imageGenerator = null;
@@ -73,7 +75,7 @@ let generatedImagePanel = null;
 let interactionState = null;
 
 // APIキー（環境変数から読み込み）
-const FAL_API_KEY = import.meta.env.VITE_FAL_API_KEY;
+// fal のキーはサーバー(server.js)側だけが持つ。クライアントには渡さない
 const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
 
 // 前回のタイムスタンプ
@@ -145,15 +147,25 @@ function init() {
   pinButton.setOnPress((isPinned) => handlePinToggle(isPinned));
 
   // 音声入力ボタンを初期化
-  voiceButton = new VoiceButton(scene);
+  // テキストパネルの左下に配置
+  voiceButton = new VoiceButton(scene, {
+    offset: new THREE.Vector3(-0.13, -0.05, 0)
+  });
   voiceButton.create();
   voiceButton.setOnPress(() => handleVoiceToggle());
 
+  // テキストパネルの右下に配置（Talk と左右対称）
+  clearButton = new ClearButton(scene, {
+    offset: new THREE.Vector3(0.13, -0.05, 0)
+  });
+  clearButton.create();
+  clearButton.setOnPress(() => handleClearText());
+
   // サービスを初期化
-  imageGenerator = new ImageGenerator(FAL_API_KEY, ANTHROPIC_API_KEY);
+  imageGenerator = new ImageGenerator(ANTHROPIC_API_KEY);
   hyper3DService = new Hyper3DService();
   mangaGenerator = new MangaGenerator(ANTHROPIC_API_KEY, imageGenerator);
-  voiceInput = new VoiceInput();
+  voiceInput = new RealtimeVoiceInput();
 
   // 深度可視化を初期化
   depthVisualization = new DepthVisualization(scene);
@@ -183,6 +195,11 @@ function startTextInput() {
   pinButton.updatePosition(textPanel.getPanel());
   voiceButton.show();
   voiceButton.updatePosition(textPanel.getPanel());
+  clearButton.show();
+  clearButton.updatePosition(textPanel.getPanel());
+
+  // 何を喋るか考えている間に接続を済ませておく（Talk 押下時の待ちを消す）
+  voiceInput.prepare();
 }
 
 // テキスト入力を終了
@@ -191,10 +208,17 @@ function stopTextInput() {
   generateButton.hide();
   pinButton.hide();
   voiceButton.hide();
+  clearButton.hide();
   if (voiceInput.isRecording()) {
     voiceInput.cancel();
     voiceButton.setRecording(false);
   }
+}
+
+// 入力中のプロンプトを消す
+function handleClearText() {
+  textPanel.clearPromptText();
+  updateInfo('入力をクリアしました');
 }
 
 // 音声入力のトグル（録音開始 / 停止して文字起こし）
@@ -219,6 +243,8 @@ async function handleVoiceToggle() {
       updateInfo('文字起こしエラー: ' + error.message);
     } finally {
       voiceButton.setBusy(false);
+      // 続けて喋る場合に備えて繋ぎ直しておく
+      if (voiceButton.isVisible()) voiceInput.prepare();
     }
   } else {
     // 録音開始
@@ -1155,6 +1181,7 @@ function animate(timestamp, frame) {
       generateButton.updatePosition(textPanel.getPanel());
       pinButton.updatePosition(textPanel.getPanel());
       voiceButton.updatePosition(textPanel.getPanel());
+      clearButton.updatePosition(textPanel.getPanel());
     }
 
     // レーザーの表示状態を更新
@@ -1447,6 +1474,15 @@ async function startXR() {
         const voiceIntersects = raycaster.intersectObject(voiceButton.getButton(), true);
         if (voiceIntersects.length > 0) {
           voiceButton.press();
+          return;
+        }
+      }
+
+      // クリアボタンをタップ
+      if (clearButton.isVisible()) {
+        const clearIntersects = raycaster.intersectObject(clearButton.getButton(), true);
+        if (clearIntersects.length > 0) {
+          clearButton.press();
           return;
         }
       }

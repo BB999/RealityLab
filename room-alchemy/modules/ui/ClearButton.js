@@ -1,28 +1,23 @@
 import * as THREE from 'three';
 
 /**
- * 音声入力ボタン
- * 押すと録音開始、もう一度押すと停止して文字起こし
+ * テキストクリアボタン
+ * 入力中のプロンプトを消す
  */
-export class VoiceButton {
+export class ClearButton {
   /**
    * @param {THREE.Scene} scene
-   * @param {{label?: string, offset?: THREE.Vector3}} options
-   *   label  - 通常時の表示（録音中/処理中の表示は共通）
+   * @param {{offset?: THREE.Vector3}} options
    *   offset - テキストパネルからの相対位置
    */
   constructor(scene, options = {}) {
     this.scene = scene;
-    this.label = options.label ?? '🎤 Talk';
     this.offset = options.offset ?? new THREE.Vector3(0.13, -0.05, 0);
     this.button = null;
     this.canvas = null;
     this.context = null;
     this.texture = null;
     this.isPressed = false;
-    this.isRecording = false;
-    this.isBusy = false;      // 文字起こし待ち
-    this.pulse = 0;           // 録音中の点滅用
     this.onPress = null;
   }
 
@@ -61,31 +56,15 @@ export class VoiceButton {
 
     ctx.clearRect(0, 0, width, height);
 
-    // 状態で色を変える: 録音中=赤 / 処理中=灰 / 通常=青
-    let bgColor, borderColor, label;
-    if (this.isBusy) {
-      bgColor = '#7f8c8d';
-      borderColor = '#5d6d6e';
-      label = '...';
-    } else if (this.isRecording) {
-      // 録音中は明滅させて「録れている」ことを示す
-      const t = (Math.sin(this.pulse * 6) + 1) / 2;
-      const r = Math.round(200 + 55 * t);
-      bgColor = `rgb(${r}, 60, 60)`;
-      borderColor = '#8b1a1a';
-      label = '● REC';
-    } else {
-      bgColor = this.isPressed ? '#2471a3' : '#3498db';
-      borderColor = '#1b4f72';
-      label = this.label;
-    }
+    // 破壊的な操作なので、生成(緑)や音声(青)とは違う警告色にする
+    const bgColor = this.isPressed ? '#b9770e' : '#e67e22';
 
     ctx.fillStyle = bgColor;
     ctx.beginPath();
     ctx.roundRect(0, 0, width, height, 8);
     ctx.fill();
 
-    ctx.strokeStyle = borderColor;
+    ctx.strokeStyle = '#7e5109';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.roundRect(1, 1, width - 2, height - 2, 7);
@@ -95,20 +74,11 @@ export class VoiceButton {
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, width / 2, height / 2);
+    ctx.fillText('✕ Clear', width / 2, height / 2);
 
     if (this.texture) {
       this.texture.needsUpdate = true;
     }
-  }
-
-  /**
-   * 録音中の明滅を進める（毎フレーム呼ぶ）
-   */
-  update(deltaTime) {
-    if (!this.isRecording) return;
-    this.pulse += deltaTime;
-    this.updateCanvas();
   }
 
   press() {
@@ -119,7 +89,6 @@ export class VoiceButton {
       this.button.scale.set(0.9, 0.9, 1);
     }
 
-    // 接続に時間がかかるので、押下アニメーションの完了を待たずに走らせる
     if (this.onPress) {
       this.onPress();
     }
@@ -133,19 +102,8 @@ export class VoiceButton {
     }, 200);
   }
 
-  setRecording(recording) {
-    this.isRecording = recording;
-    this.pulse = 0;
-    this.updateCanvas();
-  }
-
-  setBusy(busy) {
-    this.isBusy = busy;
-    this.updateCanvas();
-  }
-
   /**
-   * テキストパネルの右下に配置
+   * テキストパネルからの相対位置に配置
    */
   updatePosition(textPanel) {
     if (!this.button || !textPanel) return;

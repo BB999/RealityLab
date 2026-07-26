@@ -41,8 +41,11 @@ export function createMangaBook(group, params = {}) {
   const pageMeshes = [];
   let frontCover = null;
   let backCover = null;
-  let spine = null;
-  let pageBlock = null;
+
+  // 表紙の奥行き位置。閉じたときは2枚の絵が重なって見えるよう密着させ、
+  // 開いたときはページ(z = ±0.001)より奥へ逃がして絵を隠さないようにする
+  const COVER_Z_CLOSED = 0.0005;
+  const COVER_Z_OPEN = 0.002;
 
   // テクスチャキャッシュ
   const textureLoader = new THREE.TextureLoader();
@@ -96,24 +99,16 @@ export function createMangaBook(group, params = {}) {
   };
   group.add(hitbox);
 
-  // 背表紙を作成（本の背中、縦に立つ部分）
-  function createSpine() {
-    const spineGeometry = new THREE.BoxGeometry(coverThickness, height, spineWidth);
-    spine = new THREE.Mesh(spineGeometry, coverMaterial.clone());
-    spine.position.set(-width / 2, 0, 0); // 左端に配置
-    group.add(spine);
-    meshes.push(spine);
-  }
-
   // 表紙を作成（閉じた状態で手前に見える）
   function createFrontCover() {
-    const coverGeometry = new THREE.BoxGeometry(width, height, coverThickness);
+    // 板ではなく面にする。厚みがあると閉じたときに側面が箱に見えてしまう
+    const coverGeometry = new THREE.PlaneGeometry(width, height);
     frontCover = new THREE.Mesh(coverGeometry, coverMaterial.clone());
 
-    // ピボットを背表紙側（左端）に設定
+    // ピボットを綴じ側（左端）に設定
     const frontCoverPivot = new THREE.Group();
-    frontCoverPivot.position.set(-width / 2, 0, 0); // 背表紙の位置
-    frontCover.position.set(width / 2, 0, spineWidth / 2); // 閉じた状態：手前側
+    frontCoverPivot.position.set(-width / 2, 0, 0);
+    frontCover.position.set(width / 2, 0, COVER_Z_CLOSED);
     frontCoverPivot.add(frontCover);
     frontCoverPivot.userData.isPivot = true;
     frontCoverPivot.userData.type = 'frontCover';
@@ -137,11 +132,11 @@ export function createMangaBook(group, params = {}) {
 
   // 裏表紙を作成（閉じた状態で奥に見える）
   function createBackCover() {
-    const coverGeometry = new THREE.BoxGeometry(width, height, coverThickness);
+    const coverGeometry = new THREE.PlaneGeometry(width, height);
     backCover = new THREE.Mesh(coverGeometry, coverMaterial.clone());
 
-    // 裏表紙は背表紙の反対側に固定
-    backCover.position.set(0, 0, -spineWidth / 2); // 閉じた状態：奥側
+    // 裏表紙は回転しないので、表紙の真裏に密着させる
+    backCover.position.set(0, 0, -COVER_Z_CLOSED);
     group.add(backCover);
     meshes.push(backCover);
 
@@ -157,30 +152,6 @@ export function createMangaBook(group, params = {}) {
         loadedTextures.push(texture);
       });
     }
-  }
-
-  // 閉じているときの中身（ページの束＝小口）
-  // これが無いと表紙と裏表紙の間が空洞になり、本の中が透けて見えてしまう
-  function createPageBlock() {
-    // 表紙の奥面から裏表紙の手前面までを隙間なく埋める厚み
-    const blockThickness = spineWidth - coverThickness;
-
-    const blockGeometry = new THREE.BoxGeometry(
-      width * 0.97,   // 小口が表紙よりわずかに引っ込むようにする
-      height * 0.97,
-      blockThickness
-    );
-    const blockMaterial = new THREE.MeshStandardMaterial({
-      color: 0xf3efe4, // 紙の色
-      roughness: 0.95,
-      metalness: 0
-    });
-
-    pageBlock = new THREE.Mesh(blockGeometry, blockMaterial);
-    // 表紙と裏表紙のちょうど中間。背表紙側に寄せて綴じ側の隙間もなくす
-    pageBlock.position.set(0, 0, 0);
-    group.add(pageBlock);
-    meshes.push(pageBlock);
   }
 
   // ページを作成
@@ -208,10 +179,10 @@ export function createMangaBook(group, params = {}) {
       // ページテクスチャを読み込む
       if (pages[i]) {
         textureLoader.load(pages[i], (texture) => {
-          // currentPageIndex は2ずつ動くため、偶数インデックスは常に左ページになる。
+          // currentPageIndex は2ずつ動くため、奇数インデックスは常に左ページになる。
           // 左ページは updateVisiblePages() で mesh.rotation.y = Math.PI と裏返して
           // 表示するので、そのままだと絵が鏡像になる。UV を反転して打ち消す。
-          if (i % 2 === 0) {
+          if (i % 2 === 1) {
             texture.wrapS = THREE.RepeatWrapping;
             texture.repeat.x = -1;
             texture.offset.x = 1;
@@ -229,16 +200,28 @@ export function createMangaBook(group, params = {}) {
     }
   }
 
+  /**
+   * 表紙の奥行きを開閉に合わせて動かす。
+   * 閉じているときは表紙と裏表紙を密着させて1枚のカードのように見せ、
+   * 開いたときはページ(z = ±0.001)より奥へ逃がして絵を隠さないようにする
+   */
+  function updateStructureLayout() {
+    const z = isOpen ? COVER_Z_OPEN : COVER_Z_CLOSED;
+    if (frontCover) frontCover.position.z = z;
+    if (backCover) backCover.position.z = -z;
+  }
+
   // 本を開く/閉じる
   function toggle() {
     if (isAnimating) return;
 
     isOpen = !isOpen;
-    targetOpenAngle = isOpen ? -Math.PI * 0.8 : 0; // 開いた状態で約144度
+    // 180度まで開く。左ページの右端と右ページの左端がピボット上で一致し、
+    // 2枚の絵が隙間なく繋がる（144度だとV字に開いて間に空間ができる）
+    targetOpenAngle = isOpen ? -Math.PI : 0;
     isAnimating = true;
 
-    // 開いている間は中身のページを見せるので小口は隠す
-    if (pageBlock) pageBlock.visible = !isOpen;
+    updateStructureLayout();
 
     // 開く時はページを表示（アニメーション中に一緒に開く）
     if (isOpen) {
@@ -287,17 +270,18 @@ export function createMangaBook(group, params = {}) {
       pivot.visible = isOpen && isCurrentSpread;
 
       // 左右のページの配置（開いた状態で見開きになるように）
+      // 日本の漫画は右から左に読むので、若い番号のページを右に置く
       if (isCurrentSpread) {
         if (index === currentPageIndex) {
-          // 左ページ（開いた表紙側）- 裏側を表示
-          pivot.rotation.y = currentOpenAngle; // 表紙と同じ角度で開く
-          mesh.rotation.y = Math.PI; // 裏返す
-          mesh.position.z = 0.001;
-        } else {
-          // 右ページ（裏表紙側）
+          // 右ページ（先に読む方）
           pivot.rotation.y = 0;
           mesh.rotation.y = 0;
           mesh.position.z = -0.001;
+        } else {
+          // 左ページ（後に読む方）- 開いた表紙側なので裏返して表示する
+          pivot.rotation.y = currentOpenAngle; // 表紙と同じ角度で開く
+          mesh.rotation.y = Math.PI; // 裏返す
+          mesh.position.z = 0.001;
         }
       }
     });
@@ -336,9 +320,9 @@ export function createMangaBook(group, params = {}) {
         }
       });
 
-      // 左ページも表紙と一緒に開く
+      // 左ページ（右綴じなので currentPageIndex + 1）も表紙と一緒に開く
       pageMeshes.forEach(({ pivot, index }) => {
-        if (index === currentPageIndex && pivot.visible) {
+        if (index === currentPageIndex + 1 && pivot.visible) {
           pivot.rotation.y = currentOpenAngle;
         }
       });
@@ -359,9 +343,13 @@ export function createMangaBook(group, params = {}) {
 
         updateVisiblePages();
       } else {
-        // ページめくりのアニメーション
+        // ページめくりのアニメーション。
+        // 右綴じなので、次へ進むときは左ページ(-π)を右へ倒して 0 に、
+        // 戻るときは右ページ(0)を左へ倒して -π にする
         const eased = easeInOutCubic(pageTurnProgress);
-        const turnAngle = eased * Math.PI * pageTurnDirection;
+        const turnAngle = pageTurnDirection > 0
+          ? -Math.PI * (1 - eased)
+          : -Math.PI * eased;
 
         // めくるページを取得
         const turningPageIndex = pageTurnDirection > 0 ? currentPageIndex + 1 : currentPageIndex;
@@ -395,11 +383,10 @@ export function createMangaBook(group, params = {}) {
   }
 
   // 初期化
-  createSpine();
   createFrontCover();
   createBackCover();
-  createPageBlock();
   createPages();
+  updateStructureLayout();
 
   // インスタンスを返す
   return {

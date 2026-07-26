@@ -122,11 +122,12 @@ export class LoadingIndicator {
     const textCtx = textCanvas.getContext('2d');
 
     const textTexture = new THREE.CanvasTexture(textCanvas);
+    // depthTest は切らない。切ると他のオブジェクトを貫通して常に手前に出てしまう。
+    // 背景との前後関係は下の position.z のオフセットだけで足りる
     const textMaterial = new THREE.MeshBasicMaterial({
       map: textTexture,
       transparent: true,
-      side: THREE.DoubleSide,
-      depthTest: false
+      side: THREE.DoubleSide
     });
     const textGeometry = new THREE.PlaneGeometry(meshWidth, meshHeight);
     const textMesh = new THREE.Mesh(textGeometry, textMaterial);

@@ -1,5 +1,8 @@
 import { extractText } from './claudeResponse.js';
 
+/** Elapsed seconds since a Date.now() mark, for latency logging */
+const since = (startedAt) => ((Date.now() - startedAt) / 1000).toFixed(1);
+
 /**
  * 判定結果のJSONスキーマ（Structured Outputs用）
  * kind を enum で縛ることで、想定外の値が返ることを構造的に防ぐ
@@ -79,6 +82,7 @@ Rules:
 - "label" is a brief description in the user's own language`;
 
   try {
+    const startedAt = Date.now();
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -88,7 +92,9 @@ Rules:
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-opus-5',
+        // 分類のみのタスクなので Haiku 4.5。生成ボタンを押してから
+        // 実際の生成が始まるまでの待ち時間を短くするのが狙い
+        model: 'claude-haiku-4-5',
         max_tokens: 4000,
         output_config: {
           format: {
@@ -103,6 +109,7 @@ Rules:
         system: systemPrompt
       })
     });
+    console.log(`[time] analyzePrompt: ${since(startedAt)}秒`);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -163,6 +170,7 @@ RULES:
 - Objects should fit within 0.5m radius`;
 
   try {
+    const startedAt = Date.now();
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -181,6 +189,7 @@ RULES:
         system: systemPrompt
       })
     });
+    console.log(`[time] generateThreejsCode: ${since(startedAt)}秒`);
 
     if (!response.ok) {
       console.error('Three.js code generation failed');
@@ -249,6 +258,7 @@ RULES:
 - Objects should fit within 0.5m radius`;
 
   try {
+    const startedAt = Date.now();
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -273,6 +283,7 @@ ${existingCode}
         system: systemPrompt
       })
     });
+    console.log(`[time] regenerateThreejsCode: ${since(startedAt)}秒`);
 
     if (!response.ok) {
       console.error('Three.js code regeneration failed');
