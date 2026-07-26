@@ -12,11 +12,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const PORT = process.env.PORT || 5173;
-const FAL_API_KEY = process.env.VITE_FAL_API_KEY;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-// VITE_ プレフィックスはビルド時にクライアントへ埋め込まれてしまうため、
-// 新しい名前を優先する。移行中は従来の名前も読めるようにしておく
+// VITE_ プレフィックスを付けた変数は Vite がビルド時にクライアントへ埋め込むため、
+// サーバー専用のキーには付けない。移行中は従来の名前も読めるようにしておく
+const FAL_API_KEY = process.env.FAL_API_KEY || process.env.VITE_FAL_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // fal.ai client設定
 fal.config({

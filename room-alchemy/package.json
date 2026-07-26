@@ -4,7 +4,7 @@
   "description": "Room Alchemy - MR App",
   "type": "module",
   "scripts": {
-    "dev": "node server.js",
+    "dev": "infisical run --env=dev --silent -- node server.js",
     "dev:vite": "vite",
     "build": "vite build",
     "preview": "vite preview"
