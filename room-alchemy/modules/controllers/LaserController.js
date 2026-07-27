@@ -36,6 +36,7 @@ const BEAM_FRAG = /* glsl */ `
   uniform vec3  uColor;
   uniform float uTime;
   uniform float uOpacity;
+  uniform float uHit;
 
   varying vec2 vUvw;
   varying vec3 vNormalView;
@@ -45,9 +46,12 @@ const BEAM_FRAG = /* glsl */ `
     // 筒のシルエット側ほど厚みを通って見えるので、そこだけ強く光らせる
     float fres = pow(1.0 - abs(dot(normalize(vNormalView), normalize(vViewDir))), 2.2);
 
-    // 根元は少し詰めて、先端に向かって溶けるように消す
+    // 根元は少し詰めて、先端に向かって溶けるように消す。
+    // ただし何かに当たって止まっているときは先端まで光を保つ。
+    // 手前で溶けて消えると、どこで止まったのかが読めない
     float fadeIn  = smoothstep(0.0, 0.03, vUvw.y);
-    float fadeOut = 1.0 - smoothstep(0.18, 1.0, vUvw.y);
+    float fadeOut = mix(1.0 - smoothstep(0.18, 1.0, vUvw.y),
+                        1.0 - smoothstep(0.86, 1.0, vUvw.y), uHit);
     float fade = fadeIn * fadeOut;
 
     // 進行方向に流れる微かなきらめき
@@ -74,12 +78,14 @@ const CORE_FRAG = /* glsl */ `
 
   uniform vec3  uColor;
   uniform float uTime;
+  uniform float uHit;
 
   varying vec2 vUvw;
 
   void main() {
     float fadeIn  = smoothstep(0.0, 0.02, vUvw.y);
-    float fadeOut = pow(1.0 - smoothstep(0.02, 0.7, vUvw.y), 1.6);
+    float fadeOut = mix(pow(1.0 - smoothstep(0.02, 0.7, vUvw.y), 1.6),
+                        pow(1.0 - smoothstep(0.62, 1.0, vUvw.y), 1.2), uHit);
     float pulse = 0.75 + 0.25 * sin(vUvw.y * 22.0 - uTime * 6.5);
     float a = fadeIn * fadeOut * pulse * 0.85;
     gl_FragColor = vec4(mix(uColor, vec3(1.0), 0.7), a);
@@ -113,6 +119,12 @@ export function createLaser() {
   group.userData.isLaser = true;
 
   const timeUniform = { value: 0 };
+  const hitUniform = { value: 0 };
+
+  // 当たった所で光線を止めるために伸び縮みする。ビーズは根元に残したいので
+  // このグループの外に置く
+  const beamGroup = new THREE.Group();
+  group.add(beamGroup);
 
   // --- ガラスの鞘 ---------------------------------------------------------
   const beamGeometry = new THREE.CylinderGeometry(0.0014, 0.0044, LASER_LENGTH, 18, 1, true);
@@ -123,6 +135,7 @@ export function createLaser() {
     uniforms: {
       uColor: { value: LASER_COLOR.clone() },
       uTime: timeUniform,
+      uHit: hitUniform,
       uOpacity: { value: 1 }
     },
     vertexShader: BEAM_VERT,
@@ -135,7 +148,7 @@ export function createLaser() {
   const beam = new THREE.Mesh(beamGeometry, beamMaterial);
   beam.renderOrder = 20;
   beam.raycast = () => {};
-  group.add(beam);
+  beamGroup.add(beam);
 
   // --- 発光するコア -------------------------------------------------------
   const coreGeometry = new THREE.CylinderGeometry(0.0004, 0.0013, LASER_LENGTH, 10, 1, true);
@@ -145,7 +158,8 @@ export function createLaser() {
   const coreMaterial = new THREE.ShaderMaterial({
     uniforms: {
       uColor: { value: LASER_COLOR.clone() },
-      uTime: timeUniform
+      uTime: timeUniform,
+      uHit: hitUniform
     },
     vertexShader: CORE_VERT,
     fragmentShader: CORE_FRAG,
@@ -157,7 +171,7 @@ export function createLaser() {
   const core = new THREE.Mesh(coreGeometry, coreMaterial);
   core.renderOrder = 21;
   core.raycast = () => {};
-  group.add(core);
+  beamGroup.add(core);
 
   // --- 根元のビーズ -------------------------------------------------------
   const beadMaterial = new THREE.ShaderMaterial({
@@ -185,8 +199,30 @@ export function createLaser() {
     timeUniform.value = performance.now() * 0.001;
   };
 
+  // 当たった距離で光線を打ち切る。null なら素通しで最大まで伸ばす
+  group.userData.setReach = (distance) => {
+    const stopped = distance !== null && distance < LASER_LENGTH;
+    // ごく至近で潰れると根元のビーズだけが残って妙に見えるので下限を置く
+    const length = stopped ? Math.max(distance, 0.03) : LASER_LENGTH;
+    beamGroup.scale.z = length / LASER_LENGTH;
+    hitUniform.value = stopped ? 1 : 0;
+  };
+
   group.visible = false; // 初期状態は非表示
   return group;
+}
+
+// 光線をこの距離で止める。distance が null なら最大長に戻す
+export function setLaserReach(laser, distance) {
+  if (laser && laser.userData.setReach) laser.userData.setReach(distance);
+}
+
+// handedness に対応するレーザーを返す
+export function getLaserForHandedness(handedness) {
+  // 左右逆（コントローラーの割り当てが逆のため）
+  if (handedness === 'left') return rightLaser;
+  if (handedness === 'right') return leftLaser;
+  return null;
 }
 
 // トリガーボタンの状態を取得

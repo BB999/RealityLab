@@ -71,6 +71,13 @@ Choosing between "threejs" and "hyper3d" is the decision that matters most:
   wastes minutes of the user's time while they wait inside VR. When genuinely torn, choose threejs.
 
 Rules:
+- If the user names the technique, that overrides every rule below. Naming a tool is an
+  instruction about HOW to build it, not a description of the subject — the subject may
+  look like it belongs to another type and the instruction still wins.
+    "Three.jsで", "with Three.js", "コードで", "プログラムで"  -> threejs
+    "画像で", "イラストで", "as an image", "絵で"              -> imagePanel
+    "3Dモデルで", "as a 3D model"                              -> hyper3d
+    "漫画で", "as a manga"                                     -> manga
 - 2D images, artwork, illustrations, photos -> imagePanel
 - manga, comic, 漫画, コミック, or any comic book request -> manga
 - For hyper3d, write a detailed English prompt for generating a reference image of the object
@@ -80,70 +87,69 @@ Rules:
 - Leave imagePrompt and mangaPrompt as empty strings when they do not apply
 - "label" is a brief description in the user's own language`;
 
-  try {
-    const startedAt = Date.now();
-    const response = await fetch('/api/claude', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        // 分類のみのタスクなので Haiku 4.5。生成ボタンを押してから
-        // 実際の生成が始まるまでの待ち時間を短くするのが狙い
-        model: 'claude-haiku-4-5',
-        max_tokens: 4000,
-        output_config: {
-          format: {
-            type: 'json_schema',
-            schema: MODULE_SCHEMA
-          }
-        },
-        messages: [{
-          role: 'user',
-          content: `Analyze this prompt and determine the appropriate 3D module:\n\n"${prompt}"`
-        }],
-        system: systemPrompt
-      })
-    });
-    console.log(`[time] analyzePrompt: ${since(startedAt)}秒`);
+  const startedAt = Date.now();
+  const response = await fetch('/api/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      // 分類のみのタスクなので Haiku 4.5。生成ボタンを押してから
+      // 実際の生成が始まるまでの待ち時間を短くするのが狙い
+      model: 'claude-haiku-4-5',
+      max_tokens: 4000,
+      output_config: {
+        format: {
+          type: 'json_schema',
+          schema: MODULE_SCHEMA
+        }
+      },
+      messages: [{
+        role: 'user',
+        content: `Analyze this prompt and determine the appropriate 3D module:\n\n"${prompt}"`
+      }],
+      system: systemPrompt
+    })
+  });
+  console.log(`[time] analyzePrompt: ${since(startedAt)}秒`);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Claude API Error:', errorText);
-      // フォールバック: 画像パネルとして処理
-      return createFallback(prompt);
-    }
-
-    const data = await response.json();
-    const raw = extractText(data);
-
-    // Structured Outputs によりスキーマ通りのJSONが返る。
-    // refusal 等の異常系に備えてパース失敗時はフォールバックさせる
-    try {
-      const result = JSON.parse(raw);
-      console.log('Prompt analysis result:', result);
-      return result;
-    } catch (e) {
-      console.error('JSON parse failed. Raw response:', raw);
-      return createFallback(prompt);
-    }
-
-  } catch (error) {
-    console.error('Prompt analysis error:', error);
-    return createFallback(prompt);
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Claude API Error:', errorText);
+    throw new Error(describeClaudeError(response.status, errorText));
   }
+
+  const data = await response.json();
+  const raw = extractText(data);
+
+  // Structured Outputs によりスキーマ通りのJSONが返る。
+  // refusal 等でこれが崩れたときは、推測で先に進まずここで止める
+  let result;
+  try {
+    result = JSON.parse(raw);
+  } catch (e) {
+    console.error('JSON parse failed. Raw response:', raw);
+    throw new Error('判定結果を読み取れませんでした');
+  }
+
+  console.log('Prompt analysis result:', result);
+  return result;
 }
 
 /**
- * フォールバック: 画像パネルとして処理
- * @param {string} prompt - ユーザー入力
- * @returns {Object} モジュール定義
+ * VR の中に出せる短いエラー文にする。
+ * API が返す原文は英語で長く、パネルに収まらない
  */
-function createFallback(prompt) {
-  return {
-    kind: 'imagePanel',
-    label: prompt,
-    imagePrompt: prompt,
-    mangaPrompt: ''
-  };
+function describeClaudeError(status, body) {
+  let message = '';
+  try {
+    message = JSON.parse(body)?.error?.message ?? '';
+  } catch (e) {
+    message = body;
+  }
+
+  if (message.includes('credit balance')) return 'Anthropic のクレジットが不足しています';
+  if (status === 401 || status === 403) return 'Anthropic の APIキーが無効です';
+  if (status === 429) return 'リクエストが多すぎます。少し待ってください';
+  return `プロンプトの判定に失敗しました (${status})`;
 }
 
 /**

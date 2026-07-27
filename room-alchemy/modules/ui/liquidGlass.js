@@ -68,6 +68,11 @@ export const TINT = {
   white: 0xffffff
 };
 
+// Scratch for the idle -> active tint blend, so the per-frame lerp allocates
+// nothing.
+const _tintIdle = new THREE.Color();
+const _tintActive = new THREE.Color();
+
 const hexToVec3 = (hex) =>
   new THREE.Vector3(((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255);
 
@@ -337,6 +342,8 @@ export class GlassSurface {
     this._isHovered = false;
     this._isPressed = false;
     this._time = 0;
+    this._idleTint = tint;
+    this._activeTint = null;
 
     // --- halo ---------------------------------------------------------------
     // A padded quad sitting behind the glass. It carries two things that have
@@ -441,6 +448,60 @@ export class GlassSurface {
     if (this.onRedraw) this.onRedraw();
   }
 
+  /**
+   * Change the sheet's dimensions in place. The corner radius is kept as
+   * authored — a text field that grows to fit more lines should keep the same
+   * corner, not morph from a capsule into a rounded rectangle.
+   * @param {number} width - metres
+   * @param {number} height - metres
+   */
+  resize(width, height) {
+    if (this.width === width && this.height === height) return;
+
+    this.width = width;
+    this.height = height;
+
+    const feather = Math.min(width, height) * 0.42;
+    const pad = feather + height * 0.4;
+
+    this.glassMesh.geometry.dispose();
+    this.glassMesh.geometry = new THREE.PlaneGeometry(width, height);
+
+    this.contentMesh.geometry.dispose();
+    this.contentMesh.geometry = new THREE.PlaneGeometry(width, height);
+
+    this.shadowMesh.geometry.dispose();
+    this.shadowMesh.geometry = new THREE.PlaneGeometry(width + pad * 2, height + pad * 2);
+
+    const glass = this.glassMaterial.uniforms;
+    glass.uHalf.value.set(width / 2, height / 2);
+    glass.uRadius.value = this.radius;
+
+    const shadow = this.shadowMaterial.uniforms;
+    shadow.uHalf.value.set(width / 2, height / 2);
+    shadow.uRadius.value = this.radius;
+    shadow.uFeather.value = feather;
+    shadow.uOffset.value.set(0, -height * 0.3);
+
+    // Match the canvas to the sheet's aspect ratio, or the text stretches.
+    // Setting height clears the canvas *and* resets every 2D context state
+    // (font, fillStyle, letterSpacing), so the owner has to draw from scratch.
+    this.canvas.height = Math.round(this.canvas.width * (height / width));
+
+    // A CanvasTexture holds the dimensions it was uploaded with. Resizing the
+    // canvas underneath one leaves the sampler reading the old allocation —
+    // the sheet changes size but the content never reappears. Replace it.
+    this.texture.dispose();
+    this.texture = new THREE.CanvasTexture(this.canvas);
+    this.texture.minFilter = THREE.LinearFilter;
+    this.texture.magFilter = THREE.LinearFilter;
+    this.texture.anisotropy = 4;
+    this.contentMaterial.map = this.texture;
+    this.contentMaterial.needsUpdate = true;
+
+    this.redraw();
+  }
+
   /** Raycast target — the glass slab itself. */
   get hitMesh() {
     return this.glassMesh;
@@ -451,7 +512,22 @@ export class GlassSurface {
   }
 
   setTint(hex) {
-    setVec3(this.glassMaterial.uniforms.uTint.value, hex);
+    this._idleTint = hex;
+    // With an active tint set, update() owns the uniform.
+    if (this._activeTint === null) setVec3(this.glassMaterial.uniforms.uTint.value, hex);
+  }
+
+  /**
+   * Colour the glass takes on while hovered or pressed, blending out of the
+   * resting tint. Pass null to go back to a fixed colour.
+   *
+   * A control that is always tinted reads as always active — fine for one
+   * primary action, wrong for a row of them. Holding the colour back until the
+   * user reaches for it is what keeps a resting panel calm.
+   */
+  setActiveTint(hex) {
+    this._activeTint = hex;
+    if (hex === null) setVec3(this.glassMaterial.uniforms.uTint.value, this._idleTint);
   }
 
   setAccent(hex) {
@@ -514,6 +590,17 @@ export class GlassSurface {
     u.uFocus.value = this.focusSpring.update(deltaTime);
     u.uSheen.value = this.sheenSpring.update(deltaTime);
     this.group.scale.setScalar(this.scaleSpring.update(deltaTime));
+
+    // Colour follows the same springs as everything else, so a button that
+    // only carries its tint while being touched arrives at it the way the
+    // glass arrives at every other state — no switch, no snap.
+    if (this._activeTint !== null) {
+      const t = Math.min(1, Math.max(u.uHover.value, u.uPress.value));
+      _tintIdle.setHex(this._idleTint);
+      _tintActive.setHex(this._activeTint);
+      _tintIdle.lerp(_tintActive, t);
+      u.uTint.value.set(_tintIdle.r, _tintIdle.g, _tintIdle.b);
+    }
 
     // The targeting bloom lives on the padded shadow quad, since the glass
     // slab itself has no room outside its own silhouette to draw into.

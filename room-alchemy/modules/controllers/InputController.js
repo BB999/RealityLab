@@ -50,11 +50,21 @@ export function isGripPressed(inputSource) {
   return false;
 }
 
+// 手を握る位置の基準になる space。
+// gripSpace はハンドトラッキングでは提供されないことがあるので手首で代用する
+export function getGripSpace(inputSource) {
+  if (!inputSource) return null;
+  if (inputSource.gripSpace) return inputSource.gripSpace;
+  if (inputSource.hand) return inputSource.hand.get('wrist') || null;
+  return null;
+}
+
 // inputSourceからグリップの位置を取得
 export function getGripPosition(inputSource, frame, referenceSpace) {
-  if (!inputSource || !inputSource.gripSpace || !frame || !referenceSpace) return null;
+  const space = getGripSpace(inputSource);
+  if (!space || !frame || !referenceSpace) return null;
 
-  const gripPose = frame.getPose(inputSource.gripSpace, referenceSpace);
+  const gripPose = frame.getPose(space, referenceSpace);
   if (gripPose) {
     return new THREE.Vector3(
       gripPose.transform.position.x,
@@ -67,9 +77,10 @@ export function getGripPosition(inputSource, frame, referenceSpace) {
 
 // inputSourceからグリップの回転を取得
 export function getGripQuaternion(inputSource, frame, referenceSpace) {
-  if (!inputSource || !inputSource.gripSpace || !frame || !referenceSpace) return null;
+  const space = getGripSpace(inputSource);
+  if (!space || !frame || !referenceSpace) return null;
 
-  const gripPose = frame.getPose(inputSource.gripSpace, referenceSpace);
+  const gripPose = frame.getPose(space, referenceSpace);
   if (gripPose) {
     return new THREE.Quaternion(
       gripPose.transform.orientation.x,

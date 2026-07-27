@@ -43,6 +43,8 @@ export class PinButton {
     // Web フォントが後から届いたときにラベルを描き直す
     this.surface.onRedraw = () => this.updateCanvas();
 
+    this._applyState();
+
     this.updateCanvas();
 
     return this.button;

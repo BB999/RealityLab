@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { GlassSurface, TINT, drawLabel, measureLabel, icons } from './liquidGlass.js';
 
-const W = 0.08;
+// 主要な入力手段なので、脇のボタンより横に長くとってある
+const W = 0.112;
 const H = 0.04;
 
 /**
@@ -37,10 +38,11 @@ export class VoiceButton {
     this.surface = new GlassSurface({
       width: W,
       height: H,
-      tint: TINT.blue,
+      tint: TINT.graphite,
       accent: TINT.blue,
       opacity: 0.38,
-      canvasWidth: 320,
+      // 幅と同じ比率で広げる。合わせないとラベルが横に伸びる
+      canvasWidth: 448,
       canvasHeight: 160,
       shadow: 0,
       hoverScale: 1.08,
@@ -143,8 +145,9 @@ export class VoiceButton {
     this.isRecording = recording;
     this.pulse = 0;
     this.lastContentFrame = -1;
-    // 録音中は赤ガラス + 明滅するシーンで「録れている」ことを示す
-    this.surface.setTint(recording ? TINT.red : TINT.blue);
+    // 録音中は赤ガラス + 明滅するシーンで「録れている」ことを示す。
+    // 待機中は Clear と同じ素のガラスで、色はアクセントの滲みだけ
+    this.surface.setTint(recording ? TINT.red : TINT.graphite);
     this.surface.setAccent(recording ? TINT.red : TINT.blue);
     this.surface.setSheen(recording ? 0.9 : 0);
     this.surface.setFocus(recording ? 0.7 : 0);
@@ -159,7 +162,7 @@ export class VoiceButton {
       this.surface.setAccent(TINT.gray);
       this.surface.setSheen(0.6);
     } else if (!this.isRecording) {
-      this.surface.setTint(TINT.blue);
+      this.surface.setTint(TINT.graphite);
       this.surface.setAccent(TINT.blue);
       this.surface.setSheen(0);
     }

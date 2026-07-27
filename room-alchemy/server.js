@@ -50,10 +50,17 @@ app.post('/api/claude', async (req, res) => {
     });
 
     // 呼び出し側がモデルごとの所要時間を追えるようにする
-    console.log(`[time] claude(${req.body?.model ?? 'unknown'}): ${since(startedAt)}秒`);
+    console.log(`[time] claude(${req.body?.model ?? 'unknown'}): ${since(startedAt)}秒 status=${response.status}`);
 
     // 成否の判定は呼び出し側が行うので、ステータスと本文をそのまま返す
     const body = await response.text();
+
+    // クライアントは失敗を黙って握り潰してフォールバックするので、
+    // 理由がここに出ていないと切り分けができない
+    if (!response.ok) {
+      console.error('Claude API error:', body);
+    }
+
     res.status(response.status).type('application/json').send(body);
   } catch (error) {
     console.error('Claude proxy error:', error);
@@ -158,6 +165,14 @@ app.post('/api/transcribe', express.raw({ type: ['audio/*', 'video/*'], limit: '
 });
 
 // 画像生成API（Nano Banana Pro）
+// fal は失敗の理由を body.detail に入れてくる。error をそのまま console に渡すと
+// ネストが [Object] に潰れて、課金切れなのか入力が弾かれたのか区別できない
+function describeFalError(error) {
+  const message = error?.message ?? String(error);
+  if (!error?.body) return message;
+  return `${message} ${JSON.stringify(error.body)}`;
+}
+
 app.post('/api/generate-image', async (req, res) => {
   try {
     console.log('Image generate request:', JSON.stringify(req.body));
@@ -175,8 +190,8 @@ app.post('/api/generate-image', async (req, res) => {
     console.log('Image generate result:', JSON.stringify(result.data));
     res.json(result.data);
   } catch (error) {
-    console.error('Image generate error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Image generate error:', describeFalError(error));
+    res.status(500).json({ error: describeFalError(error) });
   }
 });
 
@@ -198,8 +213,8 @@ app.post('/api/generate-3d', async (req, res) => {
     console.log('3D generate result:', JSON.stringify(result.data));
     res.json(result.data);
   } catch (error) {
-    console.error('3D generate error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('3D generate error:', describeFalError(error));
+    res.status(500).json({ error: describeFalError(error) });
   }
 });
 

@@ -1,13 +1,20 @@
 import * as THREE from 'three';
 import { disposeObject3D } from './disposeUtils.js';
 
-// findModuleAtPosition はグリップを握っている間ずっと呼ばれるので、
+// findModuleNear はグリップを握っている間ずっと呼ばれるので、
 // フレームごとの確保を避けるために使い回す
 const _box = new THREE.Box3();
 const _grabBox = new THREE.Box3();
 const _center = new THREE.Vector3();
 const _size = new THREE.Vector3();
 const _half = new THREE.Vector3();
+
+// つかみ判定の上限は最小半径の何倍か。これが無いと巨大なモジュールが周囲すべてを飲み込む。
+// 最小半径から導いておくと、片方だけ動かして上下が逆転することがない
+const MAX_HALF_RATIO = 3;
+// 手が少しはみ出していても掴めるようにする遊び。
+// 最小半径と違い実寸に対する上乗せなので、大きいモジュールの掴みやすさはこちらが担う
+const SLACK = 0.05;
 
 /**
  * モジュールマネージャー
@@ -117,31 +124,56 @@ export class ModuleManager {
    * @returns {Object|null} 見つかったモジュール
    */
   findModuleAtPosition(position, minHalfSize = 0.15) {
-    // 上限。これが無いと巨大なモジュールが周囲すべてを飲み込む
-    const MAX_HALF_SIZE = 0.5;
-    // 手が少しはみ出していても掴めるようにする遊び
-    const SLACK = 0.04;
+    const hit = this.findModuleNear(position, minHalfSize, 0);
+    return hit ? hit.module : null;
+  }
 
+  /**
+   * つかみ判定に使う AABB を求める
+   * @param {Object} module
+   * @param {number} minHalfSize - 最小半径
+   * @param {THREE.Vector3} outCenter - 中心の書き込み先
+   * @param {THREE.Vector3} outHalf - 半径の書き込み先
+   * @returns {boolean} 描画物を持たないモジュールは false
+   */
+  getGrabBounds(module, minHalfSize, outCenter, outHalf) {
+    _box.setFromObject(module.group);
+    // 描画物を持たないモジュールは中心が NaN になるので除外する
+    if (_box.isEmpty()) return false;
+
+    _box.getCenter(outCenter);
+    _box.getSize(_size);
+
+    // 判定用の半径は「実寸を下限と上限で挟んだもの」
+    const maxHalfSize = minHalfSize * MAX_HALF_RATIO;
+    outHalf.set(
+      Math.min(Math.max(_size.x / 2, minHalfSize), maxHalfSize) + SLACK,
+      Math.min(Math.max(_size.y / 2, minHalfSize), maxHalfSize) + SLACK,
+      Math.min(Math.max(_size.z / 2, minHalfSize), maxHalfSize) + SLACK
+    );
+
+    return true;
+  }
+
+  /**
+   * 位置の近くにあるモジュールを探す
+   * @param {THREE.Vector3} position - 検索位置
+   * @param {number} minHalfSize - つかみ判定の最小半径。
+   *   小さいモジュールを掴みやすくするための下限で、実寸がこれより大きければ実寸を使う
+   * @param {number} margin - 判定範囲の外側にこれだけ余分に広げて探す。
+   *   0 なら「掴める範囲」そのもの
+   * @returns {{module: Object, inside: boolean}|null}
+   *   inside は margin を除いた本来の範囲に入っている（＝掴める）かどうか
+   */
+  findModuleNear(position, minHalfSize = 0.15, margin = 0) {
     let found = null;
     let foundDistance = Infinity;
+    let foundInside = false;
 
     for (const module of this.modules.values()) {
-      _box.setFromObject(module.group);
-      // 描画物を持たないモジュールは中心が NaN になるので除外する
-      if (_box.isEmpty()) continue;
+      if (!this.getGrabBounds(module, minHalfSize, _center, _half)) continue;
 
-      _box.getCenter(_center);
-      _box.getSize(_size);
-
-      // 判定用の半径は「実寸を下限と上限で挟んだもの」。
-      // 一律に下駄を履かせると、大きいモジュールほど余分な範囲が増えて
-      // 隣のモジュールを覆い隠してしまう
-      _half.set(
-        Math.min(Math.max(_size.x / 2, minHalfSize), MAX_HALF_SIZE) + SLACK,
-        Math.min(Math.max(_size.y / 2, minHalfSize), MAX_HALF_SIZE) + SLACK,
-        Math.min(Math.max(_size.z / 2, minHalfSize), MAX_HALF_SIZE) + SLACK
-      );
-
+      _half.addScalar(margin);
       _grabBox.min.copy(_center).sub(_half);
       _grabBox.max.copy(_center).add(_half);
 
@@ -151,13 +183,19 @@ export class ModuleManager {
       // 最初に見つかったものを返すと、Map の登録順で決まってしまい、
       // 先にスポーンした大きいモジュールが手前の小さいモジュールを奪う
       const distance = _center.distanceToSquared(position);
-      if (distance < foundDistance) {
-        foundDistance = distance;
-        found = module;
-      }
+      if (distance >= foundDistance) continue;
+
+      foundDistance = distance;
+      found = module;
+
+      // 広げる前の範囲に入っていれば、いま掴める
+      _half.subScalar(margin);
+      _grabBox.min.copy(_center).sub(_half);
+      _grabBox.max.copy(_center).add(_half);
+      foundInside = _grabBox.containsPoint(position);
     }
 
-    return found;
+    return found ? { module: found, inside: foundInside } : null;
   }
 
   /**

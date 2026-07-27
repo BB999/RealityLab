@@ -27,7 +27,7 @@ export class GenerateButton {
     this.surface = new GlassSurface({
       width: W,
       height: H,
-      tint: TINT.green,
+      tint: TINT.graphite,
       accent: TINT.green,
       opacity: 0.38,
       canvasWidth: 512,
@@ -46,6 +46,7 @@ export class GenerateButton {
     // Web フォントが後から届いたときにラベルを描き直す
     this.surface.onRedraw = () => this.updateCanvas();
 
+    this._applyTint();
     this.updateCanvas();
 
     return this.button;
@@ -105,6 +106,8 @@ export class GenerateButton {
     if (loading) {
       this.isHovered = false;
       this.surface.setHovered(false);
+      // 生成中は触れていなくても色を保つ。状態表示なので待機色に戻ってはいけない
+      this.surface.setActiveTint(null);
       this.surface.setTint(TINT.slate);
       this.surface.setAccent(this.isRegenerateMode ? TINT.orange : TINT.green);
       this.surface.setSheen(0.8);
@@ -199,9 +202,12 @@ export class GenerateButton {
   }
 
   _applyTint() {
-    const tint = this.isRegenerateMode ? TINT.orange : TINT.green;
-    this.surface.setTint(tint);
-    this.surface.setAccent(tint);
+    const accent = this.isRegenerateMode ? TINT.orange : TINT.green;
+    // 待機中は無彩色にして、触れたときだけ色が乗るようにする。
+    // 常に色がついていると、押していないのに動作中に見える
+    this.surface.setTint(TINT.graphite);
+    this.surface.setActiveTint(accent);
+    this.surface.setAccent(accent);
   }
 
   // 再生成モードに切り替え

@@ -8,7 +8,7 @@ import { createMangaBook } from './modules/factories/mangaBook.js';
 import { analyzePrompt, generateThreejsCode, regenerateThreejsCode } from './modules/PromptAnalyzer.js';
 
 // コントローラー関連
-import { createLaser, setLasers, updateLaserVisibility, isTriggerPressed, isAnyLaserVisible, isLaserVisibleForController, isLaserVisibleForHandedness } from './modules/controllers/LaserController.js';
+import { createLaser, setLasers, updateLaserVisibility, isTriggerPressed, isAnyLaserVisible, isLaserVisibleForController, isLaserVisibleForHandedness, setLaserReach, getLaserForHandedness } from './modules/controllers/LaserController.js';
 import {
   getStickValues, isStickPressed, isGripPressed,
   getGripPosition, getGripQuaternion, applyGripRotation
@@ -32,8 +32,11 @@ import { RealtimeVoiceInput } from './modules/services/RealtimeVoiceInput.js';
 
 // XR関連
 import { DepthVisualization } from './modules/xr/DepthVisualization.js';
-import { raycastModules, raycastTextPanel, raycastImagePanel, checkImagePanelCollision, setRaycastCamera } from './modules/xr/Raycast.js';
+import { raycastModules, raycastTextPanel, raycastImagePanel, checkImagePanelCollision, setRaycastCamera, raycastReach } from './modules/xr/Raycast.js';
 import { InteractionState } from './modules/xr/InteractionState.js';
+import { PokeTracker } from './modules/xr/PokeInteraction.js';
+import { HandGrabTracker, getFingerCurl } from './modules/xr/HandGrab.js';
+import { GrabRange } from './modules/ui/GrabRange.js';
 
 // 基本変数
 let scene, camera, renderer;
@@ -45,6 +48,25 @@ let leftController = null;
 // ハンドトラッキング用変数
 let hand1 = null;
 let hand2 = null;
+
+// 人差し指でUIを直接押す（ハンドトラッキング時のみ働く）
+const pokeTracker = new PokeTracker();
+const EMPTY_POKE = new Set();
+let pokeTargets = null;
+
+// 手を握ってモジュールを掴む（ハンドトラッキング時のみ働く）
+const handGrabTracker = new HandGrabTracker();
+
+// つかみ判定の最小半径。ここを変えるときは範囲表示も同じ値で描かれる。
+// 各軸に独立してかかるので、大きくすると薄いパネルが厚い箱として判定される
+const GRAB_MIN_HALF = 0.03;
+// 判定範囲の外側どこまでで範囲表示を出しはじめるか
+const GRAB_HINT_MARGIN = 0.12;
+
+// つかめる範囲の可視化
+let grabRange = null;
+const _rangeCenter = new THREE.Vector3();
+const _rangeHalf = new THREE.Vector3();
 
 // UIコンポーネント
 let textPanel = null;
@@ -140,6 +162,8 @@ function init() {
   connectionLine = new ConnectionLine(scene);
   connectionLine.create();
 
+  grabRange = new GrabRange(scene);
+
   // ピン留めボタンを初期化
   pinButton = new PinButton(scene);
   pinButton.create();
@@ -147,15 +171,17 @@ function init() {
 
   // 音声入力ボタンを初期化
   // テキストパネルの左下に配置
+  // Talk はテキストボックスの真下中央。Clear はその右脇に 12mm 空けて置く
+  // （Talk 半幅 56mm + 間隔 12mm + Clear 半幅 40mm = 108mm）
   voiceButton = new VoiceButton(scene, {
-    offset: new THREE.Vector3(-0.13, -0.05, 0)
+    offset: new THREE.Vector3(0, -0.05, 0)
   });
   voiceButton.create();
   voiceButton.setOnPress(() => handleVoiceToggle());
 
   // テキストパネルの右下に配置（Talk と左右対称）
   clearButton = new ClearButton(scene, {
-    offset: new THREE.Vector3(0.13, -0.05, 0)
+    offset: new THREE.Vector3(0.108, -0.05, 0)
   });
   clearButton.create();
   clearButton.setOnPress(() => handleClearText());
@@ -743,7 +769,8 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
 
   for (const inputSource of inputSources) {
     if (inputSource.targetRayMode !== 'tracked-pointer') continue;
-    if (!inputSource.gripSpace) continue;
+    // ハンドトラッキングでは gripSpace が無いことがあるので手首で代用される
+    if (!inputSource.gripSpace && !inputSource.hand) continue;
 
     const handedness = inputSource.handedness;
     if (!handedness) continue;
@@ -751,7 +778,7 @@ function updatePanelControllerInteraction(frame, referenceSpace) {
     const gripPosition = getGripPosition(inputSource, frame, referenceSpace);
     if (!gripPosition) continue;
 
-    const gripPressed = isGripPressed(inputSource);
+    const gripPressed = isGrabbing(inputSource);
 
     // テキストパネルのドラッグ中の処理
     if (interactionState.isDraggingPanel && interactionState.draggingInputSource === inputSource) {
@@ -977,6 +1004,32 @@ function handleImagePanelDrag(inputSource, frame, referenceSpace) {
 }
 
 // モジュールのコントローラー操作
+// コントローラーのグリップと、手の握り込みのどちらでも掴める。
+// 判定は毎フレーム handGrabTracker.update() で一度だけ更新され、ここでは結果を読むだけ
+function isGrabbing(inputSource) {
+  return isGripPressed(inputSource) || handGrabTracker.isGrabbing(inputSource);
+}
+
+// 選択のトリガーとして数えないカールの上限。
+// つまむ動作では人差し指はゆるく曲がる程度で、握り込みの半分にも届かない
+const SELECT_MAX_CURL = 1.0;
+
+/**
+ * 手を握っている、または握ろうとしているか。
+ *
+ * ハンドトラッキングのピンチは手を握っても成立してしまうため、掴もうとしただけで
+ * 選択がトグルする。指の曲がり具合を見て「つまむ」と「握る」を分ける。
+ * コントローラーには関節が無いので、常に false になり従来どおり動く。
+ */
+function isGraspingHand(inputSource, frame, referenceSpace) {
+  if (!inputSource.hand) return false;
+  if (handGrabTracker.isGrabbing(inputSource)) return true;
+
+  // 握りが成立する手前から無視したい。掴みの閾値より少し低いところで切る
+  const curl = getFingerCurl(inputSource, frame, referenceSpace, 'index');
+  return curl !== null && curl > SELECT_MAX_CURL;
+}
+
 function updateModuleControllerInteraction(frame, referenceSpace) {
   if (!moduleManager || !xrSession) return;
 
@@ -990,11 +1043,12 @@ function updateModuleControllerInteraction(frame, referenceSpace) {
 
   for (const inputSource of inputSources) {
     if (inputSource.targetRayMode !== 'tracked-pointer') continue;
-    if (!inputSource.gripSpace) continue;
+    // ハンドトラッキングでは gripSpace が無いことがあるので手首で代用される
+    if (!inputSource.gripSpace && !inputSource.hand) continue;
 
     const handedness = inputSource.handedness;
     const gripPosition = getGripPosition(inputSource, frame, referenceSpace);
-    const gripPressed = isGripPressed(inputSource);
+    const gripPressed = isGrabbing(inputSource);
 
     if (handedness === 'left') {
       leftGripPos = gripPosition;
@@ -1038,7 +1092,8 @@ function updateModuleControllerInteraction(frame, referenceSpace) {
   // 通常の片手操作
   for (const inputSource of inputSources) {
     if (inputSource.targetRayMode !== 'tracked-pointer') continue;
-    if (!inputSource.gripSpace) continue;
+    // ハンドトラッキングでは gripSpace が無いことがあるので手首で代用される
+    if (!inputSource.gripSpace && !inputSource.hand) continue;
 
     const handedness = inputSource.handedness;
     if (!handedness) continue;
@@ -1046,7 +1101,7 @@ function updateModuleControllerInteraction(frame, referenceSpace) {
     const gripPosition = getGripPosition(inputSource, frame, referenceSpace);
     if (!gripPosition) continue;
 
-    const gripPressed = isGripPressed(inputSource);
+    const gripPressed = isGrabbing(inputSource);
 
     // ドラッグ中
     if (interactionState.draggingModule && interactionState.draggingInputSource === inputSource) {
@@ -1062,13 +1117,13 @@ function updateModuleControllerInteraction(frame, referenceSpace) {
 
     // グリップでモジュールをつかむ
     if (gripPressed && !interactionState.isDraggingAnything()) {
-      let module = moduleManager.findModuleAtPosition(gripPosition, 0.2);
+      let module = moduleManager.findModuleAtPosition(gripPosition, GRAB_MIN_HALF);
       let useLaser = false;
       let distance = 0;
       let hitOffset = new THREE.Vector3();
 
       if (!module) {
-        const hit = raycastModules(inputSource, frame, referenceSpace, moduleManager);
+        const hit = raycastModules(inputSource, frame, referenceSpace, moduleManager, GRAB_MIN_HALF);
         if (hit) {
           module = hit.module;
           distance = hit.distance;
@@ -1183,8 +1238,15 @@ function animate(timestamp, frame) {
       clearButton.updatePosition(textPanel.getPanel());
     }
 
+    // 手の握り具合をこのフレームぶん更新する。
+    // パネルとモジュールの両方が isGrabbing() でこの結果を読むので、どちらより先に置く
+    handGrabTracker.update(xrSession, frame, referenceSpace);
+
     // レーザーの表示状態を更新
     updateLaserVisibility(xrSession);
+
+    // 当たった所でレーザーを止める
+    updateLaserReach(frame, referenceSpace);
 
     // ボタンのホバー検出
     updateButtonHover(frame, referenceSpace);
@@ -1198,6 +1260,9 @@ function animate(timestamp, frame) {
 
     // 接続線を更新
     updateConnectionLine();
+
+    // つかめる範囲の表示
+    updateGrabRange(frame, referenceSpace);
 
     // 削除ボタンの位置を更新
     if (deleteButton.isVisible()) {
@@ -1226,6 +1291,12 @@ function animate(timestamp, frame) {
   // テキストパネルのアニメーションを更新
   textPanel.update(deltaTime);
 
+  // 接続線のダッシュを流す
+  connectionLine.update(deltaTime);
+
+  // つかめる範囲のフェード。表示要求が来なかった枠はここで自然に消える
+  if (grabRange) grabRange.update(deltaTime);
+
   renderer.render(scene, camera);
 }
 
@@ -1244,28 +1315,44 @@ function updateModuleSelection(frame, referenceSpace) {
 
     const triggerPressed = isTriggerPressed(inputSource);
 
+    // 掴もうとしている手のピンチは選択に使わない。
+    // 押しっぱなし扱いにしておくことで、手を開いたときに立ち上がりが誤検出されない
+    if (isGraspingHand(inputSource, frame, referenceSpace)) {
+      wasTriggerPressedState[handedness] = triggerPressed;
+      continue;
+    }
+
     // トリガーを押した瞬間を検出
     if (triggerPressed && !wasTriggerPressedState[handedness]) {
-      // テキストパネルやGenerateボタンに当たっているか確認
-      const textPanelHit = textPanel.isVisible() && raycastTextPanel(inputSource, frame, referenceSpace, textPanel.getPanel());
-      const buttonHit = generateButton.isVisible() && raycastTextPanel(inputSource, frame, referenceSpace, generateButton.getButton());
-      const deleteButtonHit = deleteButton.isVisible() && raycastTextPanel(inputSource, frame, referenceSpace, deleteButton.getButton());
-
       // 削除ボタンに当たっている場合
+      const deleteButtonHit = deleteButton.isVisible() && raycastTextPanel(inputSource, frame, referenceSpace, deleteButton.getButton());
       if (deleteButtonHit) {
         deleteButton.press();
         wasTriggerPressedState[handedness] = triggerPressed;
         continue;
       }
 
-      // テキストパネルやボタンに当たっている場合は選択解除しない
-      if (textPanelHit || buttonHit) {
+      // テキストパネルとその周りのボタンはどれも UI 操作なので、押しても選択は保つ。
+      // 各ボタンはパネルの子ではなく scene 直下の独立オブジェクトなので、
+      // ここに列挙するしかない。漏らすと、そのボタンを押した瞬間だけ選択が外れる
+      const uiTargets = [
+        textPanel.isVisible() && textPanel.getPanel(),
+        generateButton.isVisible() && generateButton.getButton(),
+        pinButton.isVisible() && pinButton.getButton(),
+        voiceButton.isVisible() && voiceButton.getButton(),
+        clearButton.isVisible() && clearButton.getButton()
+      ];
+      const uiHit = uiTargets.some(
+        (target) => target && raycastTextPanel(inputSource, frame, referenceSpace, target)
+      );
+
+      if (uiHit) {
         wasTriggerPressedState[handedness] = triggerPressed;
         continue;
       }
 
       // レーザーでモジュールをヒットしているか確認
-      const hit = raycastModules(inputSource, frame, referenceSpace, moduleManager);
+      const hit = raycastModules(inputSource, frame, referenceSpace, moduleManager, GRAB_MIN_HALF);
       if (hit && hit.module) {
         // 漫画本の場合は開閉/ページめくりを処理
         if (hit.module.kind === 'mangaBook' && hit.module.instance) {
@@ -1368,12 +1455,82 @@ function updateButtonHover(frame, referenceSpace) {
     }
   }
 
-  generateButton.setHovered(isHoveringButton);
-  pinButton.setHovered(isHoveringPinButton);
-  voiceButton.setHovered(isHoveringVoiceButton);
-  clearButton.setHovered(isHoveringClearButton);
-  deleteButton.setHovered(isHoveringDeleteButton);
-  textPanel.setHovered(isHoveringTextPanel);
+  // 人差し指のポーク。押下はトラッカー側で発火し、ここではホバーだけ受け取る。
+  // レーザーのホバーと OR にしてあるので、手とコントローラーのどちらでも操作できる
+  const poked = pokeTargets
+    ? pokeTracker.update(xrSession, frame, referenceSpace, pokeTargets)
+    : EMPTY_POKE;
+
+  generateButton.setHovered(isHoveringButton || poked.has('generate'));
+  pinButton.setHovered(isHoveringPinButton || poked.has('pin'));
+  voiceButton.setHovered(isHoveringVoiceButton || poked.has('voice'));
+  clearButton.setHovered(isHoveringClearButton || poked.has('clear'));
+  deleteButton.setHovered(isHoveringDeleteButton || poked.has('delete'));
+  textPanel.setHovered(isHoveringTextPanel || poked.has('panel'));
+}
+
+// レーザーが当たりうるもの。毎フレーム組み直すので使い回す
+const _laserTargets = [];
+
+// レーザーを、最初に当たったものの手前で止める。
+// 突き抜けたままだと、何を指しているのかが奥行き方向に読めない
+function updateLaserReach(frame, referenceSpace) {
+  if (!xrSession || !xrSession.inputSources) return;
+
+  // UI はガラス面そのものに当てる。モジュールだけは掴み判定と同じ AABB を使うので
+  // ここには入れず、raycastModules で別に測る
+  _laserTargets.length = 0;
+  if (textPanel.isVisible()) _laserTargets.push(textPanel.getPanel());
+  if (generateButton.isVisible()) _laserTargets.push(generateButton.getButton());
+  if (pinButton.isVisible()) _laserTargets.push(pinButton.getButton());
+  if (voiceButton.isVisible()) _laserTargets.push(voiceButton.getButton());
+  if (clearButton.isVisible()) _laserTargets.push(clearButton.getButton());
+  if (deleteButton.isVisible()) _laserTargets.push(deleteButton.getButton());
+
+  for (const inputSource of xrSession.inputSources) {
+    if (inputSource.targetRayMode !== 'tracked-pointer') continue;
+
+    // ハンドトラッキングでも targetRaySpace は来るので、コントローラーと同じ扱いでいい
+    const laser = getLaserForHandedness(inputSource.handedness);
+    if (!laser || !laser.visible) continue;
+
+    let reach = raycastReach(inputSource, frame, referenceSpace, _laserTargets);
+
+    if (moduleManager) {
+      const hit = raycastModules(inputSource, frame, referenceSpace, moduleManager, GRAB_MIN_HALF);
+      if (hit && (reach === null || hit.distance < reach)) reach = hit.distance;
+    }
+
+    setLaserReach(laser, reach);
+  }
+}
+
+// つかめる範囲を、手が近づいたモジュールにだけ薄く出す
+function updateGrabRange(frame, referenceSpace) {
+  if (!grabRange || !moduleManager || !xrSession || !xrSession.inputSources) return;
+
+  const shown = new Set();
+
+  for (const inputSource of xrSession.inputSources) {
+    if (inputSource.targetRayMode !== 'tracked-pointer') continue;
+
+    const handedness = inputSource.handedness;
+    if (!handedness) continue;
+
+    const gripPosition = getGripPosition(inputSource, frame, referenceSpace);
+    if (!gripPosition) continue;
+
+    const near = moduleManager.findModuleNear(gripPosition, GRAB_MIN_HALF, GRAB_HINT_MARGIN);
+    if (!near) continue;
+
+    // 両手が同じモジュールに寄っているときに、同じ枠を二重に描かない
+    if (shown.has(near.module.id)) continue;
+    if (!moduleManager.getGrabBounds(near.module, GRAB_MIN_HALF, _rangeCenter, _rangeHalf)) continue;
+
+    shown.add(near.module.id);
+    // 近づいただけならうっすら、掴める位置まで入ったらはっきり出す
+    grabRange.show(handedness, _rangeCenter, _rangeHalf, near.inside ? 1 : 0.4);
+  }
 }
 
 // 接続線を更新
@@ -1390,7 +1547,7 @@ function updateConnectionLine() {
   if (!panel) return;
 
   // モジュールの位置とテキストパネルの位置を接続
-  connectionLine.update(module.group.position, panel.position);
+  connectionLine.setEndpoints(module.group.position, panel.position);
 }
 
 function onWindowResize() {
@@ -1467,6 +1624,36 @@ async function startXR() {
       });
     }
 
+    // プロンプト入力を開く。レーザーのタップと人差し指のポークの両方から呼ばれる
+    const openPromptKeyboard = () => {
+      if (!hiddenInput) return;
+
+      if (!USE_SYSTEM_KEYBOARD) {
+        // システムキーボードは使えないので音声入力へ誘導する
+        updateInfo('🎤 Talk ボタンで音声入力できます');
+        return;
+      }
+
+      const now = Date.now();
+      // キーボードを閉じてからクールダウン中は再オープンしない
+      if (now - lastKeyboardCloseTime > KEYBOARD_COOLDOWN) {
+        hiddenInput.value = textPanel.getPromptText();
+        hiddenInput.focus();
+        hiddenInput.click();
+      }
+    };
+
+    // 人差し指で直接押せるUI。ハンドトラッキング中だけ判定される
+    // （コントローラーの inputSource には指の関節が無いため素通りする）
+    pokeTargets = [
+      { key: 'generate', getObject: () => generateButton.getButton(), isVisible: () => generateButton.isVisible(), onPress: () => generateButton.press() },
+      { key: 'pin', getObject: () => pinButton.getButton(), isVisible: () => pinButton.isVisible(), onPress: () => pinButton.press() },
+      { key: 'voice', getObject: () => voiceButton.getButton(), isVisible: () => voiceButton.isVisible(), onPress: () => voiceButton.press() },
+      { key: 'clear', getObject: () => clearButton.getButton(), isVisible: () => clearButton.isVisible(), onPress: () => clearButton.press() },
+      { key: 'delete', getObject: () => deleteButton.getButton(), isVisible: () => deleteButton.isVisible(), onPress: () => deleteButton.press() },
+      { key: 'panel', getObject: () => textPanel.getSurfaceMesh(), isVisible: () => textPanel.isVisible(), onPress: () => openPromptKeyboard() }
+    ];
+
     const onSelect = (event) => {
       const controller = event.target;
 
@@ -1531,18 +1718,7 @@ async function startXR() {
       if (textPanel.isVisible() && hiddenInput) {
         const intersects = raycaster.intersectObject(textPanel.getPanel(), true);
         if (intersects.length > 0) {
-          if (!USE_SYSTEM_KEYBOARD) {
-            // システムキーボードは使えないので音声入力へ誘導する
-            updateInfo('🎤 Talk ボタンで音声入力できます');
-          } else {
-            const now = Date.now();
-            // キーボードを閉じてからクールダウン中は再オープンしない
-            if (now - lastKeyboardCloseTime > KEYBOARD_COOLDOWN) {
-              hiddenInput.value = textPanel.getPromptText();
-              hiddenInput.focus();
-              hiddenInput.click();
-            }
-          }
+          openPromptKeyboard();
         }
       }
     };

@@ -2,9 +2,40 @@ import * as THREE from 'three';
 import { GlassSurface, TINT, GLASS_FONT, icons } from './liquidGlass.js';
 
 const W = 0.4;
-const H = 0.05;
+const LINE_H = 0.03;       // 1行ぶんの高さ（メートル）
+const PAD_Y = 0.01;        // 上下の内側余白（メートル）
+const MAX_LINES = 4;       // これを超えたら古い行から隠す
+const H = PAD_Y * 2 + LINE_H;   // 1行のときの高さ
+const CANVAS_W = 1024;
 const INSET = 34;          // 左右の内側余白（キャンバスpx）
 const CARET_FPS = 12;      // キャレットのフェードを描き直す頻度
+
+/** その行数のときのパネルの高さ */
+const heightFor = (lines) => PAD_Y * 2 + Math.max(1, lines) * LINE_H;
+
+/**
+ * 幅に収まるように折り返す。
+ * 日本語には単語の切れ目が無いので、文字単位で折る
+ */
+function wrapLines(ctx, text, maxWidth) {
+  if (text.length === 0) return [];
+
+  const lines = [];
+  let current = '';
+
+  for (const char of text) {
+    const candidate = current + char;
+    if (current.length > 0 && ctx.measureText(candidate).width > maxWidth) {
+      lines.push(current);
+      current = char;
+    } else {
+      current = candidate;
+    }
+  }
+
+  if (current.length > 0) lines.push(current);
+  return lines;
+}
 
 export class TextPanel {
   constructor(scene) {
@@ -34,8 +65,9 @@ export class TextPanel {
       accent: TINT.blue,
       // 入力欄は文字が乗るので、ボタンより濃いガラスにして可読性を確保する
       opacity: 0.46,
-      canvasWidth: 1024,
-      canvasHeight: 128,
+      canvasWidth: CANVAS_W,
+      // 面と同じ縦横比。行が増えると resize がこれを描き替える
+      canvasHeight: Math.round(CANVAS_W * (H / W)),
       shadow: 0,
       hoverScale: 1.03,
       pressScale: 1,
@@ -62,19 +94,43 @@ export class TextPanel {
   updateCanvas() {
     if (!this.surface) return;
 
-    const ctx = this.surface.beginContent();
-    const width = this.surface.canvas.width;
-    const height = this.surface.canvas.height;
-    const cy = height / 2;
     const fontSize = 48;
+    const applyFont = (ctx) => {
+      ctx.font = `500 ${fontSize}px ${GLASS_FONT}`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      if ('letterSpacing' in ctx) ctx.letterSpacing = '-0.5px';
+    };
 
-    ctx.font = `500 ${fontSize}px ${GLASS_FONT}`;
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'left';
-    if ('letterSpacing' in ctx) ctx.letterSpacing = '-0.5px';
+    // 何行になるかで高さが決まるので、描く前に測る
+    applyFont(this.surface.ctx);
+    const maxWidth = this.surface.canvas.width - INSET * 2 - 20;
+    const allLines = wrapLines(this.surface.ctx, this.promptText, maxWidth);
+    // あふれた分は古い行から隠す。入力中は末尾が見えているほうが役に立つ
+    const lines = allLines.slice(-MAX_LINES);
+
+    const targetHeight = heightFor(lines.length);
+    if (Math.abs(this.surface.height - targetHeight) > 1e-6) {
+      this.surface.resize(W, targetHeight);
+      // 下端を固定して上へ伸ばす。ボタン類はパネルのグループ位置を基準に
+      // 並んでいるので、グループごと動かすと一緒にずれてしまう
+      this.surface.object3D.position.y = (targetHeight - H) / 2;
+      // resize が redraw を呼び戻すので、描画はその再入に任せる
+      return;
+    }
+
+    const ctx = this.surface.beginContent();
+    applyFont(ctx);
+
+    const canvasH = this.surface.canvas.height;
+    const padPx = canvasH * (PAD_Y / targetHeight);
+    const lineHpx = canvasH * (LINE_H / targetHeight);
+    // 行の中心。1行のときは従来どおり面の中央に来る
+    const centreOf = (index) => padPx + (index + 0.5) * lineHpx;
 
     if (this.promptText.length === 0 && !this.isActive) {
       // プレースホルダー: sparkles + 説明文（Apple のプレースホルダーと同じ第二階層の白）
+      const cy = centreOf(0);
       icons.sparkle(ctx, INSET + 20, cy, 20, 'rgba(255, 255, 255, 0.55)');
       ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
       ctx.fillText('プロンプトを入力', INSET + 56, cy + 1);
@@ -82,24 +138,21 @@ export class TextPanel {
       return;
     }
 
-    // 末尾が見えるように、あふれた分は先頭から削る
-    const maxWidth = width - INSET * 2 - 20;
-    let text = this.promptText;
-    while (text.length > 0 && ctx.measureText(text).width > maxWidth) {
-      text = text.substring(1);
-    }
-
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
     ctx.shadowBlur = 14;
     ctx.shadowOffsetY = 2;
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(text, INSET, cy + 1);
+    lines.forEach((line, i) => ctx.fillText(line, INSET, centreOf(i) + 1));
     ctx.restore();
 
     if (this.isActive) {
-      // 角丸のキャレット。点滅はオン/オフではなくフェードさせる
-      const caretX = INSET + ctx.measureText(text).width + 6;
+      // 角丸のキャレット。点滅はオン/オフではなくフェードさせる。
+      // 位置は最終行の末尾
+      const lastIndex = Math.max(0, lines.length - 1);
+      const lastLine = lines[lastIndex] ?? '';
+      const caretX = INSET + ctx.measureText(lastLine).width + 6;
+      const caretY = centreOf(lastIndex);
       const caretH = fontSize * 0.86;
       ctx.save();
       ctx.globalAlpha = this.caretAlpha;
@@ -107,7 +160,7 @@ export class TextPanel {
       ctx.shadowColor = 'rgba(10, 132, 255, 0.9)';
       ctx.shadowBlur = 16;
       ctx.beginPath();
-      ctx.roundRect(caretX, cy - caretH / 2, 5, caretH, 2.5);
+      ctx.roundRect(caretX, caretY - caretH / 2, 5, caretH, 2.5);
       ctx.fill();
       ctx.restore();
     }
@@ -304,6 +357,11 @@ export class TextPanel {
 
   getPanel() {
     return this.panelGroup;
+  }
+
+  // ポーク判定に使う面そのもの。getPanel() が返す Group には geometry が無い
+  getSurfaceMesh() {
+    return this.panel;
   }
 
   isInitialized() {
